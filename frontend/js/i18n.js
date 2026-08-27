@@ -30,7 +30,7 @@
       "cat.manga": "Mangas", "cat.figuras": "Figuras", "cat.tcg": "Tarjetas TCG",
       "cat.comics": "Cómics", "cat.preventa": "Preventas", "cat.all": "Todo",
       "nav.cart": "Carrito",
-      "cta.staff": "Acceso POS / Personal", "cta.mypanel": "Mi panel",
+      "cta.staff": "Acceso POS / Personal", "cta.mypanel": "Mi panel", "cta.myaccount": "Mi cuenta",
 
       "hero.kicker": "Portal Coleccionable & Sistema POS",
       "hero.t1": "Cultura geek", "hero.t2": "en cada sucursal",
@@ -39,7 +39,9 @@
 
       "shop.kicker": "Catálogo e-commerce", "shop.title": "Novedades y preventas",
       "shop.sub": "Pasa el cursor para el efecto 3D. Haz clic en un tomo para girarlo 360°.",
+      "shop.search": "Buscar por título o autor…",
       "shop.empty": "No hay productos en esta categoría.",
+      "shop.noresults": "Sin resultados para «{q}».",
       "shop.source.jikan": "Portadas reales vía MyAnimeList",
       "shop.source.anilist": "Portadas reales vía AniList",
       "shop.source.fallback": "Catálogo local (sin conexión al servidor)",
@@ -50,6 +52,8 @@
       "prod.available": "Disponible en", "prod.author": "Autor / Marca",
       "prod.volumes": "Tomos", "prod.score": "Puntuación", "prod.buy": "Agregar al carrito",
       "prod.soldout": "Agotado",
+      "prod.volume": "Vol.", "prod.pickVolume": "Elige tomo",
+      "prod.stockByBranch": "Stock por sucursal",
 
       "branches.kicker": "Tiendas físicas",
       "branches.title": "Nuestras sucursales en México",
@@ -161,7 +165,7 @@
       "cat.manga": "Manga", "cat.figuras": "Figures", "cat.tcg": "TCG Cards",
       "cat.comics": "Comics", "cat.preventa": "Pre-orders", "cat.all": "All",
       "nav.cart": "Cart",
-      "cta.staff": "Staff / POS access", "cta.mypanel": "My panel",
+      "cta.staff": "Staff / POS access", "cta.mypanel": "My panel", "cta.myaccount": "My account",
 
       "hero.kicker": "Collectibles Portal & POS System",
       "hero.t1": "Geek culture", "hero.t2": "in every branch",
@@ -170,7 +174,9 @@
 
       "shop.kicker": "E-commerce catalog", "shop.title": "New releases & pre-orders",
       "shop.sub": "Hover for the 3D effect. Click a volume to spin it 360°.",
+      "shop.search": "Search by title or author…",
       "shop.empty": "No products in this category.",
+      "shop.noresults": "No results for “{q}”.",
       "shop.source.jikan": "Real covers via MyAnimeList",
       "shop.source.anilist": "Real covers via AniList",
       "shop.source.fallback": "Local catalog (no server connection)",
@@ -181,6 +187,8 @@
       "prod.available": "Available at", "prod.author": "Author / Brand",
       "prod.volumes": "Volumes", "prod.score": "Score", "prod.buy": "Add to cart",
       "prod.soldout": "Sold out",
+      "prod.volume": "Vol.", "prod.pickVolume": "Pick volume",
+      "prod.stockByBranch": "Stock by branch",
 
       "branches.kicker": "Physical stores",
       "branches.title": "Our branches in Mexico",

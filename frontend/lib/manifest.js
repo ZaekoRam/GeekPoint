@@ -64,17 +64,17 @@
         synopsis: "La saga de la familia Joestar contra fuerzas sobrenaturales a lo largo de generaciones y continentes." },
       { id: "comics-2", title: "Invincible",       author: "Robert Kirkman",  category: "comics",  price: 329, tags: [], volumes: 25, accent: "#00e5ff",
         synopsis: "Mark Grayson hereda los poderes de su padre, el superhéroe más poderoso del planeta… y su terrible secreto." },
-      { id: "figuras-1", title: "Gojo Satoru — Figura 1/7", author: "GeekPoint Collection", category: "figuras", price: 2490, tags: ["preventa"], accent: "#8b5bff",
+      { id: "figuras-1", title: "Gojo Satoru - Figura 1/7", author: "GeekPoint Collection", category: "figuras", price: 2490, tags: ["preventa"], accent: "#8b5bff",
         synopsis: "Escala 1/7, PVC pintado a mano, 27 cm. Incluye efecto de Infinito y base temática." },
-      { id: "figuras-2", title: "Power — Figura S.H.F.", author: "GeekPoint Collection", category: "figuras", price: 1890, tags: [], accent: "#ff2d95",
+      { id: "figuras-2", title: "Power - Figura S.H.F.", author: "GeekPoint Collection", category: "figuras", price: 1890, tags: [], accent: "#ff2d95",
         synopsis: "Figura articulada de 16 cm con accesorios intercambiables y hacha de sangre." },
-      { id: "figuras-3", title: "Nezuko — Figura 1/8", author: "GeekPoint Collection", category: "figuras", price: 1690, tags: [], accent: "#ff2d95",
+      { id: "figuras-3", title: "Nezuko - Figura 1/8", author: "GeekPoint Collection", category: "figuras", price: 1690, tags: [], accent: "#ff2d95",
         synopsis: "Escala 1/8, 21 cm, con caja de bambú y pose de combate en modo demonio." },
-      { id: "tcg-1", title: "Pokémon TCG — Elite Trainer Box", author: "The Pokémon Company", category: "tcg", price: 1290, tags: ["novedad"], accent: "#ffd400",
+      { id: "tcg-1", title: "Pokémon TCG - Elite Trainer Box", author: "The Pokémon Company", category: "tcg", price: 1290, tags: ["novedad"], accent: "#ffd400",
         synopsis: "Caja con 9 sobres, 65 fundas, 45 cartas de Energía, dados y contadores de daño." },
-      { id: "tcg-2", title: "One Piece TCG — Booster Box", author: "Bandai", category: "tcg", price: 1490, tags: [], accent: "#e4002b",
+      { id: "tcg-2", title: "One Piece TCG - Booster Box", author: "Bandai", category: "tcg", price: 1490, tags: [], accent: "#e4002b",
         synopsis: "Caja sellada con 24 sobres del set más reciente. Ideal para draft y coleccionismo." },
-      { id: "tcg-3", title: "Magic — Bundle", author: "Wizards of the Coast", category: "tcg", price: 1190, tags: [], accent: "#8b5bff",
+      { id: "tcg-3", title: "Magic - Bundle", author: "Wizards of the Coast", category: "tcg", price: 1190, tags: [], accent: "#8b5bff",
         synopsis: "9 sobres de Colección, 20 tierras foil, caja de almacenamiento y contador giratorio." }
     ]
   };

@@ -134,6 +134,7 @@ $router->get('categories', function () use ($request) { (new CategoryController(
 // --- Catálogo público de la tienda (e-commerce, sin auth) ---
 $router->get('catalog', function () use ($request) { (new CatalogController($request))->index(); });
 $router->get('catalog/image', function () use ($request) { (new CatalogController($request))->image(); });
+$router->get('catalog/covers', function () use ($request) { (new CatalogController($request))->covers(); });
 
 // --- Productos / inventario ---
 $router->get('products',            function () use ($request) { (new ProductController($request))->index(); });

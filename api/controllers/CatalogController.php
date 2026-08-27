@@ -7,15 +7,18 @@
  */
 class CatalogController extends Controller
 {
-    const CACHE_TTL = 86400; // 24 h
-    const JIKAN   = 'https://api.jikan.moe/v4';
-    const ANILIST = 'https://graphql.anilist.co';
+    const CACHE_TTL = 86400;   // 24 h  (catálogo)
+    const VOL_TTL   = 604800;  // 7 días (portadas por tomo)
+    const JIKAN    = 'https://api.jikan.moe/v4';
+    const ANILIST  = 'https://graphql.anilist.co';
+    const MANGADEX = 'https://api.mangadex.org';
+    const MD_UPLOADS = 'https://uploads.mangadex.org';
 
     /** Series curadas: query Jikan => metadatos de tienda */
     private static function seed()
     {
         return [
-            ['q' => 'Jujutsu Kaisen',        'cat' => 'manga',   'price' => 189, 'tag' => 'novedad'],
+            ['q' => 'Jujutsu Kaisen',        'cat' => 'manga',   'price' => 189, 'tag' => 'novedad', 'mal' => 113138],
             ['q' => 'Chainsaw Man',          'cat' => 'manga',   'price' => 179, 'tag' => 'novedad'],
             ['q' => 'One Piece',             'cat' => 'manga',   'price' => 165, 'tag' => ''],
             ['q' => 'Kimetsu no Yaiba',      'cat' => 'manga',   'price' => 159, 'tag' => ''],
@@ -26,13 +29,17 @@ class CatalogController extends Controller
             ['q' => 'Berserk',               'cat' => 'manga',   'price' => 349, 'tag' => ''],
             ['q' => 'Vinland Saga',          'cat' => 'manga',   'price' => 229, 'tag' => ''],
             ['q' => 'Hunter x Hunter',       'cat' => 'manga',   'price' => 159, 'tag' => ''],
+            ['q' => 'Boku no Hero Academia', 'cat' => 'manga',   'price' => 165, 'tag' => '', 'name' => 'My Hero Academia'],
+            ['q' => 'Shingeki no Kyojin',    'cat' => 'manga',   'price' => 169, 'tag' => '', 'name' => 'Attack on Titan'],
+            ['q' => 'Solo Leveling',         'cat' => 'manga',   'price' => 219, 'tag' => 'novedad'],
+            ['q' => 'Sousou no Frieren',     'cat' => 'manga',   'price' => 175, 'tag' => 'preventa', 'name' => 'Frieren: Beyond Journey\'s End'],
             ['q' => 'JoJo no Kimyou na Bouken', 'cat' => 'comics', 'price' => 299, 'tag' => '', 'name' => "JoJo's Bizarre Adventure"],
-            ['q' => 'Jujutsu Kaisen 0',      'cat' => 'figuras', 'price' => 2490, 'tag' => 'preventa', 'name' => 'Gojo Satoru — Figura 1/7'],
-            ['q' => 'Chainsaw Man',          'cat' => 'figuras', 'price' => 1890, 'tag' => '', 'name' => 'Power — Figura S.H.F.'],
-            ['q' => 'Kimetsu no Yaiba',      'cat' => 'figuras', 'price' => 1690, 'tag' => '', 'name' => 'Nezuko — Figura 1/8'],
-            ['q' => 'Pokemon Adventures',    'cat' => 'tcg',     'price' => 1290, 'tag' => 'novedad', 'name' => 'Pokémon TCG — Elite Trainer Box'],
-            ['q' => 'One Piece',             'cat' => 'tcg',     'price' => 1490, 'tag' => '', 'name' => 'One Piece TCG — Booster Box'],
-            ['q' => 'Yu-Gi-Oh!',             'cat' => 'tcg',     'price' => 1190, 'tag' => '', 'name' => 'Yu-Gi-Oh! TCG — Structure Deck'],
+            ['q' => 'Jujutsu Kaisen 0',      'cat' => 'figuras', 'price' => 2490, 'tag' => 'preventa', 'name' => 'Gojo Satoru - Figura 1/7'],
+            ['q' => 'Chainsaw Man',          'cat' => 'figuras', 'price' => 1890, 'tag' => '', 'name' => 'Power - Figura S.H.F.'],
+            ['q' => 'Kimetsu no Yaiba',      'cat' => 'figuras', 'price' => 1690, 'tag' => '', 'name' => 'Nezuko - Figura 1/8'],
+            ['q' => 'Pokemon Adventures',    'cat' => 'tcg',     'price' => 1290, 'tag' => 'novedad', 'name' => 'Pokemon TCG - Elite Trainer Box'],
+            ['q' => 'One Piece',             'cat' => 'tcg',     'price' => 1490, 'tag' => '', 'name' => 'One Piece TCG - Booster Box'],
+            ['q' => 'Yu-Gi-Oh!',             'cat' => 'tcg',     'price' => 1190, 'tag' => '', 'name' => 'Yu-Gi-Oh! TCG - Structure Deck'],
         ];
     }
 
@@ -50,15 +57,35 @@ class CatalogController extends Controller
         return dirname(__DIR__) . '/cache/catalog.json';
     }
 
+    private function volCacheFile($name)
+    {
+        return dirname(__DIR__) . '/cache/vol_' . md5(mb_strtolower(trim($name))) . '.json';
+    }
+
+    /** Añade `volume_covers` a los productos de manga/cómic. */
+    private function attachVolumeCovers(array &$products, $warm)
+    {
+        foreach ($products as &$prod) {
+            $cat = $prod['category'] ?? '';
+            if ($cat !== 'manga' && $cat !== 'comics') continue;
+            $covers = $this->volumeCovers($prod['series'] ?? $prod['title'], $warm);
+            if ($covers) $prod['volume_covers'] = $covers;
+        }
+        unset($prod);
+    }
+
     /** GET /catalog  — lista de productos para la tienda */
     public function index()
     {
         $file = $this->cacheFile();
         $force = $this->query('refresh') === '1';
 
-        if (!$force && is_file($file) && (time() - filemtime($file) < self::CACHE_TTL)) {
+        $warm = $this->query('warm') === '1';
+
+        if (!$force && !$warm && is_file($file) && (time() - filemtime($file) < self::CACHE_TTL)) {
             $cached = json_decode(file_get_contents($file), true);
             if (is_array($cached) && !empty($cached['products'])) {
+                $this->attachVolumeCovers($cached['products'], false);
                 Response::ok($cached + ['cached' => true]);
             }
         }
@@ -79,6 +106,9 @@ class CatalogController extends Controller
             ];
             @mkdir(dirname($file), 0775, true);
             @file_put_contents($file, json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+
+            // Portadas por tomo (MangaDex): con warm=1 se descargan; si no, sólo las ya cacheadas.
+            $this->attachVolumeCovers($payload['products'], $warm);
             Response::ok($payload + ['cached' => false]);
         }
 
@@ -103,6 +133,7 @@ class CatalogController extends Controller
         $allowed = [
             'cdn.myanimelist.net', 'api-cdn.myanimelist.net',
             's4.anilist.co', 's3.anilist.co', 's2.anilist.co', 's1.anilist.co',
+            'uploads.mangadex.org', 'mangadex.org',
         ];
         if (!$src || !in_array(rtrim($host, '.'), $allowed, true)) {
             http_response_code(400);
@@ -135,6 +166,101 @@ class CatalogController extends Controller
         exit;
     }
 
+    /**
+     * GET /catalog/covers?q={nombre de la serie}
+     * Portadas oficiales por tomo (MangaDex).  -> { covers:[{v,url}], source }
+     */
+    public function covers()
+    {
+        $name = trim((string) $this->query('q', ''));
+        if ($name === '') Response::ok(['covers' => [], 'source' => 'none']);
+        $covers = $this->volumeCovers($name, true);
+        Response::ok([
+            'covers' => $covers ?: [],
+            'source' => $covers ? 'mangadex' : 'none',
+        ]);
+    }
+
+    /**
+     * Portadas por tomo desde MangaDex (con caché de 7 días).
+     * @return array [{v:string, url:string}]  ordenadas por volumen
+     */
+    private function volumeCovers($name, $fetchIfMissing = false)
+    {
+        $file = $this->volCacheFile($name);
+        if (is_file($file) && (time() - filemtime($file) < self::VOL_TTL)) {
+            $c = json_decode(file_get_contents($file), true);
+            return is_array($c) ? $c : [];
+        }
+        if (!$fetchIfMissing) return [];
+
+        // 1) id de la serie — se piden varios resultados y se prefiere la
+        //    coincidencia EXACTA de título, descartando spinoffs / precuelas
+        //    (p. ej. "Jujutsu Kaisen 0", colorings, fanbooks…).
+        list($body, ) = $this->httpGet(
+            self::MANGADEX . '/manga?limit=10&contentRating%5B%5D=safe&contentRating%5B%5D=suggestive&title=' . rawurlencode($name),
+            8
+        );
+        $mid = null;
+        if ($body) {
+            $j = json_decode($body, true);
+            $rows = $j['data'] ?? [];
+            $want = mb_strtolower(trim($name));
+            $fallback = null;
+            foreach ($rows as $row) {
+                $id = $row['id'] ?? null;
+                if (!$id) continue;
+                if ($fallback === null) $fallback = $id;
+
+                $titles = [];
+                foreach (($row['attributes']['title'] ?? []) as $tv) $titles[] = $tv;
+                foreach (($row['attributes']['altTitles'] ?? []) as $alt) {
+                    foreach ($alt as $tv) $titles[] = $tv;
+                }
+                foreach ($titles as $tv) {
+                    if (mb_strtolower(trim((string) $tv)) === $want) { $mid = $id; break 2; }
+                }
+            }
+            if (!$mid) $mid = $fallback;
+        }
+        if (!$mid) { @file_put_contents($file, '[]'); return []; }
+
+        usleep(300000);
+
+        // 2) portadas (una por volumen, se prefiere locale en/ja)
+        list($cb, ) = $this->httpGet(
+            self::MANGADEX . '/cover?limit=100&order%5Bvolume%5D=asc&manga%5B%5D=' . rawurlencode($mid),
+            10
+        );
+        $rank = ['en' => 3, 'ja' => 2];
+        $best = [];
+        if ($cb) {
+            $cj = json_decode($cb, true);
+            foreach (($cj['data'] ?? []) as $c) {
+                $v  = $c['attributes']['volume'] ?? null;
+                $fn = $c['attributes']['fileName'] ?? null;
+                $lc = $c['attributes']['locale'] ?? '';
+                if ($v === null || $v === '' || !$fn) continue;
+                $score = $rank[$lc] ?? 1;
+                if (!isset($best[$v]) || $score > $best[$v]['score']) {
+                    $best[$v] = ['score' => $score, 'fn' => $fn];
+                }
+            }
+        }
+
+        $out = [];
+        foreach ($best as $v => $meta) {
+            $raw = self::MD_UPLOADS . '/covers/' . $mid . '/' . $meta['fn'] . '.512.jpg';
+            $out[] = ['v' => (string) $v, 'url' => 'catalog/image?src=' . rawurlencode($raw)];
+        }
+        // orden natural por número de volumen
+        usort($out, function ($a, $b) { return (float) $a['v'] <=> (float) $b['v']; });
+
+        @mkdir(dirname($file), 0775, true);
+        @file_put_contents($file, json_encode($out, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+        return $out;
+    }
+
     // ---------------------------------------------------------------
 
     /** Catálogo desde AniList (GraphQL) — una sola petición con alias. */
@@ -143,8 +269,14 @@ class CatalogController extends Controller
         $seed = self::seed();
         $parts = [];
         foreach ($seed as $i => $s) {
-            $q = str_replace('"', '\"', $s['q']);
-            $parts[] = 'm' . $i . ': Media(search: "' . $q . '", type: MANGA) { ' .
+            // Si la semilla fija un MAL id, se busca la serie exacta (evita spinoffs/precuelas).
+            if (!empty($s['mal'])) {
+                $selector = 'idMal: ' . (int) $s['mal'] . ', type: MANGA';
+            } else {
+                $q = str_replace('"', '\"', $s['q']);
+                $selector = 'search: "' . $q . '", type: MANGA';
+            }
+            $parts[] = 'm' . $i . ': Media(' . $selector . ') { ' .
                 'id title { english romaji } coverImage { extraLarge large } ' .
                 'description(asHtml: false) volumes averageScore ' .
                 'staff(perPage: 1, sort: RELEVANCE) { edges { node { name { full } } } } }';
@@ -183,9 +315,12 @@ class CatalogController extends Controller
                 }
             }
 
+            $seriesName = $m['title']['english'] ?: ($m['title']['romaji'] ?? $s['q']);
+
             $out[] = [
                 'id'        => $s['cat'] . '-' . ($aid ?: ($i + 1)),
                 'title'     => isset($s['name']) ? $s['name'] : $title,
+                'series'    => $seriesName,
                 'author'    => $author,
                 'category'  => $s['cat'],
                 'price'     => (float) $s['price'],
@@ -213,14 +348,22 @@ class CatalogController extends Controller
             if ($consecFail >= 3 && count($out) === 0) {
                 return [];
             }
-            list($body, ) = $this->httpGet(self::JIKAN . '/manga?limit=1&sfw=true&q=' . rawurlencode($s['q']), 8);
+            // Si la semilla fija un MAL id, se pide la ficha exacta (evita spinoffs/precuelas).
+            if (!empty($s['mal'])) {
+                list($body, ) = $this->httpGet(self::JIKAN . '/manga/' . (int) $s['mal'], 8);
+            } else {
+                list($body, ) = $this->httpGet(self::JIKAN . '/manga?limit=1&sfw=true&q=' . rawurlencode($s['q']), 8);
+            }
             if (!$body) { $consecFail++; } else { $consecFail = 0; }
             $manga = null;
             if ($body) {
                 $j = json_decode($body, true);
-                $manga = $j['data'][0] ?? null;
+                // /manga/{id} devuelve data como objeto; /manga?q= como lista.
+                $manga = !empty($s['mal'])
+                    ? ($j['data'] ?? null)
+                    : ($j['data'][0] ?? null);
             }
-            if (!$manga && $body) {
+            if (!$manga && $body && empty($s['mal'])) {
                 // reintento en /anime para figuras/tcg cuando no hay manga con ese nombre
                 list($body2, ) = $this->httpGet(self::JIKAN . '/anime?limit=1&sfw=true&q=' . rawurlencode($s['q']), 8);
                 if ($body2) {

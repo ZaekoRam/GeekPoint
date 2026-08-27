@@ -46,7 +46,13 @@
     $$("[data-session-show]").forEach(function (el) { el.hidden = !logged; });
     $$("[data-session-hide]").forEach(function (el) { el.hidden = logged; });
     var panelLink = $('[data-session-show]');
-    if (panelLink && logged) panelLink.setAttribute("href", STORE.homeRoute());
+    if (panelLink && logged) {
+      panelLink.setAttribute("href", STORE.homeRoute());
+      // Personal → "Mi panel" (POS/administración). Cliente → "Mi cuenta" (tienda).
+      var key = STORE.isStaff() ? "cta.mypanel" : "cta.myaccount";
+      panelLink.setAttribute("data-i18n", key);
+      panelLink.textContent = I18N.t(key);
+    }
   }
 
   /* ---------- Carrito de la tienda (drawer) ---------- */

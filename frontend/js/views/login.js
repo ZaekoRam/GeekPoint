@@ -72,8 +72,15 @@
           .then(function (me) { STORE.setSession(data.token, me.user || data.user, me.branch || null); })
           .catch(function () { /* sin enriquecer: el user del login ya trae branch_id */ })
           .then(function () {
-            var r = STORE.user.role;
-            location.hash = r === "admin" ? "#/admin" : (r === "manager" ? "#/manager" : "#/pos");
+            // Redirección por rol:
+            //  · Admin / Personal (admin, manager, cashier) → panel POS / administración.
+            //  · Cliente (cualquier otro rol) → permanece en la tienda / catálogo.
+            if (STORE.isStaff()) {
+              var r = STORE.user.role;
+              location.hash = r === "admin" ? "#/admin" : (r === "manager" ? "#/manager" : "#/pos");
+            } else {
+              location.hash = "#/";
+            }
           });
       }).catch(function (err) {
         btn.classList.remove("is-loading");

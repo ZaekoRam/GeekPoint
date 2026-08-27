@@ -86,12 +86,21 @@
     return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
   }
 
+  function absUrl(u, apiBase) {
+    if (!u) return "";
+    if (/^https?:/i.test(u)) return u;
+    return apiBase ? (apiBase.replace(/\/+$/, "") + "/" + u.replace(/^\/+/, "")) : u;
+  }
+
   function normalize(raw, fromApi) {
     var apiBase = (window.__CONFIG__ || {}).apiBase;
     return raw.map(function (p) {
       var cover = "";
-      if (fromApi && p.cover && apiBase) cover = apiBase.replace(/\/+$/, "") + "/" + p.cover.replace(/^\/+/, "");
+      if (fromApi && p.cover && apiBase) cover = absUrl(p.cover, apiBase);
       var branches = (p.branches && p.branches.length) ? p.branches : synthBranches(p.id);
+      var volCovers = (fromApi && p.volume_covers && p.volume_covers.length)
+        ? p.volume_covers.map(function (vc) { return { v: String(vc.v), url: absUrl(vc.url, apiBase) }; })
+        : [];
       return {
         id: String(p.id),
         title: p.title || "Sin título",
@@ -104,6 +113,8 @@
         score: p.score || null,
         accent: p.accent || accentFor(p),
         cover: cover,                       // portada real (proxy) o ""
+        series: p.series || p.title || "",
+        volume_covers: volCovers,          // [{v, url}] portadas oficiales por tomo
         branches: branches,
         _ink: null
       };
@@ -160,6 +171,16 @@
       return items.filter(function (p) { return p.category === slug; });
     },
     coverURL: coverURL,
-    inkCover: inkCover
+    inkCover: inkCover,
+    /** Portadas oficiales por tomo (MangaDex) para una serie. -> Promise<[{v,url}]> */
+    volumeCovers: function (name) {
+      if (!window.API || !API.base || !name) return Promise.resolve([]);
+      var apiBase = (window.__CONFIG__ || {}).apiBase;
+      return API.get("catalog/covers?q=" + encodeURIComponent(name), { noAuthRedirect: true })
+        .then(function (d) {
+          return (d && d.covers || []).map(function (vc) { return { v: String(vc.v), url: absUrl(vc.url, apiBase) }; });
+        })
+        .catch(function () { return []; });
+    }
   };
 })();

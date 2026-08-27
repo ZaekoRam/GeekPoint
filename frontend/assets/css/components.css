@@ -80,6 +80,29 @@ body.in-app .lang-toggle button.is-active { color: #05060b; background: var(--ac
 }
 .cartbtn__count:empty, .cartbtn__count[data-count="0"] { display: none; }
 
+/* ---------- Header compacto en móvil ----------
+   Nunca se ocultan: marca, idioma (ES/EN), carrito y "Mi panel"/"Login". */
+@media (max-width: 768px) {
+  .topbar { gap: .45rem; padding: .5rem .8rem; }
+  .brand { font-size: 1.15rem; gap: .35rem; }
+  .topbar__actions { gap: .35rem; flex-wrap: nowrap; }
+
+  /* Carrito: sólo ícono + contador (se oculta la palabra) */
+  .cartbtn { padding: .46rem .55rem; gap: .2rem; font-size: .8rem; }
+  .cartbtn > span[data-i18n] { display: none; }
+
+  .lang-toggle button { padding: .32rem .44rem; font-size: .64rem; }
+
+  /* Botón de acceso / panel */
+  .topbar__actions .btn { padding: .38rem .55rem; font-size: .68rem; letter-spacing: 0; }
+}
+
+@media (max-width: 400px) {
+  .topbar { gap: .3rem; padding: .5rem .6rem; }
+  .brand span:not(.brand__glyph) { display: none; }   /* deja sólo el glifo "G" */
+  .topbar__actions .btn { padding: .36rem .44rem; font-size: .64rem; }
+}
+
 /* ---------- Botones ---------- */
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: .5rem;

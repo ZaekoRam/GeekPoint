@@ -64,10 +64,17 @@
     get user() { return this.session ? this.session.user : null; },
     get role() { return this.session ? this.session.user.role : null; },
     isLogged: function () { return !!this.session; },
+    STAFF_ROLES: ["admin", "manager", "cashier"],
+    isStaff: function () {
+      return !!this.session && this.STAFF_ROLES.indexOf(this.session.user.role) !== -1;
+    },
     homeRoute: function () {
       if (!this.session) return "#/acceso";
       var r = this.session.user.role;
-      return r === "admin" ? "#/admin" : (r === "manager" ? "#/manager" : "#/pos");
+      if (r === "admin") return "#/admin";
+      if (r === "manager") return "#/manager";
+      if (r === "cashier") return "#/pos";
+      return "#/";   // cliente: su "panel" es la propia tienda / catálogo
     },
 
     /* ---------- carrito POS ---------- */
