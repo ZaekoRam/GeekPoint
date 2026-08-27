@@ -1,0 +1,117 @@
+/* =============================================================
+   GeekPoint — 1. Tokens de diseño
+   Tienda  → "Manga Ink" (papel B&N alto contraste + Amarillo Panini + neón)
+   Sistema → oscuro cyber (bajo  body.in-app)
+   ============================================================= */
+:root {
+  /* ---- Constantes (no cambian entre temas) ---- */
+  --display: "Anton", "Arial Narrow", "Segoe UI", system-ui, sans-serif;
+  --comic:   "Bangers", "Anton", "Comic Sans MS", system-ui, cursive;
+  --sans:    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --mono:    "JetBrains Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+
+  --radius:    14px;
+  --radius-sm: 9px;
+  --radius-lg: 22px;
+  --gutter: clamp(1rem, 4vw, 2.4rem);
+  --maxw: 1240px;
+  --topbar-h: 70px;
+
+  --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in:     cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-soft:   cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --z-topbar: 100; --z-banner: 90; --z-drawer: 400; --z-toast: 500; --z-modal: 600; --z-splash: 900;
+
+  /* ---- Paleta base Manga Ink ---- */
+  --paper:      #f3efe4;
+  --paper-2:    #ffffff;
+  --paper-3:    #eae5d6;
+  --ink:        #0c0c0e;
+  --ink-2:      #1b1b21;
+  --ink-soft:   #45454d;
+  --panini:     #ffd400;
+  --panini-deep:#f2b600;
+  --neon-cyan:    #00e5ff;
+  --neon-magenta: #ff2d95;
+  --neon-violet:  #8b5bff;
+  --danger:  #e4002b;
+  --success: #0b8a3d;
+  --warning: #c77700;
+
+  /* ---- Semántica (tema TIENDA por defecto) ---- */
+  --bg:        var(--paper);
+  --bg-2:      var(--paper-3);
+  --surface:   var(--paper-2);
+  --surface-2: var(--paper-3);
+  --surface-3: #dfd9c7;
+  --text:   var(--ink);
+  --muted:  #63636d;
+  --faint:  #8a8a93;
+  --line:      var(--ink);
+  --line-soft: #cfc9b8;
+  --accent:    var(--ink);
+  --accent-2:  var(--panini);
+
+  /* sombras "manga" = offset duro, sin blur */
+  --shadow-hard:    5px 5px 0 var(--ink);
+  --shadow-hard-sm: 3px 3px 0 var(--ink);
+  --shadow-pop:     6px 6px 0 var(--panini-deep);
+  --halftone: rgba(12,12,14,0.16);
+
+  /* variables compartidas con el sistema (valores neutros en la tienda) */
+  --nm-out: var(--shadow-hard-sm);
+  --nm-out-sm: var(--shadow-hard-sm);
+  --nm-in: none; --nm-in-sm: none;
+  --glow-cyan: 0 0 0 2px var(--ink);
+  --glow-violet: 0 0 0 2px var(--ink);
+
+  --btn-bg: var(--paper-2);
+  --btn-fg: var(--ink);
+  --btn-shadow: var(--shadow-hard-sm);
+  --btn-border: var(--ink);
+
+  color-scheme: light;
+}
+
+/* =============================================================
+   Tema SISTEMA (oscuro) — activo en login y módulos internos
+   ============================================================= */
+body.in-app,
+body.in-shell {
+  --bg:        #0b0c10;
+  --bg-2:      #0e0f15;
+  --surface:   #14151d;
+  --surface-2: #191b25;
+  --surface-3: #202331;
+  --line:      #2a2d3f;
+  --line-soft: #202331;
+  --text:   #eef0f7;
+  --muted:  #9498b6;
+  --faint:  #6a6e90;
+  --accent:    var(--panini);
+  --accent-2:  var(--neon-cyan);
+
+  --nm-light: rgba(255,255,255,0.045);
+  --nm-dark:  rgba(0,0,0,0.55);
+  --nm-out:    -6px -6px 16px var(--nm-light), 8px 8px 22px var(--nm-dark);
+  --nm-out-sm: -3px -3px 8px var(--nm-light), 4px 4px 12px var(--nm-dark);
+  --nm-in:     inset -4px -4px 10px var(--nm-light), inset 5px 5px 14px var(--nm-dark);
+  --nm-in-sm:  inset -2px -2px 6px var(--nm-light), inset 3px 3px 8px var(--nm-dark);
+  --glow-cyan:   0 0 0 1px rgba(255,212,0,.4), 0 0 22px rgba(255,212,0,.28);
+  --glow-violet: 0 0 0 1px rgba(0,229,255,.4), 0 0 22px rgba(0,229,255,.3);
+
+  --shadow-hard: var(--nm-out);
+  --shadow-hard-sm: var(--nm-out-sm);
+  --shadow-pop: var(--nm-out);
+
+  --btn-bg: var(--surface-2);
+  --btn-fg: var(--text);
+  --btn-shadow: var(--nm-out-sm);
+  --btn-border: transparent;
+
+  --radius: 16px; --radius-sm: 12px; --radius-lg: 24px;
+
+  color-scheme: dark;
+}

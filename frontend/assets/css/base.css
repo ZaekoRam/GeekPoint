@@ -1,0 +1,114 @@
+/* =============================================================
+   2. Reset & base
+   ============================================================= */
+*, *::before, *::after { box-sizing: border-box; margin: 0; }
+
+html {
+  -webkit-text-size-adjust: 100%;
+  tab-size: 2;
+  overflow-x: clip;
+  scroll-behavior: smooth;
+}
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+body {
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--text);
+  background-color: var(--bg);
+  /* Textura de papel + trama de puntos (manga) */
+  background-image:
+    radial-gradient(var(--halftone) 1px, transparent 1.4px);
+  background-size: 7px 7px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  overflow-x: clip;
+  overscroll-behavior-y: none;
+  min-height: 100vh;
+  transition: background-color .4s var(--ease-out), color .4s var(--ease-out);
+}
+body.in-app {
+  background-image:
+    radial-gradient(1200px 700px at 12% -10%, rgba(255,212,0,.10), transparent 60%),
+    radial-gradient(1000px 600px at 100% 0%, rgba(0,229,255,.10), transparent 55%);
+  background-size: auto;
+}
+
+img, svg, canvas, video { display: block; max-width: 100%; }
+img { height: auto; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; border: 0; background: none; }
+a { color: inherit; text-decoration: none; }
+p { text-wrap: pretty; }
+
+h1, h2, h3, h4 {
+  font-family: var(--display);
+  text-wrap: balance;
+  line-height: 1.02;
+  letter-spacing: 0.01em;
+  font-weight: 400;
+  text-transform: uppercase;
+}
+body.in-app h1, body.in-app h2, body.in-app h3, body.in-app h4 {
+  letter-spacing: -0.01em;
+}
+
+::selection { background: var(--panini); color: var(--ink); }
+
+:focus-visible {
+  outline: 3px solid var(--neon-cyan);
+  outline-offset: 2px;
+}
+
+* { scrollbar-width: thin; scrollbar-color: var(--ink) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb { background: var(--ink); border-radius: 0; }
+body.in-app *::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 20px; }
+
+/* =============================================================
+   3. Utilidades
+   ============================================================= */
+.skip-link {
+  position: fixed; top: -120px; left: 1rem;
+  padding: .7rem 1.1rem; background: var(--panini); color: var(--ink);
+  z-index: var(--z-splash); border: 2px solid var(--ink); font-weight: 700;
+  transition: top .2s var(--ease-out);
+}
+.skip-link:focus { top: 1rem; }
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+.container { width: 100%; max-width: var(--maxw); margin-inline: auto; padding-inline: var(--gutter); }
+
+.kicker {
+  font-family: var(--mono);
+  font-size: .72rem;
+  letter-spacing: .28em;
+  text-transform: uppercase;
+  color: var(--text);
+  display: inline-flex; align-items: center; gap: .55rem;
+  font-weight: 700;
+}
+.kicker::before {
+  content: ""; width: 30px; height: 3px; background: var(--panini-deep);
+}
+body.in-app .kicker { color: var(--accent); }
+body.in-app .kicker::before { background: var(--accent); height: 1px; }
+
+[hidden] { display: none !important; }
+
+/* Reveal on scroll — funcional (NO se apaga con reduced-motion) */
+.reveal { opacity: 0; transform: translateY(24px); transition: opacity .6s var(--ease-out), transform .6s var(--ease-out); }
+.reveal.is-visible { opacity: 1; transform: none; }
+.reveal[data-split] { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) { .reveal { transition-duration: .3s; } }
+
+.mono { font-family: var(--mono); }
+.muted { color: var(--muted); }
+.right { text-align: right; }
+.mt { margin-top: 1.2rem; }

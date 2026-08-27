@@ -1,0 +1,11 @@
+# Configuración con credenciales reales
+api/config.php
+
+# Dependencias / temporales
+node_modules/
+*.log
+.DS_Store
+Thumbs.db
+
+# Subidas de imágenes de producto en runtime
+frontend/assets/uploads/

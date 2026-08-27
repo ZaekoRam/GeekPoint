@@ -1,0 +1,32 @@
+# ============================================================
+#  API GeekPoint POS — enruta todo a index.php
+# ============================================================
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # No reescribir archivos o carpetas que existen de verdad
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # Todo lo demás pasa por el front controller (relativo a esta carpeta)
+  RewriteRule ^ index.php [QSA,L]
+</IfModule>
+
+# CORS preflight rápido (la lógica fina está en index.php)
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+</IfModule>
+
+# No cachear respuestas de la API
+<IfModule mod_headers.c>
+  <FilesMatch "\.php$">
+    Header set Cache-Control "no-store"
+  </FilesMatch>
+</IfModule>
+
+# Proteger archivos sensibles
+<FilesMatch "^(config\.php|config\.example\.php)$">
+  Require all denied
+</FilesMatch>

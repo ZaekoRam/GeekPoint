@@ -1,0 +1,96 @@
+# ============================================================================
+# .htaccess for premium static websites — copy as `.htaccess` to project root.
+# Targets Apache (Hostinger default) and LiteSpeed.
+# ============================================================================
+#
+# What this does:
+# - HTML / JS / CSS / JSON: revalidate every visit (no stale code after deploy).
+# - Images / fonts: cache 1 month (they change rarely; rename if needed).
+# - MIME types: ensures Hostinger serves WebP and JS correctly.
+# - Compression: gzip text assets when supported.
+# - Security headers: minimal hardening.
+#
+# Doesn't work on Nginx VPS — those need server-level config.
+
+# ----- Cache duration -----
+<IfModule mod_expires.c>
+  ExpiresActive On
+
+  # Documents — never cache
+  ExpiresByType text/html "access plus 0 seconds"
+
+  # Code — revalidate hourly (server still responds 304 if unchanged)
+  ExpiresByType text/css "access plus 1 hours"
+  ExpiresByType application/javascript "access plus 1 hours"
+  ExpiresByType text/javascript "access plus 1 hours"
+  ExpiresByType application/json "access plus 1 hours"
+
+  # Media — cache long (use cache-busting filename if you change them)
+  ExpiresByType image/webp "access plus 1 month"
+  ExpiresByType image/jpeg "access plus 1 month"
+  ExpiresByType image/png "access plus 1 month"
+  ExpiresByType image/svg+xml "access plus 1 month"
+  ExpiresByType image/avif "access plus 1 month"
+  ExpiresByType image/x-icon "access plus 1 month"
+
+  # Fonts — cache long, immutable
+  ExpiresByType font/woff2 "access plus 1 year"
+  ExpiresByType font/woff "access plus 1 year"
+  ExpiresByType application/font-woff2 "access plus 1 year"
+  ExpiresByType application/font-woff "access plus 1 year"
+</IfModule>
+
+# ----- Cache-Control headers -----
+<IfModule mod_headers.c>
+  # HTML always fresh
+  <FilesMatch "\.(html|htm)$">
+    Header set Cache-Control "no-cache, must-revalidate"
+  </FilesMatch>
+
+  # JS / CSS / JSON: revalidate every visit
+  <FilesMatch "\.(css|js|mjs|json)$">
+    Header set Cache-Control "no-cache, must-revalidate"
+  </FilesMatch>
+
+  # Images & fonts: long cache
+  <FilesMatch "\.(webp|jpg|jpeg|png|svg|avif|ico|woff|woff2)$">
+    Header set Cache-Control "public, max-age=2592000"
+  </FilesMatch>
+
+  # Minimal security headers
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
+
+# ----- Correct MIME types (some shared hosts default wrong) -----
+<IfModule mod_mime.c>
+  AddType image/webp .webp
+  AddType image/avif .avif
+  AddType application/javascript .js
+  AddType application/javascript .mjs
+  AddType text/css .css
+  AddType application/json .json
+  AddType font/woff2 .woff2
+  AddType font/woff .woff
+  AddType image/svg+xml .svg
+</IfModule>
+
+# ----- Gzip compression for text assets -----
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/css text/javascript application/javascript application/json image/svg+xml font/woff font/woff2
+</IfModule>
+
+# ----- HTTPS redirect (uncomment if your domain has SSL) -----
+# <IfModule mod_rewrite.c>
+#   RewriteEngine On
+#   RewriteCond %{HTTPS} !=on
+#   RewriteRule ^(.*)$ https://%{HTTP_HOST}/$1 [R=301,L]
+# </IfModule>
+
+# ----- Pretty URLs: serve "/about" as "/about.html" (uncomment if multi-page) -----
+# <IfModule mod_rewrite.c>
+#   RewriteEngine On
+#   RewriteCond %{REQUEST_FILENAME} !-d
+#   RewriteCond %{REQUEST_FILENAME}.html -f
+#   RewriteRule ^(.+?)/?$ $1.html [L]
+# </IfModule>
