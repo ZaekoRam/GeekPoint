@@ -123,19 +123,66 @@
     if (searchQ) { input.value = searchQ; setOpen(true); }
   }
 
+  /* Rareza TCG -> clase de color distintiva (reusa el sistema .ptag de mangas). */
+  function rarityKind(r) {
+    r = String(r || "").toLowerCase();
+    if (!r) return "";
+    if (r.indexOf("secret") !== -1) return "secret";
+    if (r.indexOf("special illustration") !== -1) return "special";
+    if (r.indexOf("illustration") !== -1) return "illustration";
+    if (r.indexOf("rainbow") !== -1 || r.indexOf("hyper") !== -1) return "rainbow";
+    if (r.indexOf("gold") !== -1) return "gold";
+    if (r.indexOf("amazing") !== -1) return "amazing";
+    if (r.indexOf("radiant") !== -1) return "radiant";
+    if (r.indexOf("ultra") !== -1 || r.indexOf("vmax") !== -1 || r.indexOf("vstar") !== -1 || /\bv\b/.test(r)) return "ultra";
+    if (r.indexOf("double") !== -1) return "double";
+    if (r.indexOf("holo") !== -1 || r.indexOf("shiny") !== -1) return "holo";
+    if (r.indexOf("promo") !== -1) return "promo";
+    if (r.indexOf("uncommon") !== -1) return "uncommon";
+    if (r.indexOf("common") !== -1) return "common";
+    return "rare";
+  }
+  function rarityTag(r) {
+    if (!r) return "";
+    return '<span class="ptag ptag--rare ptag--rare-' + rarityKind(r) + '">' + esc(r) + '</span>';
+  }
+
+  var FIG_PLACEHOLDER = "assets/images/figures/placeholder.svg";
+
   function cardHTML(p) {
     var tags = (p.tags || []).map(function (t) {
       return '<span class="ptag ptag--' + esc(t) + '">' + esc(I18N.t("ptag." + t)) + '</span>';
     }).join("");
+    if (p.rarity) {
+      tags = rarityTag(p.rarity) + tags;
+    }
     var totalStock = (p.branches || []).reduce(function (n, b) { return n + (b.stock || 0); }, 0);
-    return (
-      '<article class="pcard tilt" data-id="' + esc(p.id) + '">' +
-        '<div class="pcard__media">' +
-          '<img src="' + esc(Catalog.coverURL(p)) + '" alt="' + esc(p.title) + '" loading="lazy" decoding="async" />' +
+    var isFigure = p.category === "figuras";
+    // Fallback de imagen: figuras -> placeholder local dedicado; resto -> el listener de mount().
+    var onErr = isFigure
+      ? ' onerror="this.onerror=null;this.src=\'' + FIG_PLACEHOLDER + '\'"'
+      : '';
+    var img0 = esc(Catalog.coverURL(p));
+
+    // FIGURAS: tarjeta "caja pop-out" — la figura sobresale del empaque en hover.
+    var media = isFigure
+      ? '<div class="pcard__media figure-card-box">' +
+          '<img class="figure-card-box__bg" src="' + img0 + '" alt="" aria-hidden="true"' + onErr + ' />' +
+          '<img class="figure-card-box__fig" src="' + img0 + '" alt="' + esc(p.title) + '" loading="lazy"' + onErr + ' />' +
+          '<span class="figure-card-box__frame" aria-hidden="true"></span>' +
           '<div class="pcard__glow"></div>' +
           (tags ? '<div class="pcard__tags">' + tags + '</div>' : "") +
           '<span class="pcard__view">' + esc(I18N.t("prod.view3d")) + ' ↗</span>' +
-        '</div>' +
+        '</div>'
+      : '<div class="pcard__media">' +
+          '<img src="' + img0 + '" alt="' + esc(p.title) + '" loading="lazy" decoding="async"' + onErr + ' />' +
+          '<div class="pcard__glow"></div>' +
+          (tags ? '<div class="pcard__tags">' + tags + '</div>' : "") +
+          '<span class="pcard__view">' + esc(I18N.t("prod.view3d")) + ' ↗</span>' +
+        '</div>';
+    return (
+      '<article class="pcard tilt' + (isFigure ? ' pcard--figure' : '') + '" data-id="' + esc(p.id) + '">' +
+        media +
         '<div class="pcard__body">' +
           '<span class="pcard__cat">' + esc(I18N.t("cat." + p.category) || p.category) + '</span>' +
           '<h3 class="pcard__name">' + esc(p.title) + '</h3>' +
@@ -195,9 +242,20 @@
     return hashInt(productId + "|v" + vol + "|" + branchCode) % 15;
   }
 
-  function stockRowsHTML(p, vol) {
+  function stockRowsHTML(p, vol, volObj) {
+    // Stock REAL por sucursal si es un tomo/producto del inventario POS;
+    // si no, disponibilidad sintética determinista por tomo.
+    var realBranches =
+      (volObj && volObj.branches && volObj.branches.length) ? volObj.branches :
+      ((p.source === "local" && p.branches && p.branches.length) ? p.branches : null);
     return STAGE_BRANCHES.map(function (b) {
-      var n = volStock(p.id, vol, b.code);
+      var n;
+      if (realBranches) {
+        var m = realBranches.filter(function (x) { return x.code === b.code; })[0];
+        n = m ? (m.stock || 0) : 0;
+      } else {
+        n = volStock(p.id, vol, b.code);
+      }
       var cls = n === 0 ? "vs-out" : (n <= 3 ? "vs-low" : "vs-ok");
       var label = n === 0 ? esc(I18N.t("prod.soldout")) : (n + " u");
       return '<div class="vs-row"><span>' + esc(b.name) + '</span><span class="vs-n ' + cls + '">' + label + '</span></div>';
@@ -205,9 +263,14 @@
   }
 
   function volOptionsHTML(covers) {
+    // OJO: sin data-id/data-price aquí — colisionaban con el selector
+    // [data-price] del precio y refresh() sobrescribía la etiqueta del <option>.
+    // La compra/stock leen el objeto covers[idx], no los atributos del DOM.
     return covers.map(function (c, i) {
-      return '<option value="' + i + '" data-v="' + esc(c.v) + '" data-url="' + esc(c.url || "") + '">' +
-        esc(I18N.t("prod.volume")) + ' ' + esc(c.v) + '</option>';
+      var buyable = !!c.id;
+      return '<option value="' + i + '" data-v="' + esc(c.v) + '">' +
+        esc(I18N.t("prod.volume")) + ' ' + esc(c.v) +
+        (buyable && c.price ? ' · ' + UI.money(c.price) : "") + '</option>';
     }).join("");
   }
 
@@ -216,38 +279,81 @@
     if (!p) return;
 
     var isTome = p.category !== "tcg" && p.category !== "figuras";
+    var isManga = p.category === "manga";
+    var isFigure = p.category === "figuras";
     var meta = [];
+    if (isFigure) {
+      // Figura: en vez de "Elige tomo" se muestran ficha técnica (marca / escala).
+      if (p.manufacturer) meta.push('<span><b>' + esc(I18N.t("prod.manufacturer")) + ':</b> ' + esc(p.manufacturer) + '</span>');
+      if (p.scale) meta.push('<span><b>' + esc(I18N.t("prod.scale")) + ':</b> ' + esc(p.scale) + '</span>');
+    }
     if (p.author) meta.push('<span><b>' + esc(I18N.t("prod.author")) + ':</b> ' + esc(p.author) + '</span>');
-    if (p.volumes) meta.push('<span><b>' + esc(I18N.t("prod.volumes")) + ':</b> ' + p.volumes + '</span>');
+    if (!isFigure && p.volumes) meta.push('<span><b>' + esc(I18N.t("prod.volumes")) + ':</b> ' + p.volumes + '</span>');
     if (p.score) meta.push('<span><b>' + esc(I18N.t("prod.score")) + ':</b> ' + p.score + ' / 10</span>');
 
-    // Portadas oficiales por tomo (ya vienen en el catálogo; si no, se piden).
-    var covers = (p.volume_covers || []).slice();
-    if (!covers.length) {
-      var maxVol = Math.max(1, Math.min(p.volumes ? (p.volumes | 0) : 3, 12));
-      for (var v = 1; v <= maxVol; v++) covers.push({ v: String(v), url: "" });
+    // ---- Selector dinámico de tomos (solo manga) ---------------------------
+    // Se genera Vol. 1 … Vol. N leyendo product.tomos (alias de volumes).
+    // Los tomos que YA conocemos (locales del POS o portadas de MangaDex)
+    // conservan su portada / precio / stock reales.
+    var known = {};
+    (p.volume_covers || []).forEach(function (c) { known[String(c.v)] = c; });
+
+    var tomos = parseInt(p.tomos || p.volumes, 10);
+    if (!(tomos > 0)) {
+      tomos = Object.keys(known).reduce(function (m, k) {
+        var n = parseInt(k, 10); return n > m ? n : m;
+      }, 0) || 3;
     }
+    tomos = Math.min(tomos, 300);   // tope defensivo (One Piece ~108, etc.)
+
+    var covers = [];
+    for (var v = 1; v <= tomos; v++) {
+      covers.push(known[String(v)] || { v: String(v), url: "" });
+    }
+    // Tomos ENTEROS conocidos fuera del rango 1..N (ej. un Vol. 41 con tomos=40).
+    // Se ignoran volúmenes decimales/especiales ("28.5") para un selector limpio.
+    Object.keys(known).forEach(function (k) {
+      if (/^\d+$/.test(k) && parseInt(k, 10) > tomos) covers.push(known[k]);
+    });
+    covers.sort(function (a, b) { return parseFloat(a.v) - parseFloat(b.v); });
+
+    var showVolumePicker = isManga && covers.length > 0;
+    var startPrice = (covers[0] && covers[0].id && covers[0].price) || p.price;
+
+    // Galería multi-ángulo (figuras / productos con varias imágenes).
+    var gal = (p.images && p.images.length > 1) ? p.images.slice() : [];
+    var galHTML = gal.length
+      ? '<div class="preview3d__thumbs" data-thumbs>' + gal.map(function (u, i) {
+          return '<button type="button" class="preview3d__thumb' + (i === 0 ? " is-active" : "") +
+            '" data-thumb="' + esc(u) + '" aria-label="' + esc(I18N.t("prod.angle")) + ' ' + (i + 1) + '">' +
+            '<img src="' + esc(u) + '" alt="" loading="lazy" ' +
+            'onerror="this.closest(\'.preview3d__thumb\').style.display=\'none\'"></button>';
+        }).join("") + '</div>'
+      : "";
 
     var wrap = document.createElement("div");
     wrap.className = "preview3d";
     wrap.innerHTML =
-      '<div class="preview3d__stage"><canvas data-pv3d></canvas>' +
-        '<span class="preview3d__hint">' + esc(I18N.t("prod.rotate")) + '</span></div>' +
+      '<div class="preview3d__col">' +
+        '<div class="preview3d__stage"><canvas data-pv3d></canvas>' +
+          '<span class="preview3d__hint">' + esc(I18N.t("prod.rotate")) + '</span></div>' +
+        galHTML +
+      '</div>' +
       '<div>' +
         '<span class="pcard__cat">' + esc(I18N.t("cat." + p.category) || p.category) + '</span>' +
         '<h3>' + esc(p.title) + '</h3>' +
         '<div class="preview3d__meta">' + meta.join("") + '</div>' +
-        (isTome
+        (showVolumePicker
           ? '<label class="vol-select"><span>' + esc(I18N.t("prod.pickVolume")) + '</span>' +
             '<select class="select" data-vol>' + volOptionsHTML(covers) + '</select></label>'
           : "") +
         '<div class="vol-stock" data-vol-stock>' +
           '<p class="vol-stock__h">' + esc(I18N.t("prod.stockByBranch")) + '</p>' +
-          stockRowsHTML(p, covers[0].v) +
+          stockRowsHTML(p, covers[0].v, covers[0]) +
         '</div>' +
         (p.synopsis ? '<p class="preview3d__syn">' + esc(p.synopsis) + '</p>' : "") +
         '<div class="preview3d__buy">' +
-          '<span class="preview3d__price">' + UI.money(p.price) + '</span>' +
+          '<span class="preview3d__price" data-price>' + UI.money(startPrice) + '</span>' +
           '<button class="btn btn--panini" data-buy>' + esc(I18N.t("prod.buy")) + '</button>' +
         '</div>' +
       '</div>';
@@ -255,48 +361,104 @@
     UI.modal({ title: I18N.t("prod.view3d"), content: wrap, wide: true, onMount: function () {
       var volSel = wrap.querySelector("[data-vol]");
       var stockBox = wrap.querySelector("[data-vol-stock]");
-      var stage = spinStage(wrap.querySelector("[data-pv3d]"), p, { initialUrl: covers[0].url });
+      var priceEl = wrap.querySelector(".preview3d__price[data-price]");
+      // La textura 3D arranca SIEMPRE con la portada real del producto abierto.
+      var stage = spinStage(wrap.querySelector("[data-pv3d]"), p, {
+        initialUrl: (gal[0]) || (covers[0] && covers[0].url) || Catalog.coverURL(p)
+      });
+      // (coverFor se define abajo; el arranque usa la portada real o la de serie)
 
-      function selOpt() { return volSel ? volSel.options[volSel.selectedIndex] : null; }
-      function currentV() { var o = selOpt(); return o ? (o.getAttribute("data-v") || "1") : "1"; }
+      // Galería: las miniaturas cambian la imagen/textura principal (multi-ángulo).
+      var thumbsEl = wrap.querySelector("[data-thumbs]");
+      if (thumbsEl && stage) {
+        thumbsEl.addEventListener("click", function (e) {
+          var b = e.target.closest("[data-thumb]");
+          if (!b) return;
+          thumbsEl.querySelectorAll(".preview3d__thumb").forEach(function (x) { x.classList.remove("is-active"); });
+          b.classList.add("is-active");
+          if (stage.setCover) stage.setCover(b.getAttribute("data-thumb"));
+        });
+      }
+
+      function selIdx() { return volSel ? (volSel.value | 0) : 0; }
+      function currentVol() { return covers[selIdx()] || covers[0] || { v: "1" }; }
+      function currentV() { return currentVol().v || "1"; }
+
+      // Imagen para un tomo: (1) su portada real de la API, (2) el mapa de
+      // respaldo `cover_fallbacks`, (3) la de la serie para el Vol. 1, o
+      // (4) una carátula "VOL. N" distinta para los demás (nunca duplica el Vol. 1).
+      function coverFor(c) {
+        if (c && c.url) return c.url;
+        var fb = Catalog.coverFallback && Catalog.coverFallback(p.search_title || p.series || p.title, c && c.v);
+        if (fb) return fb;
+        var n = c && parseInt(c.v, 10);
+        if (isManga && showVolumePicker && n >= 2 && Catalog.volumePlaceholder) {
+          return Catalog.volumePlaceholder(p, c.v);
+        }
+        return Catalog.coverURL(p);
+      }
 
       function refresh() {
-        var o = selOpt();
-        var url = o && o.getAttribute("data-url");
-        if (stage && stage.setCover) stage.setCover(url || Catalog.coverURL(p));
-        stockBox.innerHTML = '<p class="vol-stock__h">' + esc(I18N.t("prod.stockByBranch")) + '</p>' + stockRowsHTML(p, currentV());
+        var c = currentVol();
+        if (stage && stage.setCover) stage.setCover(coverFor(c));
+        if (priceEl) priceEl.textContent = UI.money((c.id && c.price) || p.price);
+        stockBox.innerHTML = '<p class="vol-stock__h">' + esc(I18N.t("prod.stockByBranch")) + '</p>' +
+          stockRowsHTML(p, c.v, c);
       }
       if (volSel) volSel.addEventListener("change", refresh);
 
-      // Si el catálogo no traía portadas por tomo, se piden a MangaDex.
-      if (isTome && volSel && (!p.volume_covers || !p.volume_covers.length) && window.Catalog && Catalog.volumeCovers) {
-        Catalog.volumeCovers(p.series || p.title).then(function (list) {
+      // Portadas oficiales por tomo desde MangaDex: SOLO manga y sólo si hay
+      // pocas portadas reales de catálogo (los tomos locales ya traen la suya).
+      var artCovers = covers.filter(function (c) { return c.url && !c.id; }).length;
+      if (showVolumePicker && volSel && artCovers < 3 && window.Catalog && Catalog.volumeCovers) {
+        Catalog.volumeCovers(p.search_title || p.series || p.title).then(function (list) {
           if (!list.length || !volSel.isConnected) return;
-          p.volume_covers = list;
-          volSel.innerHTML = volOptionsHTML(list);
+          var byV = {};
+          covers.forEach(function (c) { byV[c.v] = c; });
+          list.forEach(function (vc) {
+            if (byV[vc.v]) { if (!byV[vc.v].url) byV[vc.v].url = vc.url; }
+            else byV[vc.v] = { v: String(vc.v), url: vc.url, source: "" };
+          });
+          covers = Object.keys(byV).map(function (k) { return byV[k]; })
+            .sort(function (a, b) { return parseFloat(a.v) - parseFloat(b.v); });
+          p.volume_covers = covers;
+          var keepV = currentV();
+          volSel.innerHTML = volOptionsHTML(covers);
+          for (var i = 0; i < covers.length; i++) {
+            if (covers[i].v === keepV) { volSel.value = String(i); break; }
+          }
           refresh();
         });
       }
 
       wrap.querySelector("[data-buy]").addEventListener("click", function () {
-        var v = currentV();
-        var o = selOpt();
-        var item = isTome
-          ? { id: p.id + "-v" + v, title: p.title + " " + I18N.t("prod.volume") + " " + v, price: p.price,
-              cover: (o && o.getAttribute("data-url")) || p.cover }
-          : p;
+        var c = currentVol();
+        var item;
+        if (c.id) {
+          // Tomo REAL del inventario POS (id, precio y stock propios).
+          item = { id: c.id, title: p.title + " " + I18N.t("prod.volume") + " " + c.v,
+                   price: c.price || p.price, cover: c.url || Catalog.coverURL(p) };
+        } else if (showVolumePicker) {
+          item = { id: p.id + "-v" + c.v, title: p.title + " " + I18N.t("prod.volume") + " " + c.v,
+                   price: p.price, cover: c.url || p.cover };
+        } else {
+          item = p;
+        }
         STORE.shopAdd(item);
         UI.toast(I18N.t("prod.added") + " · " + item.title, "ok");
         UI.closeModal();
         openCartDrawer();
       });
+
+      if (volSel) refresh();
     }});
   }
 
-  /* Portada trasera de la marca (contraportada del tomo). */
-  var _backTex = null;
-  function backCoverTexture() {
-    if (_backTex) return _backTex;
+  /* Contraportada de marca GeekPoint (reverso del tomo/cómic). Cacheada por etiqueta. */
+  var _backTex = {};
+  function backCoverTexture(label) {
+    label = label || "COLLECTOR EDITION";
+    if (_backTex[label]) return _backTex[label];
     var c = document.createElement("canvas");
     c.width = 512; c.height = 768;
     var g = c.getContext("2d");
@@ -308,7 +470,7 @@
     g.fillText("GEEKPOINT", 256, 372);
     g.fillStyle = "#efe9d8";
     g.font = "700 22px 'JetBrains Mono', monospace";
-    g.fillText("MANGA INK EDITION", 256, 486);
+    g.fillText(label, 256, 486);
     // código de barras decorativo
     var x = 96;
     g.fillStyle = "#efe9d8";
@@ -318,9 +480,10 @@
     g.fillText("GKP  9 786074  000000", 256, 726);
     g.strokeStyle = "#ffd400"; g.lineWidth = 8;
     g.strokeRect(16, 16, 480, 736);
-    _backTex = new THREE.CanvasTexture(c);
-    if ("colorSpace" in _backTex && THREE.SRGBColorSpace) _backTex.colorSpace = THREE.SRGBColorSpace;
-    return _backTex;
+    var tex = new THREE.CanvasTexture(c);
+    if ("colorSpace" in tex && THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
+    _backTex[label] = tex;
+    return tex;
   }
 
   function spinStage(canvas, p, opts) {
@@ -348,10 +511,13 @@
     var d = new THREE.DirectionalLight(0xffffff, 1.4); d.position.set(3, 4, 6); scene.add(d);
 
     var isTome = p.category !== "tcg" && p.category !== "figuras";
+    var isManga = p.category === "manga";
     var kind = p.category === "tcg" ? [1.6, 2.24, 0.05] : (p.category === "figuras" ? [1.8, 1.9, 1.0] : [1.55, 2.2, 0.34]);
     var geo = new THREE.BoxGeometry(kind[0], kind[1], kind[2]);
     var accent = new THREE.Color(p.accent || "#ffd400");
-    var front = new THREE.MeshStandardMaterial({ color: "#cfc8b6", roughness: .5 });
+    // Front a color pleno (sin tinte gris): el material queda blanco y la
+    // textura de la portada real manda el color.
+    var front = new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: .5 });
 
     function edgeMat(repV) {
       if (!isTome || !window.HERO3D || !HERO3D.pageTexture) {
@@ -361,8 +527,13 @@
       t.needsUpdate = true; t.repeat.set(1, repV || 1);
       return new THREE.MeshStandardMaterial({ map: t, color: "#fff", roughness: .95 });
     }
+    // Contraportada con marca GEEKPOINT para todo tomo/cómic (nunca negra vacía).
+    // TCG/figuras: cara trasera lisa.
     var backMat = isTome
-      ? new THREE.MeshStandardMaterial({ map: backCoverTexture(), color: "#fff", roughness: .85 })
+      ? new THREE.MeshStandardMaterial({
+          map: backCoverTexture(isManga ? "MANGA INK EDITION" : "COMIC COLOR EDITION"),
+          color: "#ffffff", roughness: .85
+        })
       : new THREE.MeshStandardMaterial({ color: "#15151a", roughness: .8 });
 
     // [+X foreEdge, -X spine, +Y head, -Y tail, +Z front, -Z back]
@@ -381,7 +552,7 @@
     var loader = new THREE.TextureLoader();
     loader.setCrossOrigin("anonymous");
     var reqId = 0;
-    function applyCover(url) {
+    function applyCover(url, isRetry) {
       if (!url) return;
       var mine = ++reqId;
       loader.load(url, function (t) {
@@ -390,6 +561,12 @@
         t.anisotropy = 4;
         if (front.map) front.map.dispose();
         front.map = t; front.color.set("#fff"); front.needsUpdate = true;
+      }, undefined, function () {
+        // 404 / CORS: figuras -> placeholder local dedicado; resto -> placeholder genérico.
+        if (isRetry || mine !== reqId) return;
+        var fb = p.category === "figuras" ? "assets/images/figures/placeholder.svg"
+                                          : (Catalog.placeholderCover && Catalog.placeholderCover(p));
+        if (fb && fb !== url) applyCover(fb, true);
       });
     }
     applyCover(opts.initialUrl || Catalog.coverURL(p));
@@ -424,13 +601,17 @@
   }
 
   /* ---------------- Sucursales ---------------- */
-  function drawBranches(root) {
+  /* animate=true → aparecen con la animación reveal (primer montaje).
+     animate=false → se pintan ya visibles (re-render por cambio de idioma). */
+  function drawBranches(root, animate) {
     var host = $("[data-branches]", root);
     if (!host) return;
     var list = ((window.__BRAND__ || {}).branches) || [];
+    if (!list.length) return;                       // nunca dejes la sección vacía
+    var cls = "branch reveal" + (animate ? "" : " is-visible");
     host.innerHTML = list.map(function (b) {
       return (
-        '<article class="branch reveal">' +
+        '<article class="' + cls + '">' +
           '<span class="branch__code">' + esc(b.code) + '</span>' +
           '<h3>' + esc(b.name) + '</h3>' +
           '<div class="branch__row"><b>' + esc(I18N.t("branches.addr")) + '</b><span>' + esc(b.address) + ', ' + esc(b.city) + '</span></div>' +
@@ -472,10 +653,25 @@
     I18N.apply(root);
     drawCatbar(root, active);
     bindSearch(root);
-    drawBranches(root);
+    drawBranches(root, true);
 
     var grid = $("[data-pgrid]", root);
-    if (grid) grid.innerHTML = Views._loading ? Views._loading() : "…";
+    if (grid) {
+      grid.innerHTML = Views._loading ? Views._loading() : "…";
+      // Fallback de imagen: si una portada falla (404 / URL rota) se pinta un
+      // placeholder limpio con ícono, sin romper el contenedor.
+      if (!grid.__phBound) {
+        grid.__phBound = true;
+        grid.addEventListener("error", function (e) {
+          var img = e.target;
+          if (!img || img.tagName !== "IMG" || img.__ph) return;
+          img.__ph = true;
+          var card = img.closest(".pcard");
+          var p = card && Catalog.get(card.getAttribute("data-id"));
+          img.src = Catalog.placeholderCover(p || "item");
+        }, true);
+      }
+    }
 
     Catalog.load().then(function () {
       drawGrid(root, active);
@@ -490,17 +686,23 @@
     window.addEventListener("hero:pick", heroPickHandler);
 
     var langHandler = function () {
-      I18N.apply(root);
-      drawCatbar(root, currentCat(params));
-      drawGrid(root, currentCat(params));
-      drawBranches(root);
-      setSourceNote(root);
+      // Cada paso aislado: si uno falla, los demás igual re-renderizan.
+      UI.safe(function () { I18N.apply(root); }, "i18n.apply");
+      UI.safe(function () { drawCatbar(root, currentCat(params)); }, "drawCatbar");
+      UI.safe(function () { drawGrid(root, currentCat(params)); }, "drawGrid");
+      UI.safe(function () { drawBranches(root, false); }, "drawBranches");
+      UI.safe(function () { setSourceNote(root); }, "setSourceNote");
     };
     window.addEventListener("i18n:change", langHandler);
+
+    // El catálogo cambió (alta/edición/baja desde el panel) -> redibuja YA.
+    var catalogHandler = function () { UI.safe(function () { drawGrid(root, activeCat()); }, "drawGrid.catChange"); };
+    window.addEventListener("catalog:changed", catalogHandler);
 
     root.__cleanup = function () {
       window.removeEventListener("hero:pick", heroPickHandler);
       window.removeEventListener("i18n:change", langHandler);
+      window.removeEventListener("catalog:changed", catalogHandler);
       if (window.HERO3D) HERO3D.destroy();
     };
   }
@@ -519,6 +721,41 @@
     if (d) d.classList.add("is-open");
     if (b) b.classList.add("is-open");
   }
+
+  /* ---------------------------------------------------------------
+     Feedback premium en los CTA de compra: onda (ripple) al pulsar
+     y "pop" elástico al soltar.  Un único listener delegado para
+     "Agregar", "Generar cotización" y el botón de compra del modal.
+     --------------------------------------------------------------- */
+  (function bindCtaFeedback() {
+    var SEL = ".pcard__add, [data-cart-quote], .preview3d [data-buy], .resv-form button[type=\"submit\"]";
+    function cta(target) {
+      return target && target.closest ? target.closest(SEL) : null;
+    }
+    document.addEventListener("pointerdown", function (e) {
+      if (UI.reduced) return;
+      var btn = cta(e.target);
+      if (!btn || btn.disabled) return;
+      var r = btn.getBoundingClientRect();
+      var size = Math.max(r.width, r.height) * 2.4;
+      var ink = document.createElement("span");
+      ink.className = "cta-ripple";
+      ink.style.width = ink.style.height = size + "px";
+      ink.style.left = (e.clientX - r.left) + "px";
+      ink.style.top = (e.clientY - r.top) + "px";
+      btn.appendChild(ink);
+      setTimeout(function () { ink.parentNode && ink.parentNode.removeChild(ink); }, 560);
+    }, true);
+    document.addEventListener("click", function (e) {
+      if (UI.reduced) return;
+      var btn = cta(e.target);
+      if (!btn || btn.disabled) return;
+      btn.classList.remove("is-pop");
+      void btn.offsetWidth;                 // reinicia la animación
+      btn.classList.add("is-pop");
+      setTimeout(function () { btn.classList.remove("is-pop"); }, 420);
+    }, true);
+  })();
 
   window.Views.store = { render: render, mount: mount, update: update, isPublic: true };
 })();

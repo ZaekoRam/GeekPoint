@@ -122,6 +122,104 @@ class ProductController extends Controller
         Response::ok(['product' => $this->cast($this->findFull($id))], 201);
     }
 
+    /**
+     * POST /products/import
+     * Alta/reposición masiva desde una fuente externa (Pokémon TCG, etc.).
+     * Crea un producto POR sucursal indicada; si el SKU ya existe en esa
+     * sucursal, suma el stock y refresca nombre/precio/imagen.
+     *
+     * Body: {
+     *   source, external_id, sku, name, category_slug (def "tcg"),
+     *   price, image_url, description, tax_rate?, min_stock?,
+     *   stock_by_branch: { "1": 10, "2": 4 }
+     * }
+     */
+    public function import()
+    {
+        $user = $this->authRole(['admin', 'manager']);
+        $d = $this->req->all();
+
+        Validator::make($d)
+            ->required('sku', 'El SKU')
+            ->required('name', 'El nombre')
+            ->required('price', 'El precio')->numericMin('price', 0)
+            ->validateOrFail();
+
+        $stockByBranch = $d['stock_by_branch'] ?? [];
+        if (!is_array($stockByBranch) || count($stockByBranch) === 0) {
+            Response::validation(['stock_by_branch' => ['Indica el stock para al menos una sucursal.']]);
+        }
+
+        // Normaliza y valida sucursales ANTES de abrir la transacción.
+        $entries = [];
+        foreach ($stockByBranch as $bid => $qty) {
+            $bid = (int) $bid;
+            $qty = max(0, (int) $qty);
+            if ($bid <= 0) continue;
+            Auth::assertBranchAccess($user, $bid);
+            if (!Database::scalar('SELECT id FROM branches WHERE id = ?', [$bid])) {
+                Response::validation(['stock_by_branch' => ['Sucursal ' . $bid . ' no existe.']]);
+            }
+            $entries[$bid] = $qty;
+        }
+        if (!count($entries)) {
+            Response::validation(['stock_by_branch' => ['Indica el stock para al menos una sucursal.']]);
+        }
+
+        $sku      = strtoupper(trim($d['sku']));
+        $catId    = $this->categoryIdBySlug($d['category_slug'] ?? 'tcg');
+        $taxRate  = isset($d['tax_rate']) ? (float) $d['tax_rate'] : App::config('tax')['default_rate'];
+        $minStock = max(0, (int) ($d['min_stock'] ?? 3));
+        $price    = round((float) $d['price'], 2);
+        $name     = mb_substr(trim((string) $d['name']), 0, 180);
+        $desc     = mb_substr((string) ($d['description'] ?? ''), 0, 500);
+        $img      = mb_substr((string) ($d['image_url'] ?? ''), 0, 1000);   // admite varias URLs (galería)
+        $ref      = trim(($d['source'] ?? 'import') . ' ' . ($d['external_id'] ?? ''));
+
+        $out = ['sku' => $sku, 'created' => [], 'updated' => []];
+
+        Database::begin();
+        try {
+            foreach ($entries as $bid => $qty) {
+                $existing = Database::one(
+                    'SELECT id, stock FROM products WHERE branch_id = ? AND sku = ?',
+                    [$bid, $sku]
+                );
+                if ($existing) {
+                    $pid = (int) $existing['id'];
+                    $newStock = (int) $existing['stock'] + $qty;
+                    Database::run(
+                        'UPDATE products SET name = ?, category_id = ?, description = ?, price = ?,
+                                image_url = ?, stock = ?, status = "active" WHERE id = ?',
+                        [$name, $catId, $desc, $price, $img, $newStock, $pid]
+                    );
+                    if ($qty > 0) {
+                        $this->logMovement($bid, $pid, $user['id'], 'restock', $qty, $newStock, 'IMPORT', $ref);
+                    }
+                    $out['updated'][] = ['branch_id' => $bid, 'product_id' => $pid, 'stock' => $newStock];
+                } else {
+                    Database::run(
+                        'INSERT INTO products
+                           (branch_id, sku, name, category_id, description, price, tax_rate, stock, min_stock, image_url, status)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "active")',
+                        [$bid, $sku, $name, $catId, $desc, $price, $taxRate, $qty, $minStock, $img]
+                    );
+                    $pid = Database::lastId();
+                    if ($qty > 0) {
+                        $this->logMovement($bid, $pid, $user['id'], 'restock', $qty, $qty, 'IMPORT', $ref);
+                    }
+                    $out['created'][] = ['branch_id' => $bid, 'product_id' => $pid, 'stock' => $qty];
+                }
+            }
+            Database::commit();
+        } catch (Exception $e) {
+            Database::rollback();
+            throw $e;
+        }
+
+        Response::ok($out, 201);
+    }
+
     public function update($id)
     {
         $user = $this->authRole(['admin', 'manager']);
@@ -221,6 +319,44 @@ class ProductController extends Controller
         Response::ok(['deleted' => $id]);
     }
 
+    /**
+     * DELETE /products/sku/{sku}
+     * Borra (o desactiva si tiene ventas) TODAS las filas de un producto
+     * en todas las sucursales de un solo golpe. Para el panel de admin.
+     */
+    public function destroyBySku($sku)
+    {
+        $user = $this->authRole(['admin', 'manager']);
+        $sku = strtoupper(trim((string) $sku));
+
+        $rows = Database::all('SELECT id, branch_id FROM products WHERE sku = ?', [$sku]);
+        if (!$rows) Response::notFound('No hay productos con ese SKU.');
+
+        $deleted = [];
+        $deactivated = [];
+        Database::begin();
+        try {
+            foreach ($rows as $r) {
+                $pid = (int) $r['id'];
+                Auth::assertBranchAccess($user, (int) $r['branch_id']);
+                $sold = (int) Database::scalar('SELECT COUNT(*) FROM sale_items WHERE product_id = ?', [$pid]);
+                if ($sold > 0) {
+                    Database::run('UPDATE products SET status = "inactive" WHERE id = ?', [$pid]);
+                    $deactivated[] = $pid;
+                } else {
+                    Database::run('DELETE FROM products WHERE id = ?', [$pid]);
+                    $deleted[] = $pid;
+                }
+            }
+            Database::commit();
+        } catch (Exception $e) {
+            Database::rollback();
+            throw $e;
+        }
+
+        Response::ok(['sku' => $sku, 'deleted' => $deleted, 'deactivated' => $deactivated]);
+    }
+
     // ---------------------------------------------------------------
 
     private function logMovement($branchId, $productId, $userId, $type, $delta, $resulting, $ref, $note)
@@ -231,6 +367,12 @@ class ProductController extends Controller
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
             [$branchId, $productId, $userId, $type, $delta, $resulting, $ref, mb_substr($note, 0, 255)]
         );
+    }
+
+    private function categoryIdBySlug($slug)
+    {
+        $id = Database::scalar('SELECT id FROM categories WHERE slug = ? LIMIT 1', [(string) $slug]);
+        return $id ? (int) $id : null;
     }
 
     private function findFull($id)

@@ -60,6 +60,8 @@
         synopsis: "Guts, el Espadachín Negro, persigue venganza en un mundo medieval brutal poblado de demonios." },
       { id: "manga-10", title: "Vinland Saga",     author: "Makoto Yukimura", category: "manga",   price: 229, tags: [], volumes: 28, accent: "#0b8a3d",
         synopsis: "Thorfinn busca venganza entre vikingos, hasta que la esclavitud le enseña que no tiene enemigos." },
+      { id: "manga-11", title: "Attack on Titan",  author: "Hajime Isayama",  category: "manga",   price: 169, tags: [], volumes: 34, tomos: 34, accent: "#7a5c3e",
+        synopsis: "La humanidad vive tras enormes muros para protegerse de los Titanes. Cuando un Titán Colosal derriba la muralla, Eren Jaeger jura exterminarlos a todos." },
       { id: "comics-1", title: "JoJo's Bizarre Adventure", author: "Hirohiko Araki", category: "comics", price: 299, tags: [], volumes: 8, accent: "#ffd400",
         synopsis: "La saga de la familia Joestar contra fuerzas sobrenaturales a lo largo de generaciones y continentes." },
       { id: "comics-2", title: "Invincible",       author: "Robert Kirkman",  category: "comics",  price: 329, tags: [], volumes: 25, accent: "#00e5ff",

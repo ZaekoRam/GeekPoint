@@ -26,11 +26,11 @@ class CatalogController extends Controller
             ['q' => 'Dandadan',              'cat' => 'manga',   'price' => 175, 'tag' => 'preventa'],
             ['q' => 'Oshi no Ko',            'cat' => 'manga',   'price' => 179, 'tag' => 'preventa'],
             ['q' => 'Blue Lock',             'cat' => 'manga',   'price' => 169, 'tag' => ''],
-            ['q' => 'Berserk',               'cat' => 'manga',   'price' => 349, 'tag' => ''],
+            ['q' => 'Berserk',               'cat' => 'manga',   'price' => 349, 'tag' => '', 'mal' => 2,     'tomos' => 41],
             ['q' => 'Vinland Saga',          'cat' => 'manga',   'price' => 229, 'tag' => ''],
             ['q' => 'Hunter x Hunter',       'cat' => 'manga',   'price' => 159, 'tag' => ''],
             ['q' => 'Boku no Hero Academia', 'cat' => 'manga',   'price' => 165, 'tag' => '', 'name' => 'My Hero Academia'],
-            ['q' => 'Shingeki no Kyojin',    'cat' => 'manga',   'price' => 169, 'tag' => '', 'name' => 'Attack on Titan'],
+            ['q' => 'Shingeki no Kyojin',    'cat' => 'manga',   'price' => 169, 'tag' => '', 'name' => 'Attack on Titan', 'mal' => 23390, 'tomos' => 34],
             ['q' => 'Solo Leveling',         'cat' => 'manga',   'price' => 219, 'tag' => 'novedad'],
             ['q' => 'Sousou no Frieren',     'cat' => 'manga',   'price' => 175, 'tag' => 'preventa', 'name' => 'Frieren: Beyond Journey\'s End'],
             ['q' => 'JoJo no Kimyou na Bouken', 'cat' => 'comics', 'price' => 299, 'tag' => '', 'name' => "JoJo's Bizarre Adventure"],
@@ -68,7 +68,11 @@ class CatalogController extends Controller
         foreach ($products as &$prod) {
             $cat = $prod['category'] ?? '';
             if ($cat !== 'manga' && $cat !== 'comics') continue;
-            $covers = $this->volumeCovers($prod['series'] ?? $prod['title'], $warm);
+            // MangaDex indexa por el título original (romaji/japonés). Usar el
+            // título localizado ("Attack on Titan", "My Hero Academia") trae la
+            // serie equivocada -> se prioriza `search_title` (= la query semilla).
+            $q = $prod['search_title'] ?? $prod['series'] ?? $prod['title'];
+            $covers = $this->volumeCovers($q, $warm);
             if ($covers) $prod['volume_covers'] = $covers;
         }
         unset($prod);
@@ -86,6 +90,7 @@ class CatalogController extends Controller
             $cached = json_decode(file_get_contents($file), true);
             if (is_array($cached) && !empty($cached['products'])) {
                 $this->attachVolumeCovers($cached['products'], false);
+                $this->mergeLocalProducts($cached['products']);
                 Response::ok($cached + ['cached' => true]);
             }
         }
@@ -109,6 +114,7 @@ class CatalogController extends Controller
 
             // Portadas por tomo (MangaDex): con warm=1 se descargan; si no, sólo las ya cacheadas.
             $this->attachVolumeCovers($payload['products'], $warm);
+            $this->mergeLocalProducts($payload['products']);
             Response::ok($payload + ['cached' => false]);
         }
 
@@ -116,10 +122,262 @@ class CatalogController extends Controller
         if (is_file($file)) {
             $old = json_decode(file_get_contents($file), true);
             if (is_array($old) && !empty($old['products'])) {
+                $this->mergeLocalProducts($old['products']);
                 Response::ok($old + ['cached' => true, 'stale' => true]);
             }
         }
-        Response::ok(['products' => [], 'source' => 'unavailable']);
+
+        // Sin catálogo externo: al menos devuelve los productos locales importados.
+        $local = $this->localProducts();
+        Response::ok(['products' => $local, 'source' => $local ? 'local' : 'unavailable']);
+    }
+
+    /** Añade al catálogo los productos reales del POS (categorías tcg/comics). */
+    private function mergeLocalProducts(array &$products)
+    {
+        $local = $this->localProducts();
+        if ($local) {
+            array_splice($products, 0, 0, $local);   // primero, para que se vean arriba
+        }
+    }
+
+    /**
+     * Productos del inventario POS agrupados por SKU (suma stock de sucursales).
+     * Solo categorías que se muestran en la tienda pública.
+     * @return array
+     */
+    private function localProducts()
+    {
+        try {
+            $rows = Database::all(
+                "SELECT p.sku,
+                        MAX(p.name)        AS name,
+                        c.slug             AS category,
+                        MAX(p.description) AS description,
+                        MAX(p.image_url)   AS image_url,
+                        ROUND(AVG(p.price), 2) AS price,
+                        SUM(p.stock)       AS stock,
+                        GROUP_CONCAT(CONCAT(b.code, '|', b.name, '|', p.stock) SEPARATOR ';;') AS branchmap
+                 FROM products p
+                 JOIN categories c ON c.id = p.category_id
+                 LEFT JOIN branches b ON b.id = p.branch_id
+                 WHERE p.status = 'active'
+                   AND (c.slug IN ('tcg', 'comics', 'preventa')
+                        OR p.image_url <> '')
+                 GROUP BY p.sku, c.slug
+                 ORDER BY name",
+                []
+            );
+        } catch (Exception $e) {
+            return [];
+        }
+
+        $out = [];
+        foreach (($rows ?: []) as $r) {
+            $branches = [];
+            foreach (explode(';;', (string) $r['branchmap']) as $chunk) {
+                $parts = explode('|', $chunk);
+                if (count($parts) === 3) {
+                    $branches[] = ['code' => $parts[0], 'name' => $parts[1], 'stock' => (int) $parts[2]];
+                }
+            }
+
+            $segs = array_map('trim', explode('·', (string) $r['description']));
+
+            $rarity = '';
+            foreach ($segs as $dp) {
+                if ($dp !== '' && preg_match('/\b(rare|common|uncommon|promo|holo|illustration|ultra|secret|amazing|radiant|legend)\w*/i', $dp)) {
+                    $rarity = $dp;
+                    break;
+                }
+            }
+
+            // Figuras: "<Fabricante> · <Escala/Línea> · <detalle>"
+            $manufacturer = '';
+            $scale = '';
+            if ($r['category'] === 'figuras') {
+                $makers = ['Good Smile Company', 'Kotobukiya', 'Max Factory', 'Bandai', 'Banpresto',
+                           'Aniplex', 'Alter', 'Kadokawa', 'FuRyu', 'Furyu', 'SEGA', 'Taito',
+                           'MegaHouse', 'Megahouse', 'Prime 1 Studio', 'Union Creative', 'GSC'];
+                $scaleRe = '/(1\s*\/\s*\d{1,2}|Nendoroid[^·]*|POP\s*UP\s*PARADE|figma|S\.?H\.?\s*Figuarts|Pop Up Parade|Escala\s*\d)/i';
+                foreach ($segs as $s) {
+                    if ($manufacturer === '') {
+                        foreach ($makers as $m) {
+                            if (stripos($s, $m) !== false) { $manufacturer = $s; break; }
+                        }
+                    }
+                    if ($scale === '' && preg_match($scaleRe, $s)) $scale = preg_replace('/^escala\s*/i', '', $s);
+                }
+                if ($manufacturer === '' && isset($segs[0])) $manufacturer = $segs[0];
+                if ($scale === '' && isset($segs[1])) $scale = $segs[1];
+            }
+
+            // image_url puede traer VARIAS URLs separadas por coma (galería multi-ángulo).
+            $imgs = array_values(array_filter(array_map('trim', explode(',', (string) $r['image_url'])), 'strlen'));
+
+            $out[] = [
+                'id'           => 'local-' . strtolower($r['category']) . '-' . trim(preg_replace('/[^a-z0-9]+/i', '-', strtolower((string) $r['sku'])), '-'),
+                'title'        => $r['name'],
+                'author'       => '',
+                'category'     => $r['category'],
+                'price'        => (float) $r['price'],
+                'currency'     => 'MXN',
+                'cover'        => $imgs[0] ?? '',
+                'cover_raw'    => $imgs[0] ?? '',
+                'images'       => $imgs,
+                'tags'         => [],
+                'rarity'       => $rarity,
+                'manufacturer' => $manufacturer,
+                'scale'        => $scale,
+                'synopsis'     => (string) $r['description'],
+                'volumes'      => null,
+                'score'        => null,
+                'source'       => 'local',
+                'branches'     => $branches,
+            ];
+        }
+        return $out;
+    }
+
+    /**
+     * GET /catalog/cover?kind=comic|tcg&t=Título&pub=DC&n=142&accent=%23e4002b
+     * Portada SVG generada (sin dependencias externas) para productos locales
+     * sin imagen real. Siempre responde 200 con una portada representativa.
+     */
+    public function cover()
+    {
+        $kind  = preg_replace('/[^a-z]/', '', strtolower((string) $this->query('kind', 'item')));
+        $title = mb_substr(trim((string) $this->query('t', 'GeekPoint')), 0, 60);
+        $pub   = mb_strtoupper(mb_substr(trim((string) $this->query('pub', '')), 0, 22));
+        $num   = preg_replace('/[^0-9A-Za-z#\.\-]/', '', (string) $this->query('n', ''));
+
+        $palette = [
+            'DC' => '#0476f2', 'MARVEL' => '#e4002b', 'IMAGE' => '#3a3a3a',
+            'POKEMON' => '#ffcb05', 'MAGIC' => '#c9a227', 'ONE PIECE' => '#d1272e',
+        ];
+        $accent = (string) $this->query('accent', '');
+        if (!preg_match('/^#[0-9a-fA-F]{6}$/', $accent)) {
+            $accent = $palette[$pub] ?? ($kind === 'tcg' ? '#00e5ff' : '#8b5bff');
+        }
+
+        $isComic = ($kind === 'comic' || $kind === 'comics');
+        $isFigure = ($kind === 'figura' || $kind === 'figuras' || $kind === 'figure');
+        $catLabel = $isComic ? 'COMIC' : ($kind === 'tcg' ? 'TCG' : ($isFigure ? 'FIGURA' : 'GEEKPOINT'));
+        $enc = function ($s) { return htmlspecialchars($s, ENT_QUOTES, 'UTF-8'); };
+
+        // ---- Render multi-ángulo para FIGURAS (caja de coleccionista + maniquí) ----
+        if ($isFigure) {
+            $badge = $pub !== '' ? $pub : $catLabel;
+            $angle = strtolower(preg_replace('/[^a-z]/', '', (string) $this->query('a', 'front')));
+            $angMap = ['front' => 'FRENTE', 'side' => 'PERFIL', 'back' => 'REVERSO'];
+            $angLbl = $angMap[$angle] ?? 'FRENTE';
+
+            // Maniquí sencillo; cambia según el ángulo.
+            if ($angle === 'side') {
+                $body = '<g transform="translate(300,300)">'
+                    . '<circle cx="18" cy="-150" r="52" fill="#f3efe4"/>'
+                    . '<path d="M6 -100 q60 30 40 150 q-6 120 -50 190 l-40 0 q-30 -150 -10 -230 q6 -80 60 -110Z" fill="#f3efe4"/>'
+                    . '<path d="M20 -70 q70 40 40 130" fill="none" stroke="' . $accent . '" stroke-width="16" stroke-linecap="round"/>'
+                    . '</g>';
+            } elseif ($angle === 'back') {
+                $body = '<g transform="translate(300,300)">'
+                    . '<circle cx="0" cy="-150" r="54" fill="#e7e2d2"/>'
+                    . '<path d="M-70 -95 q70 -30 140 0 q30 120 6 210 q-16 120 -76 190 q-60 -70 -76 -190 q-24 -90 6 -210Z" fill="#e7e2d2"/>'
+                    . '<path d="M-30 -150 q30 -18 60 0" fill="none" stroke="#0c0c0e" stroke-width="8"/>'
+                    . '<rect x="-40" y="-70" width="80" height="150" rx="14" fill="' . $accent . '" opacity=".85"/>'
+                    . '</g>';
+            } else {
+                $body = '<g transform="translate(300,300)">'
+                    . '<circle cx="0" cy="-150" r="54" fill="#f7f2e2"/>'
+                    . '<circle cx="-18" cy="-155" r="6" fill="#0c0c0e"/><circle cx="18" cy="-155" r="6" fill="#0c0c0e"/>'
+                    . '<path d="M-72 -95 q72 -34 144 0 q28 120 4 210 q-16 122 -76 194 q-60 -72 -76 -194 q-24 -90 4 -210Z" fill="#f7f2e2"/>'
+                    . '<path d="M-64 -70 q-40 60 -30 150" fill="none" stroke="' . $accent . '" stroke-width="18" stroke-linecap="round"/>'
+                    . '<path d="M64 -70 q40 60 30 150" fill="none" stroke="' . $accent . '" stroke-width="18" stroke-linecap="round"/>'
+                    . '</g>';
+            }
+
+            $t2 = mb_strlen($title) > 24 ? mb_substr($title, 0, 23) . '…' : $title;
+            $svg = '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800" viewBox="0 0 600 800">'
+                . '<defs>'
+                . '<linearGradient id="bx" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#191922"/><stop offset="1" stop-color="#0b0b12"/></linearGradient>'
+                . '<radialGradient id="sp" cx="50%" cy="34%" r="52%"><stop offset="0" stop-color="' . $accent . '" stop-opacity=".5"/><stop offset="1" stop-color="' . $accent . '" stop-opacity="0"/></radialGradient>'
+                . '</defs>'
+                . '<rect width="600" height="800" fill="url(#bx)"/>'
+                . '<rect width="600" height="800" fill="url(#sp)"/>'
+                // marco acrílico
+                . '<rect x="26" y="26" width="548" height="748" fill="none" stroke="' . $accent . '" stroke-width="4" opacity=".85"/>'
+                . '<rect x="40" y="40" width="520" height="720" fill="none" stroke="#0c0c0e" stroke-width="10"/>'
+                // plataforma giratoria
+                . '<ellipse cx="300" cy="640" rx="150" ry="34" fill="#0c0c0e"/>'
+                . '<ellipse cx="300" cy="632" rx="150" ry="34" fill="none" stroke="' . $accent . '" stroke-width="4"/>'
+                . $body
+                // encabezado
+                . '<rect x="40" y="40" width="520" height="70" fill="' . $accent . '"/>'
+                . '<text x="60" y="86" font-family="Anton, Arial Black, sans-serif" font-size="34" fill="#0c0c0e">' . $enc($t2) . '</text>'
+                . '<text x="60" y="150" font-family="JetBrains Mono, monospace" font-size="20" letter-spacing="5" fill="#9a9aa8">' . $enc($badge) . '</text>'
+                // etiqueta de ángulo
+                . '<rect x="360" y="128" width="180" height="40" fill="#0c0c0e" stroke="' . $accent . '" stroke-width="2"/>'
+                . '<text x="450" y="155" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="18" letter-spacing="3" fill="' . $accent . '">' . $enc($angLbl) . '</text>'
+                . '<rect x="200" y="712" width="200" height="44" fill="' . $accent . '"/>'
+                . '<text x="300" y="742" text-anchor="middle" font-family="Bangers, Anton, sans-serif" font-size="24" fill="#0c0c0e" letter-spacing="2">GEEKPOINT</text>'
+                . '</svg>';
+
+            header('Content-Type: image/svg+xml; charset=utf-8');
+            header('Cache-Control: public, max-age=604800, immutable');
+            header('Access-Control-Allow-Origin: *');
+            echo $svg;
+            exit;
+        }
+
+        // Título en 1-3 líneas.
+        $words = preg_split('/\s+/', $title);
+        $lines = []; $cur = '';
+        foreach ($words as $w) {
+            if (mb_strlen(trim($cur . ' ' . $w)) > 13 && $cur !== '') { $lines[] = $cur; $cur = $w; }
+            else { $cur = trim($cur . ' ' . $w); }
+        }
+        if ($cur !== '') $lines[] = $cur;
+        $lines = array_slice($lines, 0, 3);
+        $startY = 430 - (count($lines) - 1) * 46;
+        $tspans = '';
+        foreach ($lines as $i => $l) {
+            $tspans .= '<text x="46" y="' . ($startY + $i * 62) . '" font-family="Anton, Arial Black, sans-serif" '
+                . 'font-size="' . (mb_strlen($l) > 10 ? 44 : 54) . '" fill="#f3efe4">' . $enc($l) . '</text>';
+        }
+
+        $badge = $pub !== '' ? $pub : $catLabel;
+        $numBadge = $num !== '' ? (
+            '<g transform="translate(486,120)">'
+            . '<circle r="52" fill="#0c0c0e" stroke="' . $accent . '" stroke-width="6"/>'
+            . '<text x="0" y="14" text-anchor="middle" font-family="Anton, sans-serif" font-size="' . ($num && mb_strlen($num) > 3 ? 26 : 40) . '" fill="' . $accent . '">' . $enc(ltrim($num, '#')) . '</text>'
+            . '</g>'
+        ) : '';
+
+        $svg = '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800" viewBox="0 0 600 800">'
+            . '<defs><pattern id="ht" width="14" height="14" patternUnits="userSpaceOnUse">'
+            . '<circle cx="3" cy="3" r="2.1" fill="rgba(255,255,255,.06)"/></pattern></defs>'
+            . '<rect width="600" height="800" fill="#111014"/>'
+            . '<rect width="600" height="800" fill="url(#ht)"/>'
+            . '<polygon points="0,0 600,0 600,120 0,300" fill="' . $accent . '" opacity="0.92"/>'
+            . '<polygon points="0,0 600,0 600,120 0,300" fill="none" stroke="#0c0c0e" stroke-width="6"/>'
+            . '<g stroke="#0c0c0e" stroke-width="3" opacity=".4">'
+            . '<line x1="600" y1="800" x2="360" y2="470"/><line x1="600" y1="700" x2="320" y2="470"/>'
+            . '<line x1="520" y1="800" x2="300" y2="500"/></g>'
+            . '<rect x="18" y="18" width="564" height="764" fill="none" stroke="#0c0c0e" stroke-width="12"/>'
+            . '<text x="46" y="96" font-family="JetBrains Mono, monospace" font-size="24" font-weight="700" '
+            . 'letter-spacing="7" fill="#0c0c0e">' . $enc($badge) . '</text>'
+            . $tspans
+            . $numBadge
+            . '<rect x="46" y="712" width="210" height="46" fill="#0c0c0e"/>'
+            . '<text x="151" y="743" text-anchor="middle" font-family="Bangers, Anton, sans-serif" '
+            . 'font-size="26" fill="' . $accent . '" letter-spacing="2">GEEKPOINT</text>'
+            . '</svg>';
+
+        header('Content-Type: image/svg+xml; charset=utf-8');
+        header('Cache-Control: public, max-age=604800, immutable');
+        header('Access-Control-Allow-Origin: *');
+        echo $svg;
+        exit;
     }
 
     /**
@@ -205,12 +463,12 @@ class CatalogController extends Controller
         if ($body) {
             $j = json_decode($body, true);
             $rows = $j['data'] ?? [];
-            $want = mb_strtolower(trim($name));
-            $fallback = null;
+            $norm = function ($s) { return preg_replace('/[^a-z0-9]+/', '', mb_strtolower(trim((string) $s))); };
+            $want = $norm($name);
+            $near = null;   // coincidencia "contiene" (mismo universo, no un spin-off ajeno)
             foreach ($rows as $row) {
                 $id = $row['id'] ?? null;
                 if (!$id) continue;
-                if ($fallback === null) $fallback = $id;
 
                 $titles = [];
                 foreach (($row['attributes']['title'] ?? []) as $tv) $titles[] = $tv;
@@ -218,10 +476,16 @@ class CatalogController extends Controller
                     foreach ($alt as $tv) $titles[] = $tv;
                 }
                 foreach ($titles as $tv) {
-                    if (mb_strtolower(trim((string) $tv)) === $want) { $mid = $id; break 2; }
+                    $nt = $norm($tv);
+                    if ($nt === $want) { $mid = $id; break 2; }
+                    if ($near === null && $nt !== '' && ($nt === $want || strpos($nt, $want) === 0 || strpos($want, $nt) === 0)) {
+                        $near = $id;
+                    }
                 }
             }
-            if (!$mid) $mid = $fallback;
+            // Sin match exacto ni de prefijo: NO se usa el primer resultado a ciegas
+            // (evita portadas cruzadas p. ej. "Berserk" -> "Berserk of Gluttony").
+            if (!$mid) $mid = $near;
         }
         if (!$mid) { @file_put_contents($file, '[]'); return []; }
 
@@ -318,20 +582,22 @@ class CatalogController extends Controller
             $seriesName = $m['title']['english'] ?: ($m['title']['romaji'] ?? $s['q']);
 
             $out[] = [
-                'id'        => $s['cat'] . '-' . ($aid ?: ($i + 1)),
-                'title'     => isset($s['name']) ? $s['name'] : $title,
-                'series'    => $seriesName,
-                'author'    => $author,
-                'category'  => $s['cat'],
-                'price'     => (float) $s['price'],
-                'currency'  => 'MXN',
-                'cover'     => $cover ? ('catalog/image?src=' . rawurlencode($cover)) : '',
-                'cover_raw' => $cover,
-                'tags'      => $s['tag'] ? [$s['tag']] : [],
-                'synopsis'  => $syn,
-                'volumes'   => $m['volumes'] ?? null,
-                'score'     => $score,
-                'branches'  => $branches,
+                'id'           => $s['cat'] . '-' . ($aid ?: ($i + 1)),
+                'title'        => isset($s['name']) ? $s['name'] : $title,
+                'series'       => $seriesName,
+                'search_title' => $s['q'],
+                'author'       => $author,
+                'category'     => $s['cat'],
+                'price'        => (float) $s['price'],
+                'currency'     => 'MXN',
+                'cover'        => $cover ? ('catalog/image?src=' . rawurlencode($cover)) : '',
+                'cover_raw'    => $cover,
+                'tags'         => $s['tag'] ? [$s['tag']] : [],
+                'synopsis'     => $syn,
+                'volumes'      => $m['volumes'] ?? null,
+                'tomos'        => $s['tomos'] ?? ($m['volumes'] ?? null),
+                'score'        => $score,
+                'branches'     => $branches,
             ];
         }
         return $out;
@@ -398,20 +664,22 @@ class CatalogController extends Controller
             }
 
             $out[] = [
-                'id'        => $s['cat'] . '-' . ($malId ?: ($i + 1)),
-                'mal_id'    => $malId,
-                'title'     => isset($s['name']) ? $s['name'] : $title,
-                'author'    => $author,
-                'category'  => $s['cat'],
-                'price'     => (float) $s['price'],
-                'currency'  => 'MXN',
-                'cover'     => $rawImg ? ('catalog/image?src=' . rawurlencode($rawImg)) : '',
-                'cover_raw' => $rawImg,
-                'tags'      => $s['tag'] ? [$s['tag']] : [],
-                'synopsis'  => $synopsis,
-                'volumes'   => $manga['volumes'] ?? null,
-                'score'     => $manga['score'] ?? null,
-                'branches'  => $branches,
+                'id'           => $s['cat'] . '-' . ($malId ?: ($i + 1)),
+                'mal_id'       => $malId,
+                'title'        => isset($s['name']) ? $s['name'] : $title,
+                'search_title' => $s['q'],
+                'author'       => $author,
+                'category'     => $s['cat'],
+                'price'        => (float) $s['price'],
+                'currency'     => 'MXN',
+                'cover'        => $rawImg ? ('catalog/image?src=' . rawurlencode($rawImg)) : '',
+                'cover_raw'    => $rawImg,
+                'tags'         => $s['tag'] ? [$s['tag']] : [],
+                'synopsis'     => $synopsis,
+                'volumes'      => $manga['volumes'] ?? null,
+                'tomos'        => $s['tomos'] ?? ($manga['volumes'] ?? null),
+                'score'        => $manga['score'] ?? null,
+                'branches'     => $branches,
             ];
         }
         return $out;

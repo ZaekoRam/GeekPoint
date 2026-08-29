@@ -2,8 +2,9 @@
    Hero 3D — tomos de manga / cartas / figuras flotando.
    Portadas REALES por tomo (MangaDex), variadas y sin repetir.
    Hover "Pop-Out Book": el tomo se abre suave (~123°) y las caras
-   internas muestran ILUSTRACIÓN REAL en B&N dentro de paneles de
-   manga. Se revierte suave al quitar el cursor.  window.HERO3D
+   internas muestran ILUSTRACIÓN REAL dentro de paneles — tinta B&N
+   para manga, color pleno para cómic. Se revierte suave al quitar
+   el cursor.  window.HERO3D
    ============================================================= */
 (function () {
   "use strict";
@@ -19,6 +20,8 @@
     started: false, running: false, raf: 0,
     renderer: null, scene: null, camera: null, group: null, canvas: null,
     ray: null, mouse: null, lastHitAt: 0,
+    pointerMovedAt: 0,    // último pointermove real (ms)
+    hoverStartedAt: 0,    // inicio del hover actual (lock de duración mínima)
     hovered: null,        // pick mesh
     hoveredUnit: null,    // grupo del tomo o mesh plano
     reduced: matchMedia("(prefers-reduced-motion: reduce)").matches,
@@ -101,12 +104,15 @@
     return mkTex(c);
   }
 
-  /* ---- Doble página interior: ILUSTRACIÓN REAL (B&N) en paneles de manga ---- */
-  function mangaPanels(img, seed, isLeft) {
+  /* ---- Doble página interior: ILUSTRACIÓN REAL en paneles ----
+     Manga → tinta B&N (grayscale).  Cómic / edición a color → arte a
+     todo color, sin filtro grayscale ni bocetos en B/N. */
+  function mangaPanels(img, seed, isLeft, category) {
+    var isComic = category === "comics" || category === "comic";
     var c = document.createElement("canvas");
     c.width = 512; c.height = 640;
     var g = c.getContext("2d");
-    g.fillStyle = "#f2efe4"; g.fillRect(0, 0, 512, 640);
+    g.fillStyle = isComic ? "#ffffff" : "#f2efe4"; g.fillRect(0, 0, 512, 640);
     function rnd() { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; }
 
     var m = 22;
@@ -124,14 +130,18 @@
         var sw = iw / zoom, sh = ih / zoom;
         var sx = (iw - sw) * (0.1 + 0.8 * rnd());
         var sy = Math.min((ih - sh) * (0.04 + 0.55 * rnd() + pi * 0.1), ih - sh);
-        try { g.filter = "grayscale(1) contrast(1.45) brightness(1.03)"; } catch (e) {}
+        try {
+          g.filter = isComic
+            ? "saturate(1.14) contrast(1.05)"          // cómic: color pleno, sin grayscale
+            : "grayscale(1) contrast(1.45) brightness(1.03)";
+        } catch (e) {}
         g.drawImage(img, sx, sy, sw, sh, x, y, w, h);
         g.filter = "none";
       } else {
-        g.fillStyle = "#14141a"; g.fillRect(x, y, w, h);
+        g.fillStyle = isComic ? "#dfe6f2" : "#14141a"; g.fillRect(x, y, w, h);
       }
-      // trama de semitono
-      g.fillStyle = "rgba(12,12,14,.13)";
+      // trama de semitono (muy leve en cómic para no ensuciar el color)
+      g.fillStyle = isComic ? "rgba(12,12,14,.05)" : "rgba(12,12,14,.13)";
       for (var yy = y + h * 0.45; yy < y + h; yy += 8)
         for (var xx = x; xx < x + w; xx += 8) { g.beginPath(); g.arc(xx, yy, 1.5, 0, 7); g.fill(); }
       g.restore();
@@ -150,7 +160,11 @@
     g.fillStyle = "#0c0c0e"; g.fillRect(m, 640 - 60, 512 - m * 2, 40);
     g.fillStyle = "#ffd400"; g.textAlign = "left"; g.textBaseline = "middle";
     g.font = "700 20px Bangers, Anton, 'Arial Black', sans-serif";
-    g.fillText(isLeft ? "GEEKPOINT MANGA" : "MANGA INK EDITION", m + 14, 640 - 40);
+    g.fillText(
+      isComic ? (isLeft ? "GEEKPOINT COMICS" : "FULL COLOR EDITION")
+              : (isLeft ? "GEEKPOINT MANGA" : "MANGA INK EDITION"),
+      m + 14, 640 - 40
+    );
     g.fillStyle = "#0c0c0e"; g.font = "600 16px 'JetBrains Mono', monospace";
     g.textAlign = isLeft ? "left" : "right";
     g.fillText(isLeft ? "42" : "43", isLeft ? m + 2 : 512 - m - 2, 32);
@@ -159,9 +173,11 @@
   }
 
   /* ---- Contraportada con la marca ---- */
-  var _backTex = null;
-  function backTexture() {
-    if (_backTex) return _backTex;
+  var _backTex = {};
+  function backTexture(category) {
+    var isComic = category === "comics" || category === "comic";
+    var label = isComic ? "FULL COLOR EDITION" : "MANGA INK EDITION";
+    if (_backTex[label]) return _backTex[label];
     var c = document.createElement("canvas");
     c.width = 512; c.height = 700;
     var g = c.getContext("2d");
@@ -173,12 +189,12 @@
     g.fillText("GEEKPOINT", 256, 340);
     g.fillStyle = "#efe9d8";
     g.font = "700 20px 'JetBrains Mono', monospace";
-    g.fillText("MANGA INK EDITION", 256, 452);
+    g.fillText(label, 256, 452);
     var x = 110; g.fillStyle = "#efe9d8";
     while (x < 402) { var bw = 2 + ((x * 7) % 6); g.fillRect(x, 560, bw, 76); x += bw + 3 + ((x * 3) % 4); }
     g.strokeStyle = "#ffd400"; g.lineWidth = 8; g.strokeRect(14, 14, 484, 672);
-    _backTex = mkTex(c);
-    return _backTex;
+    _backTex[label] = mkTex(c);
+    return _backTex[label];
   }
 
   /* =============================================================
@@ -219,7 +235,7 @@
       new THREE.MeshStandardMaterial({ map: pageT, color: "#fff", roughness: .95 }), // +Y
       new THREE.MeshStandardMaterial({ map: pageT.clone(), color: "#fff", roughness: .95 }), // -Y
       rightPage,                                                                      // +Z página derecha
-      new THREE.MeshStandardMaterial({ map: backTexture(), color: "#fff", roughness: .85 }) // -Z contraportada marca
+      new THREE.MeshStandardMaterial({ map: backTexture(product.category), color: "#fff", roughness: .85 }) // -Z contraportada marca
     ]);
     tome.add(body);
 
@@ -244,8 +260,8 @@
     img.crossOrigin = "anonymous";
     img.onload = function () {
       coverFront.map = frameCover(img); coverFront.color.set("#fff"); coverFront.needsUpdate = true;
-      rightPage.map = mangaPanels(img, seed, false); rightPage.color.set("#fff"); rightPage.needsUpdate = true;
-      leftPage.map = mangaPanels(img, seed + 7, true); leftPage.color.set("#fff"); leftPage.needsUpdate = true;
+      rightPage.map = mangaPanels(img, seed, false, product.category); rightPage.color.set("#fff"); rightPage.needsUpdate = true;
+      leftPage.map = mangaPanels(img, seed + 7, true, product.category); leftPage.color.set("#fff"); leftPage.needsUpdate = true;
     };
     img.onerror = function () { /* materiales base se quedan */ };
     img.src = picked.url;
@@ -369,6 +385,7 @@
     var r = S.canvas.getBoundingClientRect();
     S.mouse.x = ((e.clientX - r.left) / r.width) * 2 - 1;
     S.mouse.y = -((e.clientY - r.top) / r.height) * 2 + 1;
+    S.pointerMovedAt = performance.now();
   }
 
   function setHover(pickMesh) {
@@ -431,14 +448,27 @@
       }
     });
 
-    // raycast con histéresis
-    if (S.mouse.x > -1.5) {
+    // Hover con lock: solo cambia mientras el puntero se mueve de verdad.
+    // Si el puntero lleva quieto >450 ms, se congela el estado — así un tomo
+    // que flota por debajo del cursor NO se abre/cierra en bucle cuadro a cuadro.
+    var idle = (now - S.pointerMovedAt) > 450;
+    var MIN_HOVER = 600;   // duración mínima antes de soltar / cambiar
+    var UNHOVER_GAP = 280; // ms sin impacto antes de soltar
+
+    if (S.mouse.x <= -1.5) {
+      if (S.hovered) setHover(null);                       // el puntero salió del canvas
+    } else if (!idle) {
       S.ray.setFromCamera(S.mouse, S.camera);
       var hit = S.ray.intersectObjects(S.pick, false)[0];
-      if (hit) { setHover(hit.object); S.lastHitAt = now; }
-      else if (S.hovered && now - (S.lastHitAt || 0) > 150) setHover(null);
-    } else if (S.hovered) {
-      setHover(null);
+      if (hit) {
+        S.lastHitAt = now;
+        if (hit.object !== S.hovered && (!S.hovered || now - S.hoverStartedAt > MIN_HOVER)) {
+          setHover(hit.object);
+          S.hoverStartedAt = now;
+        }
+      } else if (S.hovered && now - S.hoverStartedAt > MIN_HOVER && now - S.lastHitAt > UNHOVER_GAP) {
+        setHover(null);
+      }
     }
 
     S.renderer.render(S.scene, S.camera);

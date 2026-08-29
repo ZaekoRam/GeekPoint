@@ -88,8 +88,14 @@
   /* ---------------- Products CRUD + stock ---------------- */
   function products(panel, root) {
     panel.innerHTML = V._loading();
-    Promise.all([API.get("products?status=all&limit=200"), categories()]).then(function (res) {
-      var list = res[0].products, cats = res[1];
+    Promise.all([API.get("products?status=all&limit=200"), categories(), API.get("branches")]).then(function (res) {
+      var list = res[0].products, cats = res[1], branches = (res[2] && res[2].branches) || [];
+      // Gerente: solo su sucursal; Admin (si entra aquí): todas.
+      var myBranch = (STORE.session && STORE.session.branch && STORE.session.branch.id) ||
+                     (STORE.user && STORE.user.branch_id) || null;
+      var branchesForUser = (STORE.role === "admin" || !myBranch)
+        ? branches
+        : branches.filter(function (b) { return b.id == myBranch; });
       var toolbar = '<div class="toolbar">' +
         '<input class="input" data-q placeholder="' + esc(I18N.t("pos.search")) + '">' +
         '<select class="select" data-cat><option value="">' + esc(I18N.t("pos.all")) + '</option>' +
@@ -119,7 +125,7 @@
             return '<div class="rowacts">' +
               '<button class="iconbtn" data-adjust="' + r.id + '" title="' + esc(I18N.t("btn.adjust")) + '">±</button>' +
               '<button class="iconbtn" data-edit="' + r.id + '" title="' + esc(I18N.t("btn.edit")) + '">✎</button>' +
-              '<button class="iconbtn iconbtn--danger" data-del="' + r.id + '" title="' + esc(I18N.t("btn.delete")) + '">🗑</button>' +
+              V._delButton({ attr: "data-del", value: r.id, name: r.name }) +
             '</div>';
           } }
         ], rows);
@@ -140,13 +146,20 @@
           var p = find(dl, "data-del");
           UI.confirm(I18N.t("confirm.delete", { name: p.name }), function () {
             API.del("products/" + p.id).then(function (r) {
-              UI.toast(r && r.message ? r.message : I18N.t("toast.deleted"), "ok"); products(panel, root);
+              UI.toast(r && r.message ? r.message : I18N.t("toast.deleted"), "ok");
+              V._catalogChanged(); products(panel, root);
             }).catch(V._apiToast);
           }, { danger: true });
         }
       });
       var nb = root.querySelector("[data-new-product]");
-      if (nb) nb.onclick = function () { productForm(null, cats, function () { products(panel, root); }); };
+      if (nb) nb.onclick = function () {
+        var reload = function () { products(panel, root); };
+        // Modal ÚNICO compartido con el panel de Admin (image_url multi-URL,
+        // marca/fabricante, categoría, stock por sucursal).
+        if (V.productModal) V.productModal(branchesForUser, cats, reload);
+        else productForm(null, cats, reload);
+      };
     }).catch(function (err) { panel.innerHTML = V._error(err); });
   }
 
@@ -177,7 +190,10 @@
     V._bindForm(f, function (payload) {
       if (!payload.category_id) delete payload.category_id;
       var req = p.id ? API.put("products/" + p.id, payload) : API.post("products", payload);
-      return req.then(function () { UI.toast(I18N.t(p.id ? "toast.saved" : "toast.created"), "ok"); UI.closeModal(); done(); });
+      return req.then(function () {
+        UI.toast(I18N.t(p.id ? "toast.saved" : "toast.created"), "ok");
+        UI.closeModal(); V._catalogChanged(); done();
+      });
     });
   }
 
@@ -206,7 +222,7 @@
         { key: "name", label: I18N.t("col.register"), render: function (r) { return '<b>' + esc(r.name) + '</b>'; } },
         { key: "status", label: I18N.t("col.status"), render: function (r) { return V._statusBadge(r.status); } },
         { key: "id", label: I18N.t("col.actions"), render: function (r) {
-          return '<button class="iconbtn iconbtn--danger" data-del="' + r.id + '" title="' + esc(I18N.t("btn.delete")) + '">🗑</button>';
+          return V._delButton({ attr: "data-del", value: r.id, name: r.name });
         } }
       ], d.registers);
       panel.onclick = function (e) {

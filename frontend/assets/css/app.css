@@ -137,13 +137,70 @@ body.in-app [data-static-store] { display: none !important; }
 .ticket hr { border: 0; border-top: 1px dashed #bbb; margin: .7rem 0; }
 .ticket .t-row { display: flex; justify-content: space-between; gap: .5rem; }
 .ticket .t-row--total { font-weight: 700; font-size: 1rem; }
-.ticket__actions { margin-top: 1.2rem; display: flex; gap: .6rem; justify-content: center; }
+.ticket__actions { margin-top: 1.2rem; display: flex; gap: .6rem; justify-content: center; align-items: center; flex-wrap: wrap; }
+.ticket-print-opts { display: inline-flex; align-items: center; gap: .4rem; font-size: .74rem; color: var(--muted); }
+.ticket-print-opts span { font-family: var(--mono); text-transform: uppercase; letter-spacing: .06em; font-size: .64rem; }
+.select--sm { width: auto; padding: .38rem 1.8rem .38rem .6rem; font-size: .78rem; }
+
+/* ---------------------------------------------------------------
+   Impresión de tickets — mini-impresora térmica (80 mm por defecto,
+   58 mm o A4 opcionales).  El @page real lo inyecta UI.setPrintMode()
+   en <style id="gp-print-page">; esto es sólo la red de seguridad.
+   --------------------------------------------------------------- */
+@page { size: 80mm auto; margin: 0mm; }
 
 @media print {
-  body * { visibility: hidden; }
-  .ticket, .ticket * { visibility: visible; }
-  .ticket { position: absolute; left: 0; top: 0; box-shadow: none; }
-  .ticket__actions { display: none; }
+  html, body {
+    width: auto !important; height: auto !important; min-height: 0 !important;
+    margin: 0 !important; padding: 0 !important;
+    background: #fff !important; overflow: visible !important;
+  }
+
+  /* 1. Toda la app se oculta por defecto (nav, sidebars, modales de fondo…). */
+  body * { visibility: hidden !important; box-shadow: none !important; }
+
+  /* 2. Solo el ticket (venta POS o apartado) y su contenido quedan visibles. */
+  .ticket, .ticket *,
+  .rk, .rk * { visibility: visible !important; }
+
+  /* 3. El ticket = 1 tira continua, anclada arriba-izquierda, sin cortes. */
+  .ticket, .rk {
+    position: absolute !important; left: 0 !important; top: 0 !important;
+    box-sizing: border-box !important;
+    width: 80mm !important; max-width: 80mm !important;
+    margin: 0 !important; padding: 3mm 3.5mm !important;
+    background: #fff !important; color: #000 !important;
+    border: 0 !important; border-radius: 0 !important;
+    font-family: "JetBrains Mono", ui-monospace, "Courier New", monospace !important;
+    font-size: 11px !important; line-height: 1.35 !important;
+    break-inside: avoid !important; page-break-inside: avoid !important;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .ticket h2, .rk .rk__folio { font-size: 13px !important; }
+  .ticket img, .rk img, .rk__barcode svg { max-width: 100% !important; height: auto !important; }
+
+  /* 3b. Anchos alternativos según el modo elegido en el POS. */
+  html[data-printmode="58"] .ticket, html[data-printmode="58"] .rk {
+    width: 58mm !important; max-width: 58mm !important; font-size: 10px !important; padding: 2mm 2.5mm !important;
+  }
+  html[data-printmode="a4"] .ticket, html[data-printmode="a4"] .rk {
+    position: relative !important; width: 72mm !important; max-width: 72mm !important; margin: 0 auto !important;
+  }
+
+  /* 4. Contenedores que, si conservan su alto/scroll, generan páginas en blanco. */
+  body, #main, [data-app], .app-root, .ticket-wrap,
+  .modal, .modal__card, .modal__body {
+    position: static !important; display: block !important;
+    width: auto !important; height: auto !important; max-height: none !important;
+    overflow: visible !important; padding: 0 !important; margin: 0 !important;
+    transform: none !important; animation: none !important;
+  }
+
+  /* 5. Chrome que nunca va al papel. */
+  .modal__backdrop, .modal__close, .modal__title,
+  .ticket__actions, .printbtn, .ticket-print-opts,
+  .topbar, .api-banner, .foot,
+  .cart-drawer, .cart-drawer__backdrop, .toasts, .splash { display: none !important; }
 }
 
 /* ---------- Toolbar / filtros ---------- */
@@ -155,6 +212,39 @@ body.in-app [data-static-store] { display: none !important; }
 .iconbtn { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; background: var(--surface-2); box-shadow: var(--nm-out-sm); font-size: .85rem; }
 .iconbtn:hover { color: var(--neon-cyan); }
 .iconbtn--danger:hover { color: var(--danger); }
+
+/* ---------- Importar Pokémon TCG ---------- */
+.pkm-import { display: flex; flex-direction: column; gap: .9rem; }
+.pkm-search { display: flex; gap: .6rem; flex-wrap: wrap; }
+.pkm-search .input { flex: 1 1 220px; }
+.pkm-search .select { flex: 1 1 200px; width: auto; }
+.pkm-results { max-height: 56vh; overflow-y: auto; }
+.pkm-grid { display: grid; gap: .8rem; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.pkm-card {
+  display: flex; flex-direction: column; background: var(--surface-2);
+  border-radius: var(--radius-sm); overflow: hidden; box-shadow: var(--nm-out-sm);
+}
+.pkm-card__img { width: 100%; aspect-ratio: 63/88; object-fit: contain; background: #0b0c10; }
+.pkm-card__body { padding: .55rem .6rem .65rem; display: flex; flex-direction: column; gap: .3rem; flex: 1; }
+.pkm-card__name { font-size: .82rem; font-weight: 700; line-height: 1.15; }
+.pkm-card__meta { font-size: .68rem; color: var(--muted); font-family: var(--mono); }
+.pkm-rarity {
+  align-self: flex-start; font-size: .62rem; font-weight: 700; letter-spacing: .04em;
+  padding: .12rem .45rem; border-radius: 999px;
+  background: linear-gradient(180deg, var(--neon-cyan), #16b6cc); color: #05060b;
+}
+.pkm-card__price { font-family: var(--mono); font-weight: 700; font-size: .84rem; color: var(--neon-cyan); margin-top: auto; }
+.pkm-card .btn { margin-top: .2rem; }
+
+.pkm-selected { display: flex; gap: 1rem; margin: .8rem 0; flex-wrap: wrap; }
+.pkm-selected img { width: 150px; aspect-ratio: 63/88; object-fit: contain; background: #0b0c10; border-radius: var(--radius-sm); }
+.pkm-selected__info { flex: 1 1 220px; min-width: 0; }
+.pkm-selected__info h3 { font-size: 1.1rem; }
+.pkm-form__h { font-family: var(--mono); font-size: .7rem; letter-spacing: .1em; text-transform: uppercase; color: var(--faint); margin: .8rem 0 .5rem; }
+.pkm-branches { display: grid; gap: .5rem; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+.pkm-branch { display: flex; align-items: center; justify-content: space-between; gap: .6rem; background: var(--surface-2); padding: .5rem .7rem; border-radius: var(--radius-sm); }
+.pkm-branch span { font-size: .82rem; }
+.pkm-branch .input { width: 5rem; text-align: right; }
 
 /* ---------- Misc ---------- */
 .stack-list { display: flex; flex-direction: column; gap: .6rem; }

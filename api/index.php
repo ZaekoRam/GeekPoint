@@ -134,11 +134,21 @@ $router->get('categories', function () use ($request) { (new CategoryController(
 // --- Catálogo público de la tienda (e-commerce, sin auth) ---
 $router->get('catalog', function () use ($request) { (new CatalogController($request))->index(); });
 $router->get('catalog/image', function () use ($request) { (new CatalogController($request))->image(); });
+$router->get('catalog/cover', function () use ($request) { (new CatalogController($request))->cover(); });
 $router->get('catalog/covers', function () use ($request) { (new CatalogController($request))->covers(); });
+
+// --- Proxy Pokémon TCG (para el importador del panel) ---
+$router->get('pokemon/cards', function () use ($request) { (new PokemonController($request))->cards(); });
+$router->get('pokemon/sets',  function () use ($request) { (new PokemonController($request))->sets(); });
+
+// --- Búsqueda de figuras (AmiAmi + respaldo local) para el importador ---
+$router->get('figures/search', function () use ($request) { (new FigureController($request))->search(); });
 
 // --- Productos / inventario ---
 $router->get('products',            function () use ($request) { (new ProductController($request))->index(); });
 $router->post('products',           function () use ($request) { (new ProductController($request))->store(); });
+$router->post('products/import',    function () use ($request) { (new ProductController($request))->import(); });
+$router->delete('products/sku/{sku}', function ($p) use ($request) { (new ProductController($request))->destroyBySku($p['sku']); });
 $router->get('products/{id}',       function ($p) use ($request) { (new ProductController($request))->show($p['id']); });
 $router->put('products/{id}',       function ($p) use ($request) { (new ProductController($request))->update($p['id']); });
 $router->patch('products/{id}/stock', function ($p) use ($request) { (new ProductController($request))->adjustStock($p['id']); });
@@ -152,6 +162,12 @@ $router->delete('registers/{id}', function ($p) use ($request) { (new RegisterCo
 // --- Inventario: alertas y movimientos ---
 $router->get('inventory/alerts',    function () use ($request) { (new InventoryController($request))->alerts(); });
 $router->get('inventory/movements', function () use ($request) { (new InventoryController($request))->movements(); });
+
+// --- Apartados / reservas ---
+$router->post('reservations',                 function () use ($request) { (new ReservationController($request))->store(); });
+$router->get('reservations',                  function () use ($request) { (new ReservationController($request))->index(); });
+$router->get('reservations/{folio}',          function ($p) use ($request) { (new ReservationController($request))->show($p['folio']); });
+$router->patch('reservations/{folio}/status', function ($p) use ($request) { (new ReservationController($request))->resolve($p['folio']); });
 
 // --- Ventas / POS ---
 $router->post('sales',      function () use ($request) { (new SaleController($request))->store(); });

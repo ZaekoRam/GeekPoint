@@ -111,6 +111,48 @@
 }
 .pcard__media img { width: 100%; height: 100%; object-fit: cover; }
 .pcard__media .ink-cover { width: 100%; height: 100%; }
+
+/* =============================================================
+   FIGURAS — tarjeta "Caja Pop-Out" (empaque de coleccionista GeekPoint)
+   ============================================================= */
+.pcard--figure { overflow: visible; }
+.pcard--figure:hover { z-index: 5; }               /* la figura sobresale por encima de la fila */
+.figure-card-box {
+  overflow: visible !important;
+  background: radial-gradient(120% 90% at 50% 15%, #1a1a24, #0b0b12 70%);
+  display: grid; place-items: center;
+}
+.figure-card-box__frame {
+  position: absolute; inset: 9px; pointer-events: none; border-radius: 3px;
+  border: 1.5px solid rgba(0, 229, 255, .5);
+  box-shadow: inset 0 0 20px rgba(0, 229, 255, .16), 0 0 0 1px rgba(255, 212, 0, .28);
+}
+.figure-card-box__bg {
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+  opacity: .92;
+  transition: opacity .35s var(--ease-out), transform .35s var(--ease-out), filter .35s var(--ease-out);
+}
+.figure-card-box__fig {
+  position: relative; z-index: 3;
+  width: 84%; height: 92%; object-fit: contain;
+  filter: drop-shadow(0 8px 12px rgba(0, 0, 0, .55));
+  transition: transform .5s var(--ease-bounce), filter .35s var(--ease-out);
+}
+.pcard--figure:hover .figure-card-box__bg { opacity: .15; transform: scale(1.05); filter: blur(1px); }
+.pcard--figure:hover .figure-card-box__fig {
+  transform: translateY(-28px) scale(1.1);
+  filter: drop-shadow(0 10px 15px rgba(255, 212, 0, 0.4));
+}
+.pcard--figure:hover .figure-card-box__frame { border-color: rgba(0, 229, 255, .85); }
+@media (hover: none) {
+  .pcard--figure:hover .figure-card-box__fig { transform: none; }
+  .pcard--figure:hover .figure-card-box__bg { opacity: .92; transform: none; filter: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .figure-card-box__bg, .figure-card-box__fig { transition: none; }
+  .pcard--figure:hover .figure-card-box__fig { transform: none; filter: drop-shadow(0 10px 15px rgba(255,212,0,.4)); }
+  .pcard--figure:hover .figure-card-box__bg { opacity: .3; }
+}
 .pcard__glow {
   position: absolute; inset: 0; pointer-events: none; opacity: 0;
   background: radial-gradient(160px 160px at var(--mx,50%) var(--my,50%), rgba(0,229,255,.5), transparent 70%);
@@ -126,6 +168,32 @@
 }
 .ptag--preventa { background: var(--neon-magenta); color: #fff; }
 .ptag--novedad { background: var(--neon-cyan); color: var(--ink); }
+.ptag--rarity {
+  background: var(--ink); color: var(--neon-cyan); transform: rotate(2deg);
+  font-family: var(--mono); font-size: .62rem; letter-spacing: .04em;
+  box-shadow: 2px 2px 0 var(--neon-cyan);
+}
+/* Badges de rareza TCG — color distintivo por tipo (reusa .ptag). */
+.ptag--rare {
+  transform: rotate(2deg);
+  font-family: var(--mono); font-size: .6rem; font-weight: 700;
+  letter-spacing: .04em; text-transform: uppercase;
+  border-color: var(--ink); box-shadow: 2px 2px 0 var(--ink);
+}
+.ptag--rare-common      { background: #d9d9de; color: var(--ink); }
+.ptag--rare-uncommon    { background: #7bdca0; color: var(--ink); }
+.ptag--rare-rare        { background: #2f6bff; color: #fff; }
+.ptag--rare-holo        { background: linear-gradient(120deg, #00e5ff, #4b7bff); color: var(--ink); box-shadow: 2px 2px 0 var(--ink), 0 0 10px rgba(0,229,255,.5); }
+.ptag--rare-double      { background: #c0392b; color: #fff; }
+.ptag--rare-ultra       { background: linear-gradient(120deg, #8b5bff, #ff2d95); color: #fff; box-shadow: 2px 2px 0 var(--ink), 0 0 10px rgba(139,91,255,.55); }
+.ptag--rare-illustration{ background: linear-gradient(120deg, #ffd400, #00e5ff, #ff2d95); color: var(--ink); box-shadow: 2px 2px 0 var(--ink); }
+.ptag--rare-special     { background: linear-gradient(120deg, #ff2d95, #8b5bff, #00e5ff); color: #fff; box-shadow: 2px 2px 0 var(--ink), 0 0 12px rgba(255,45,149,.5); }
+.ptag--rare-rainbow     { background: linear-gradient(120deg, #ff004c, #ffd400, #00e5ff, #8b5bff); color: var(--ink); box-shadow: 2px 2px 0 var(--ink); }
+.ptag--rare-gold        { background: linear-gradient(120deg, #f2b600, #fff1a8, #f2b600); color: var(--ink); box-shadow: 2px 2px 0 var(--ink), 0 0 10px rgba(242,182,0,.6); }
+.ptag--rare-secret      { background: #0c0c0e; color: #ffd400; border-color: #ffd400; box-shadow: 2px 2px 0 #ffd400, 0 0 12px rgba(255,212,0,.5); }
+.ptag--rare-amazing     { background: linear-gradient(120deg, #00e5ff, #7bdca0, #ffd400); color: var(--ink); box-shadow: 2px 2px 0 var(--ink); }
+.ptag--rare-radiant     { background: linear-gradient(120deg, #ffd400, #ff8a00); color: var(--ink); box-shadow: 2px 2px 0 var(--ink), 0 0 10px rgba(255,138,0,.5); }
+.ptag--rare-promo       { background: #ff8a00; color: var(--ink); }
 
 .pcard__view {
   position: absolute; right: .55rem; bottom: .55rem;
@@ -142,19 +210,91 @@
 .pcard__foot { margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding-top: .5rem; }
 .pcard__price { font-family: var(--mono); font-weight: 700; font-size: 1.05rem; }
 .pcard__add {
+  position: relative; overflow: hidden; isolation: isolate;
   font-family: var(--display); text-transform: uppercase; font-size: .78rem; letter-spacing: .04em;
   padding: .42rem .7rem; background: var(--panini); color: var(--ink); border: 2px solid var(--ink);
-  transition: transform .12s var(--ease-out), box-shadow .14s var(--ease-out);
+  transition: transform .16s var(--ease-bounce), box-shadow .16s var(--ease-out), filter .18s var(--ease-out);
 }
-.pcard__add:hover { transform: translate(-1px,-1px); box-shadow: 3px 3px 0 var(--ink); }
+.pcard__add:hover { transform: translate(-1px,-1px); box-shadow: 3px 3px 0 var(--ink); filter: saturate(1.08) brightness(1.03); }
 .pcard__stock { font-family: var(--mono); font-size: .66rem; color: var(--muted); }
 .pcard__stock b { color: var(--ink); }
 
+/* =============================================================
+   CTA premium — "Agregar" · "Generar cotización" · compra del modal
+   Brillo diagonal al hover · press físico :active · ripple + pop (JS)
+   ============================================================= */
+body:not(.in-app) .btn--panini {
+  position: relative; overflow: hidden; isolation: isolate;
+  transition: transform .16s var(--ease-bounce), box-shadow .18s var(--ease-out),
+              background .18s var(--ease-out), filter .18s var(--ease-out), opacity .2s;
+}
+
+/* Barrido de luz diagonal (usa ::before para no chocar con el spinner ::after) */
+.pcard__add::before,
+body:not(.in-app) .btn--panini::before {
+  content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 55%;
+  pointer-events: none; z-index: 1;
+  background: linear-gradient(100deg, transparent, rgba(255,255,255,.55), transparent);
+  transform: translateX(-190%) skewX(-18deg);
+  transition: transform .7s var(--ease-out);
+  mix-blend-mode: overlay;
+}
+.pcard__add:hover::before,
+body:not(.in-app) .btn--panini:hover::before { transform: translateX(340%) skewX(-18deg); }
+body:not(.in-app) .btn--panini:hover { filter: saturate(1.08) brightness(1.03); }
+
+/* Press físico al mantener pulsado */
+.pcard__add:active,
+body:not(.in-app) .btn--panini:active {
+  transform: translate(1px, 1px) scale(.955);
+  box-shadow: none;
+  transition-duration: .05s;
+}
+
+/* Pop elástico al soltar (clase temporal desde JS) */
+.pcard__add.is-pop,
+body:not(.in-app) .btn--panini.is-pop { animation: ctaPop .4s var(--ease-bounce); }
+@keyframes ctaPop {
+  0%   { transform: translate(1px, 1px) scale(.955); }
+  40%  { transform: scale(1.055); }
+  70%  { transform: scale(.985); }
+  100% { transform: none; }
+}
+
+/* Onda al pulsar (nodo .cta-ripple inyectado por JS) */
+.cta-ripple {
+  position: absolute; border-radius: 50%; pointer-events: none; z-index: 2;
+  transform: translate(-50%, -50%) scale(0);
+  background: radial-gradient(circle, rgba(12,12,14,.30), rgba(12,12,14,0) 68%);
+  animation: ctaRipple .52s var(--ease-out) forwards;
+}
+@keyframes ctaRipple { to { transform: translate(-50%, -50%) scale(1); opacity: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .pcard__add::before,
+  body:not(.in-app) .btn--panini::before { display: none; }
+  .pcard__add.is-pop,
+  body:not(.in-app) .btn--panini.is-pop { animation: none; }
+  .cta-ripple { display: none; }
+}
+
 /* ---------- Modal Vista Previa 3D ---------- */
 .preview3d { display: grid; gap: 1.2rem; grid-template-columns: 1fr; }
-@media (min-width: 720px) { .preview3d { grid-template-columns: 260px 1fr; } }
+@media (min-width: 720px) { .preview3d { grid-template-columns: 260px 1fr; align-items: start; } }
+.preview3d__col { display: flex; flex-direction: column; gap: .6rem; }
 .preview3d__stage { aspect-ratio: 3/4; border: 3px solid var(--ink); background: var(--ink); position: relative; overflow: hidden; }
 .preview3d__stage canvas { width: 100%; height: 100%; }
+
+/* Galería multi-ángulo */
+.preview3d__thumbs { display: flex; gap: .45rem; flex-wrap: wrap; }
+.preview3d__thumb {
+  width: 52px; height: 52px; flex: none; padding: 0; cursor: pointer;
+  border: 2px solid var(--ink); background: var(--paper-3); overflow: hidden;
+  transition: transform .14s var(--ease-out), box-shadow .14s var(--ease-out);
+}
+.preview3d__thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.preview3d__thumb:hover { transform: translateY(-2px); }
+.preview3d__thumb.is-active { box-shadow: 0 0 0 2px var(--neon-cyan), 3px 3px 0 var(--ink); border-color: var(--neon-cyan); }
 .preview3d__hint { position: absolute; left: 0; right: 0; bottom: 0; text-align: center; font-family: var(--mono); font-size: .6rem; letter-spacing: .12em; color: var(--paper-2); background: rgba(0,0,0,.5); padding: .3rem; }
 .preview3d h3 { font-family: var(--display); text-transform: uppercase; font-size: 1.5rem; }
 .preview3d__meta { font-size: .84rem; color: var(--muted); display: flex; flex-direction: column; gap: .4rem; margin: .6rem 0; }
@@ -207,11 +347,32 @@
 .cart-drawer__items { flex: 1; overflow-y: auto; padding: 1rem 1.2rem; display: flex; flex-direction: column; gap: .8rem; }
 .cart-drawer__empty { text-align: center; color: var(--muted); padding: 2.5rem 1rem; }
 .dr-item { display: grid; grid-template-columns: 54px 1fr auto; gap: .7rem; align-items: center; border-bottom: 1px solid var(--line-soft); padding-bottom: .8rem; }
+.dr-item__rm { transition: transform .12s var(--ease-out), color .12s var(--ease-out); }
+.dr-item__rm:hover { transform: scale(1.25) rotate(90deg); }
+
+/* Entrada escalonada de las líneas al abrir el carrito */
+.cart-drawer__items.is-fresh .dr-item { animation: cartRowIn .34s var(--ease-out) backwards; }
+.cart-drawer__items.is-fresh .dr-item:nth-child(1) { animation-delay: .02s; }
+.cart-drawer__items.is-fresh .dr-item:nth-child(2) { animation-delay: .06s; }
+.cart-drawer__items.is-fresh .dr-item:nth-child(3) { animation-delay: .10s; }
+.cart-drawer__items.is-fresh .dr-item:nth-child(4) { animation-delay: .14s; }
+.cart-drawer__items.is-fresh .dr-item:nth-child(5) { animation-delay: .18s; }
+.cart-drawer__items.is-fresh .dr-item:nth-child(n+6) { animation-delay: .22s; }
+@media (prefers-reduced-motion: reduce) {
+  .cart-drawer__items.is-fresh .dr-item { animation: none; }
+  .dr-item__rm:hover { transform: none; }
+}
 .dr-item__media { width: 54px; height: 70px; border: 2px solid var(--ink); object-fit: cover; background: var(--paper-3); }
 .dr-item__name { font-family: var(--display); text-transform: uppercase; font-size: .82rem; line-height: 1.1; }
 .dr-item__price { font-family: var(--mono); font-size: .74rem; color: var(--muted); }
 .dr-item__qty { display: inline-flex; align-items: center; gap: .35rem; margin-top: .3rem; }
-.dr-item__qty button { width: 22px; height: 22px; border: 2px solid var(--ink); background: var(--paper-2); font-family: var(--mono); display: grid; place-items: center; }
+.dr-item__qty button {
+  box-sizing: border-box; width: 22px; height: 22px; flex: none; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 2px solid var(--ink); background: var(--paper-2);
+  font-family: var(--mono); font-size: .8rem; font-weight: 700; line-height: 1;
+}
+.dr-item__qty .mono { display: inline-block; min-width: 1.6ch; text-align: center; line-height: 1; font-variant-numeric: tabular-nums; }
 .dr-item__rm { font-size: .8rem; color: var(--muted); }
 .dr-item__rm:hover { color: var(--danger); }
 .cart-drawer__foot { border-top: 3px solid var(--ink); padding: 1.1rem 1.2rem; display: flex; flex-direction: column; gap: .7rem; }
@@ -221,6 +382,55 @@
 .foot { border-top: 4px solid var(--ink); padding: 2.4rem var(--gutter); text-align: center; background: var(--paper-2); }
 .foot .brand { justify-content: center; font-size: 1.5rem; }
 .foot__note { font-size: .82rem; color: var(--muted); margin-top: .4rem; }
+
+/* ---------- Apartado: formulario + ticket con folio y código de barras ---------- */
+.resv-form .field { margin-bottom: .8rem; }
+.resv-grid { display: grid; gap: .8rem; grid-template-columns: 1fr 1fr; }
+@media (max-width: 520px) { .resv-grid { grid-template-columns: 1fr; } }
+
+.rk {
+  border: 3px solid var(--ink); background: var(--paper-2); padding: 1.1rem 1.2rem 1.3rem;
+  box-shadow: 6px 6px 0 var(--ink); text-align: center;
+}
+.rk__brand { font-family: var(--comic); letter-spacing: .04em; font-size: 1rem; color: var(--ink); }
+.rk__brand b { color: var(--panini-deep); }
+.rk__folio {
+  font-family: var(--display); font-size: clamp(2rem, 9vw, 3rem); letter-spacing: .06em;
+  color: var(--ink); margin: .3rem 0 .5rem; line-height: 1;
+}
+.rk__barcode { background: #fff; padding: .5rem; border: 2px solid var(--ink); display: inline-block; max-width: 100%; }
+.rk__barcode svg { display: block; max-width: 100%; height: auto; }
+.rk__meta { text-align: left; font-size: .8rem; color: var(--ink-soft); margin: .9rem 0 .6rem; display: flex; flex-direction: column; gap: .2rem; }
+.rk__meta b { color: var(--ink); font-family: var(--mono); font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; }
+.rk__items { text-align: left; border-top: 2px dashed var(--line-soft); padding-top: .5rem; margin-top: .3rem; }
+.rk-row { display: flex; justify-content: space-between; gap: .8rem; font-size: .82rem; padding: .18rem 0; }
+.rk-row--total { border-top: 2px solid var(--ink); margin-top: .4rem; padding-top: .5rem; font-weight: 700; font-size: 1rem; }
+.rk__hint { font-size: .74rem; color: var(--muted); margin-top: .9rem; }
+
+/* ---------- POS: panel de apartados ---------- */
+.resv-lookup { display: flex; gap: .5rem; margin-bottom: 1rem; }
+.resv-lookup .input { flex: 1; }
+.resv-list { display: flex; flex-direction: column; gap: .55rem; max-height: 46vh; overflow-y: auto; }
+.resv-item {
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem;
+  padding: .8rem .95rem; border-radius: var(--radius-sm); background: var(--surface-2);
+  border: 1px solid transparent; transition: border-color .12s var(--ease-out);
+}
+.resv-item:hover { border-color: var(--accent); }
+.resv-item__main { min-width: 0; cursor: pointer; flex: 1; }
+.resv-item__folio { font-family: var(--mono); font-weight: 700; font-size: 1rem; letter-spacing: .04em; }
+.resv-item__meta { font-size: .76rem; color: var(--muted); margin-top: .1rem; }
+.resv-item__prods { font-size: .74rem; color: var(--faint); margin-top: .25rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.resv-item__side { display: flex; flex-direction: column; align-items: flex-end; gap: .4rem; flex: none; }
+.resv-item__total { font-weight: 700; font-size: .95rem; }
+.resv-item__side .btn { white-space: nowrap; }
+@media (max-width: 640px) {
+  .resv-item { flex-direction: column; }
+  .resv-item__side { align-items: stretch; width: 100%; }
+  .resv-item__side .btn { width: 100%; }
+}
+.resv-detail { margin-top: .4rem; }
+.resv-detail__items { border-top: 1px dashed var(--line-soft); margin-top: .6rem; padding-top: .5rem; display: flex; flex-direction: column; gap: .25rem; }
 
 /* La landing estática se oculta al entrar a los módulos internos */
 body.in-app [data-static-store] { display: none !important; }

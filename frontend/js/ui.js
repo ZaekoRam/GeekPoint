@@ -80,7 +80,10 @@
   /* ---------- Modal ---------- */
   var openModalEl = null;
   function modal(opts) {
-    closeModal();
+    closeModal(true);                 // reemplazo inmediato: sin animación de salida
+    // Barrido de seguridad: nunca deben quedar 2 .modal apilados (p. ej. si uno
+    // seguía en su animación de salida cuando se abre el siguiente).
+    $$(".modal").forEach(function (m) { m.remove(); });
     opts = opts || {};
     var wrap = document.createElement("div");
     wrap.className = "modal";
@@ -101,16 +104,61 @@
     document.addEventListener("keydown", escClose);
     document.body.appendChild(wrap);
     openModalEl = wrap;
+
+    // Animación de ENTRADA por clase (keyframes en components.css), no siempre-activa.
+    if (!reduced) {
+      wrap.classList.add("is-entering");
+      var card = wrap.querySelector(".modal__card");
+      var done = function () {
+        wrap.classList.remove("is-entering");
+        card && card.removeEventListener("animationend", done);
+      };
+      if (card) card.addEventListener("animationend", done);
+      setTimeout(done, 450);           // red de seguridad
+    }
+
     if (window.I18N) I18N.apply(wrap);
     var first = wrap.querySelector("input, select, textarea, button:not([data-close])");
     if (first) safe(function () { first.focus(); });
     if (typeof opts.onMount === "function") safe(function () { opts.onMount(wrap); });
     return wrap;
   }
-  function closeModal() {
-    if (openModalEl) { openModalEl.remove(); openModalEl = null; document.removeEventListener("keydown", escClose); }
+  function closeModal(instant) {
+    var el = openModalEl;
+    if (!el) return;
+    openModalEl = null;
+    document.removeEventListener("keydown", escClose);
+    if (instant === true || reduced) { el.remove(); return; }
+    el.classList.remove("is-entering");
+    el.classList.add("is-leaving");
+    var gone = false;
+    var kill = function () { if (gone) return; gone = true; el.remove(); };
+    el.addEventListener("animationend", kill);
+    setTimeout(kill, 220);             // fallback si no dispara animationend
   }
   function escClose(e) { if (e.key === "Escape") closeModal(); }
+
+  /* ---------- Modo de impresión de tickets (térmica 80/58 mm o A4) ---------- */
+  var PRINT_KEY = "gp_printmode";
+  function printPageCSS(mode) {
+    if (mode === "58") return "@page{size:58mm auto;margin:0}";
+    if (mode === "a4") return "@page{size:A4;margin:12mm}";
+    return "@page{size:80mm auto;margin:0}";                 // 80 = por defecto (térmica)
+  }
+  function applyPrintMode(mode) {
+    mode = (mode === "58" || mode === "a4") ? mode : "80";
+    document.documentElement.setAttribute("data-printmode", mode);
+    var st = document.getElementById("gp-print-page");
+    if (!st) { st = document.createElement("style"); st.id = "gp-print-page"; document.head.appendChild(st); }
+    st.textContent = printPageCSS(mode);
+    try { localStorage.setItem(PRINT_KEY, mode); } catch (e) {}
+    return mode;
+  }
+  function getPrintMode() {
+    try { return localStorage.getItem(PRINT_KEY) || "80"; } catch (e) { return "80"; }
+  }
+  // aplica el modo guardado en cuanto carga la UI
+  applyPrintMode(getPrintMode());
 
   /* ---------- confirm ---------- */
   function confirmDialog(message, onYes, opts) {
@@ -151,8 +199,9 @@
   window.UI = {
     $: $, $$: $$, escHTML: escHTML, safe: safe, debounce: debounce,
     money: money, num: num, fmtDate: fmtDate,
-    toast: toast, modal: modal, closeModal: closeModal, confirm: confirmDialog,
+    toast: toast, modal: modal, openModal: modal, closeModal: closeModal, confirm: confirmDialog,
     bindTilt: bindTilt,
+    printMode: getPrintMode, setPrintMode: applyPrintMode,
     reduced: reduced, fineHover: fineHover
   };
 })();

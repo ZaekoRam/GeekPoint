@@ -51,17 +51,36 @@ body.in-app .topbar__nav { display: none; }
 
 .topbar__actions { margin-inline-start: auto; display: flex; align-items: center; gap: .55rem; }
 
-/* ---------- Lang toggle ---------- */
-.lang-toggle { display: inline-flex; border: 2px solid var(--ink); background: var(--paper-2); }
-body.in-app .lang-toggle { border-color: var(--line); background: var(--surface-2); border-radius: 999px; padding: 3px; }
-.lang-toggle button {
-  font-family: var(--mono); font-size: .72rem; font-weight: 700; letter-spacing: .08em;
-  padding: .36rem .62rem; color: var(--muted);
-  transition: color .15s var(--ease-out), background .15s var(--ease-out);
+/* ---------- Lang toggle (brutalist neón, con banderas) ---------- */
+.lang-toggle {
+  display: inline-flex; gap: 3px; padding: 3px;
+  border: 2px solid var(--ink); background: var(--paper-2);
+  box-shadow: 3px 3px 0 var(--ink);
 }
-.lang-toggle button.is-active { color: var(--ink); background: var(--panini); }
+.lang-toggle button {
+  display: inline-flex; align-items: center; gap: .32rem;
+  font-family: var(--mono); font-size: .72rem; font-weight: 700; letter-spacing: .06em;
+  line-height: 1; padding: .32rem .56rem; color: var(--muted);
+  border: 2px solid transparent;
+  transition: transform .16s var(--ease-bounce), color .15s var(--ease-out),
+              background .15s var(--ease-out), box-shadow .15s var(--ease-out), border-color .15s var(--ease-out);
+}
+.lang-toggle__flag { font-size: 1rem; line-height: 1; filter: grayscale(.55) contrast(1.05); transition: transform .16s var(--ease-bounce), filter .15s var(--ease-out); }
+.lang-toggle button:hover { transform: translateY(-2px) scale(1.05); color: var(--ink); }
+.lang-toggle button:hover .lang-toggle__flag { transform: scale(1.18); filter: none; }
+.lang-toggle button:active { transform: translateY(0) scale(.98); }
+.lang-toggle button.is-active {
+  color: var(--neon-cyan); background: var(--ink);
+  border-color: var(--ink); box-shadow: 3px 3px 0 var(--neon-cyan);
+}
+.lang-toggle button.is-active .lang-toggle__flag { filter: none; }
+
+body.in-app .lang-toggle { border-color: var(--line); background: var(--surface-2); border-radius: 999px; box-shadow: none; }
 body.in-app .lang-toggle button { border-radius: 999px; }
-body.in-app .lang-toggle button.is-active { color: #05060b; background: var(--accent); }
+body.in-app .lang-toggle button.is-active {
+  color: #05060b; background: var(--accent); border-color: transparent;
+  box-shadow: 0 0 0 1px var(--accent), 0 0 14px rgba(0,229,255,.45);
+}
 
 /* ---------- Cart button ---------- */
 .cartbtn {
@@ -74,9 +93,12 @@ body.in-app .lang-toggle button.is-active { color: #05060b; background: var(--ac
 .cartbtn:hover { transform: translate(-1px,-1px); box-shadow: 5px 5px 0 var(--ink); }
 .cartbtn:active { transform: translate(2px,2px); box-shadow: none; }
 .cartbtn__count {
-  min-width: 1.35em; height: 1.35em; padding: 0 .3em; display: grid; place-items: center;
+  box-sizing: border-box;
+  min-width: 1.5em; height: 1.5em; padding: 0 .32em;
+  display: inline-flex; align-items: center; justify-content: center;
+  line-height: 1; text-align: center;
   background: var(--panini); color: var(--ink); border: 2px solid var(--ink);
-  font-family: var(--mono); font-size: .7rem; font-weight: 700;
+  font-family: var(--mono); font-size: .68rem; font-weight: 700; font-variant-numeric: tabular-nums;
 }
 .cartbtn__count:empty, .cartbtn__count[data-count="0"] { display: none; }
 
@@ -91,7 +113,9 @@ body.in-app .lang-toggle button.is-active { color: #05060b; background: var(--ac
   .cartbtn { padding: .46rem .55rem; gap: .2rem; font-size: .8rem; }
   .cartbtn > span[data-i18n] { display: none; }
 
-  .lang-toggle button { padding: .32rem .44rem; font-size: .64rem; }
+  .lang-toggle { box-shadow: 2px 2px 0 var(--ink); }
+  .lang-toggle button { padding: .3rem .4rem; font-size: .62rem; gap: .25rem; }
+  .lang-toggle__flag { font-size: .9rem; }
 
   /* Botón de acceso / panel */
   .topbar__actions .btn { padding: .38rem .55rem; font-size: .68rem; letter-spacing: 0; }
@@ -101,6 +125,8 @@ body.in-app .lang-toggle button.is-active { color: #05060b; background: var(--ac
   .topbar { gap: .3rem; padding: .5rem .6rem; }
   .brand span:not(.brand__glyph) { display: none; }   /* deja sólo el glifo "G" */
   .topbar__actions .btn { padding: .36rem .44rem; font-size: .64rem; }
+  .lang-toggle__code { display: none; }               /* deja sólo la bandera */
+  .lang-toggle button { padding: .3rem .34rem; }
 }
 
 /* ---------- Botones ---------- */
@@ -220,8 +246,20 @@ table.data tbody tr { transition: background .12s var(--ease-out); }
 table.data tbody tr:hover { background: var(--surface-2); }
 .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 
+/* Tabla de cotización dentro del modal: sin min-width, columnas ajustadas,
+   los importes no se desbordan a la derecha. */
+table.data.quote-table { min-width: 0; width: 100%; font-size: .84rem; table-layout: fixed; }
+.quote-table tbody td { padding: .55rem .55rem; }
+.quote-table td:first-child { width: auto; overflow-wrap: anywhere; }
+.quote-table td.qcol-qty { width: 3rem; text-align: right; white-space: nowrap; }
+.quote-table td.qcol-total { width: 6.25rem; text-align: right; white-space: nowrap; }
+.quote-table .quote-total td { border-top: 2px solid var(--line); }
+.modal .table-wrap:has(.quote-table) { overflow-x: visible; }
+
 /* ---------- Toast ---------- */
-.toasts { position: fixed; right: 1rem; bottom: 1rem; z-index: var(--z-toast); display: flex; flex-direction: column; gap: .6rem; max-width: min(92vw, 360px); }
+/* z-index alto FIJO: los avisos de validación deben quedar SIEMPRE por encima
+   del telón borroso (backdrop-filter) de los modales. */
+.toasts { position: fixed; right: 1rem; bottom: 1rem; z-index: 10000; display: flex; flex-direction: column; gap: .6rem; max-width: min(92vw, 360px); }
 .toast {
   padding: .8rem 1rem; background: var(--surface); color: var(--text);
   border: 2px solid var(--ink); border-left-width: 6px;
@@ -242,11 +280,29 @@ body.in-app .toast { border: 0; border-left: 3px solid var(--accent); border-rad
   background: var(--surface); color: var(--text);
   border: 3px solid var(--ink); box-shadow: 10px 10px 0 var(--ink);
   padding: 1.6rem;
-  animation: modalIn .28s var(--ease-out);
 }
 body.in-app .modal__card { border: 0; border-radius: var(--radius-lg); box-shadow: var(--nm-out), var(--glow-violet); }
 .modal__card--wide { width: min(920px, 100%); }
-@keyframes modalIn { from { opacity: 0; transform: translateY(16px); } }
+
+/* Animación de ENTRADA — inyectada por UI.openModal() como .is-entering */
+@keyframes modalScale {
+  from { opacity: 0; transform: scale(0.95); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes modalScaleOut {
+  from { opacity: 1; transform: scale(1); }
+  to   { opacity: 0; transform: scale(0.96); }
+}
+@keyframes modalFade { from { opacity: 0; } to { opacity: 1; } }
+.modal.is-entering .modal__card { animation: modalScale .22s var(--ease-out); }
+.modal.is-entering .modal__backdrop { animation: modalFade .22s ease; }
+.modal.is-leaving { pointer-events: none; }
+.modal.is-leaving .modal__card { animation: modalScaleOut .16s ease-in forwards; }
+.modal.is-leaving .modal__backdrop { animation: modalFade .16s ease reverse forwards; }
+@media (prefers-reduced-motion: reduce) {
+  .modal.is-entering .modal__card, .modal.is-entering .modal__backdrop,
+  .modal.is-leaving .modal__card, .modal.is-leaving .modal__backdrop { animation: none; }
+}
 .modal__title { font-family: var(--display); text-transform: uppercase; font-size: 1.3rem; margin-bottom: 1rem; }
 .modal__close { position: absolute; top: .8rem; right: .8rem; width: 34px; height: 34px; display: grid; place-items: center; background: var(--panini); color: var(--ink); border: 2px solid var(--ink); }
 body.in-app .modal__close { background: var(--surface-2); color: var(--text); border: 0; border-radius: 10px; box-shadow: var(--nm-out-sm); }
@@ -269,3 +325,165 @@ body.in-app .modal__close { background: var(--surface-2); color: var(--text); bo
 /* ---------- Tilt (funcional; gate solo por hover) ---------- */
 .tilt { transform-style: preserve-3d; transition: transform .25s var(--ease-out), box-shadow .25s var(--ease-out); will-change: transform; }
 @media (hover: none) { .tilt { transform: none !important; } }
+
+/* =============================================================
+   Micro-botones animados (estilo Uiverse, adaptados a GeekPoint)
+   ============================================================= */
+
+/* ---- "Eliminar": círculo que se abre en píldora con bote de basura ---- */
+/* Botón eliminar — SOLO icono: círculo con la tapa del bote que se abre en hover.
+   Sin expansión de ancho ni texto "ELIMINAR" (desacomodaba las tablas). */
+.del-slot {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 38px; vertical-align: middle;
+}
+.del-btn {
+  flex: none;
+  width: 34px; height: 34px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 2px;
+  position: relative; overflow: visible;
+  border: 2px solid var(--ink); border-radius: 50%;
+  background: var(--ink);
+  box-shadow: var(--shadow-hard-sm);
+  cursor: pointer;
+  transition: background .2s var(--ease-out), border-color .2s var(--ease-out),
+              box-shadow .18s var(--ease-out), transform .12s var(--ease-bounce);
+}
+body.in-app .del-btn { border-color: transparent; box-shadow: var(--nm-out-sm); }
+
+.del-btn .del-svg { width: 14px; transition: transform .28s var(--ease-bounce); }
+.del-btn .del-svg path { fill: #fff; }
+.del-btn .del-top { transform-origin: 84% 100%; }   /* bisagra a la derecha */
+
+.del-btn:hover, .del-btn:focus-visible {
+  background: var(--danger); border-color: var(--danger);
+  outline: none; transform: translateY(-1px);
+}
+.del-btn:focus-visible { box-shadow: 0 0 0 3px rgba(228, 0, 43, .4), var(--shadow-hard-sm); }
+body.in-app .del-btn:focus-visible { box-shadow: 0 0 0 3px rgba(228, 0, 43, .4), var(--nm-out-sm); }
+/* la TAPA se abre limpio */
+.del-btn:hover .del-top, .del-btn:focus-visible .del-top { transform: translateY(-2px) rotate(-34deg); }
+.del-btn:hover .del-bottom, .del-btn:focus-visible .del-bottom { transform: translateY(1px); }
+.del-btn:active { transform: scale(.9); }
+
+@media (prefers-reduced-motion: reduce) {
+  .del-btn, .del-btn .del-svg { transition-duration: .001s; }
+}
+
+/* ---- Impresora que "imprime" al pasar el cursor ---- */
+/* Rediseño alto contraste: base amarillo GeekPoint, hover cyan con glow. */
+.printbtn.btn {
+  align-items: center;
+  background: var(--panini); color: var(--ink);
+  border: 2px solid var(--ink);
+  box-shadow: 3px 3px 0 var(--ink);
+  transition: transform .14s var(--ease-out), box-shadow .18s var(--ease-out), background .18s var(--ease-out);
+}
+.printbtn.btn:hover {
+  background: var(--neon-cyan); color: var(--ink);
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 var(--ink), 0 0 18px rgba(0, 229, 255, .55);
+}
+.printbtn.btn:active { transform: translate(1px, 1px); box-shadow: none; }
+body.in-app .printbtn.btn {
+  border-color: transparent; border-radius: var(--radius-sm);
+  box-shadow: var(--nm-out-sm), 0 0 0 1px var(--panini);
+}
+body.in-app .printbtn.btn:hover {
+  background: var(--neon-cyan);
+  box-shadow: var(--nm-out), 0 0 16px rgba(0, 229, 255, .5);
+}
+
+.printbtn .printer {
+  --pr-border: var(--ink);
+  --pr-bg: var(--paper-2);
+  --pr-state: paused;
+  flex: none; position: relative; width: 30px; height: 17px;
+}
+body.in-app .printbtn .printer { --pr-bg: var(--surface); }
+.printbtn:hover .printer, .printbtn:focus-visible .printer { --pr-state: running; }
+
+.printbtn .printer::before, .printbtn .printer::after {
+  content: ""; position: absolute;
+  box-shadow: inset 0 0 0 2px var(--pr-border);
+  background: var(--pr-bg);
+}
+.printbtn .printer::before { left: 0; right: 0; bottom: 0; height: 13px; border-radius: 3px; z-index: 2; }
+.printbtn .printer::after  { width: 24px; height: 6px; top: 0; left: 3px; border-radius: 3px 3px 0 0; }
+
+.printbtn .printer__dot {
+  position: absolute; left: 4px; bottom: 4px; width: 22px; height: 2px;
+  border-radius: 1px; background: var(--pr-border); z-index: 4;
+}
+.printbtn .printer__dot::before, .printbtn .printer__dot::after {
+  content: ""; position: absolute; background: var(--pr-border);
+  border-radius: 1px; height: 2px; top: -5px;
+}
+.printbtn .printer__dot::before { width: 2px; right: 0; }
+.printbtn .printer__dot::after  { width: 4px; right: 3px; }
+
+.printbtn .printer__paper {
+  position: absolute; z-index: 1; left: 6px; bottom: 7px;
+  width: 17px; height: 14px; border-radius: 2px 2px 0 0;
+  box-shadow: inset 0 0 0 2px var(--pr-border); background: var(--pr-bg);
+  display: flex; justify-content: center;
+  transform: perspective(40px) rotateX(4deg);
+  animation: printerFeed 1.2s ease infinite;
+  animation-play-state: var(--pr-state);
+}
+.printbtn .printer__svg { display: block; width: 8px; height: 8px; margin-top: 3px; }
+.printbtn .printer__svg path { fill: var(--neon-cyan); }
+.printbtn .printer__svg path + path { opacity: .55; }
+
+.printbtn .printer__out {
+  position: absolute; z-index: 3; left: 0; top: 11px; width: 30px; height: 15px;
+  overflow: hidden; pointer-events: none;
+}
+.printbtn .printer__paper-out {
+  position: absolute; z-index: 1; left: 6px; bottom: 0;
+  width: 17px; height: 14px; border-radius: 0 0 2px 2px;
+  box-shadow: inset 0 0 0 2px var(--pr-border); background: var(--pr-bg);
+  transform: perspective(40px) rotateX(40deg) translateY(-8px) translateZ(4px);
+  animation: printerEject 1.2s ease infinite;
+  animation-play-state: var(--pr-state);
+}
+.printbtn .printer__paper-out::before {
+  content: ""; position: absolute; left: 3px; top: 4px; right: 3px; height: 2px;
+  border-radius: 1px; opacity: .5; background: var(--pr-border);
+  box-shadow: 0 3px 0 var(--pr-border);
+}
+
+@keyframes printerFeed { 50% { transform: perspective(40px) rotateX(4deg) translateY(7px); } }
+@keyframes printerEject { 50% { transform: perspective(40px) rotateX(28deg) translateY(-3px) translateZ(4px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .del-btn, .del-btn .del-svg, .del-btn::before { transition-duration: .001s; }
+  .printbtn .printer__paper, .printbtn .printer__paper-out { animation: none; }
+}
+
+/* ---- Salida animada de una línea del carrito (slide-out-left) ---- */
+.cart-item-leaving {
+  animation: slideOutLeft .2s ease forwards;
+  pointer-events: none;
+}
+@keyframes slideOutLeft {
+  to { transform: translateX(-110%); opacity: 0; }
+}
+
+/* ---- Micro-animaciones "wow" (entrada carrito, pulso del contador) ---- */
+@keyframes cartRowIn {
+  from { opacity: 0; transform: translateX(18px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes countPop {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.45); }
+  100% { transform: scale(1); }
+}
+.cartbtn__count.is-bump { animation: countPop .38s var(--ease-bounce); }
+
+@media (prefers-reduced-motion: reduce) {
+  .cart-item-leaving { animation-duration: .001s; }
+  .cartbtn__count.is-bump { animation: none; }
+}

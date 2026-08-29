@@ -26,6 +26,10 @@
     var head = "";
     if (sub === "branches") head = '<button class="btn btn--neon btn--sm" data-new-branch>+ ' + esc(I18N.t("btn.newBranch")) + '</button>';
     if (sub === "users") head = '<button class="btn btn--neon btn--sm" data-new-user>+ ' + esc(I18N.t("btn.newUser")) + '</button>';
+    if (sub === "inventory") head =
+      '<button class="btn btn--neon btn--sm" data-new-product>+ ' + esc(I18N.t("prodadm.new")) + '</button>' +
+      '<button class="btn btn--ghost btn--sm" data-import-pkm>+ ' + esc(I18N.t("pkm.add")) + '</button>' +
+      '<button class="btn btn--ghost btn--sm" data-import-figure>+ ' + esc(I18N.t("fig.add")) + '</button>';
     return V._shell({
       title: I18N.t("admin.title"),
       active: activeHref(sub),
@@ -98,7 +102,7 @@
           return '<div class="rowacts">' +
             '<button class="iconbtn" data-edit="' + r.id + '" title="' + esc(I18N.t("btn.edit")) + '">✎</button>' +
             '<button class="iconbtn" data-toggle="' + r.id + '" data-status="' + r.status + '" title="' + esc(I18N.t(r.status === "active" ? "btn.deactivate" : "btn.activate")) + '">' + (r.status === "active" ? "⏸" : "▶") + '</button>' +
-            '<button class="iconbtn iconbtn--danger" data-del="' + r.id + '" title="' + esc(I18N.t("btn.delete")) + '">🗑</button>' +
+            V._delButton({ attr: "data-del", value: r.id, name: r.name }) +
           '</div>';
         } }
       ], d.branches);
@@ -169,7 +173,7 @@
           return '<div class="rowacts">' +
             '<button class="iconbtn" data-edit="' + r.id + '">✎</button>' +
             (r.role !== "admin" ? '<button class="iconbtn" data-toggle="' + r.id + '" data-status="' + r.status + '">' + (r.status === "active" ? "⏸" : "▶") + '</button>' +
-            '<button class="iconbtn iconbtn--danger" data-del="' + r.id + '">🗑</button>' : "") +
+            V._delButton({ attr: "data-del", value: r.id, name: r.name }) : "") +
           '</div>';
         } }
       ], list);
@@ -225,28 +229,433 @@
     });
   }
 
-  /* ---------------- Inventario consolidado ---------------- */
+  /* ---------------- Inventario + gestión manual de productos ---------------- */
+  var PRV_LABEL = {
+    manga: "MANGA", figuras: "FIGURA", comics: "CÓMIC", tcg: "TCG",
+    coleccionables: "COLECCIONABLE", preventa: "PREVENTA"
+  };
+  var PRV_PREFIX = { manga: "MNG", figuras: "FIG", comics: "CMC", tcg: "TCG", coleccionables: "COL", preventa: "PRV" };
+  var EDITORIALS = ["Panini", "Marvel Comics", "DC Comics", "Image Comics", "Dark Horse Comics",
+    "IDW Publishing", "Vertigo", "Bandai", "Good Smile Company", "Kotobukiya", "Funko",
+    "Pokémon", "Konami", "Wizards of the Coast", "Otro"];
+
   function inventory(panel, root) {
     panel.innerHTML = V._loading();
-    Promise.all([API.get("branches"), API.get("inventory/alerts"), API.get("inventory/movements?limit=60")]).then(function (res) {
+    Promise.all([
+      API.get("branches"),
+      API.get("categories"),
+      API.get("products?status=all&limit=300"),
+      API.get("inventory/alerts")
+    ]).then(function (res) {
       var brs = res[0].branches;
-      var toolbar = '<div class="toolbar"><label class="muted mono" style="font-size:.75rem">' + esc(I18N.t("col.branch")) + '</label>' +
-        '<select class="select" data-branch-filter><option value="">' + esc(I18N.t("pos.all")) + '</option>' +
-        brs.map(function (b) { return '<option value="' + b.id + '">' + esc(b.name) + '</option>'; }).join("") + '</select></div>';
+      var cats = res[1].categories;
+      var prods = groupBySku(res[2].products, brs);
 
-      panel.innerHTML = toolbar +
-        '<h2 class="mono" style="font-size:.9rem;color:var(--faint);margin:.4rem 0 .6rem">' + esc(I18N.t("misc.alerts")) + '</h2>' +
-        '<div data-alerts>' + alertsTable(res[1].alerts) + '</div>' +
-        '<h2 class="mono" style="font-size:.9rem;color:var(--faint);margin:1.4rem 0 .6rem">' + esc(I18N.t("misc.movements")) + '</h2>' +
-        '<div data-moves>' + movesTable(res[2].movements) + '</div>';
+      panel.innerHTML =
+        '<div class="toolbar">' +
+          '<label class="muted mono" style="font-size:.75rem">' + esc(I18N.t("col.category")) + '</label>' +
+          '<select class="select" data-cat-filter><option value="">' + esc(I18N.t("pos.all")) + '</option>' +
+            cats.map(function (c) { return '<option value="' + esc(c.slug) + '">' + esc(I18N.pick({ es: c.name_es, en: c.name_en })) + '</option>'; }).join("") +
+          '</select>' +
+          '<span class="spacer"></span>' +
+          '<span class="mono muted" style="font-size:.72rem" data-prod-count>' + prods.length + ' ' + esc(I18N.t("nav.products").toLowerCase()) + '</span>' +
+        '</div>' +
+        '<div data-prod-table>' + productsTable(prods) + '</div>' +
+        '<h2 class="mono" style="font-size:.9rem;color:var(--faint);margin:1.6rem 0 .6rem">' + esc(I18N.t("misc.alerts")) + '</h2>' +
+        '<div data-alerts>' + alertsTable(res[3].alerts) + '</div>';
 
-      $("[data-branch-filter]", panel).addEventListener("change", function () {
-        var q = this.value ? "?branch_id=" + this.value : "";
-        var q2 = this.value ? "&branch_id=" + this.value : "";
-        API.get("inventory/alerts" + q).then(function (a) { $("[data-alerts]", panel).innerHTML = alertsTable(a.alerts); });
-        API.get("inventory/movements?limit=60" + q2).then(function (m) { $("[data-moves]", panel).innerHTML = movesTable(m.movements); });
+      var tableBox = $("[data-prod-table]", panel);
+
+      $("[data-cat-filter]", panel).addEventListener("change", function () {
+        var slug = this.value;
+        var list = slug ? prods.filter(function (p) { return p.category_slug === slug; }) : prods;
+        tableBox.innerHTML = productsTable(list);
+        $("[data-prod-count]", panel).textContent = list.length + " " + I18N.t("nav.products").toLowerCase();
       });
+
+      tableBox.addEventListener("click", function (e) {
+        var del = e.target.closest("[data-del-sku]");
+        if (!del) return;
+        var sku = del.getAttribute("data-del-sku");
+        var name = del.getAttribute("data-name") || sku;
+        UI.confirm(I18N.t("confirm.delete", { name: name }), function () {
+          API.del("products/sku/" + encodeURIComponent(sku)).then(function (r) {
+            var n = (r.deleted || []).length + (r.deactivated || []).length;
+            UI.toast(I18N.t("prodadm.deleted", { n: n }), "ok");
+            V._catalogChanged();
+            inventory(panel, root);
+          }).catch(apiToast);
+        }, { danger: true });
+      });
+
+      var impBtn = root.querySelector("[data-import-pkm]");
+      if (impBtn) impBtn.onclick = function () { pkmImportModal(brs, function () { inventory(panel, root); }); };
+      var figBtn = root.querySelector("[data-import-figure]");
+      if (figBtn) figBtn.onclick = function () { figureImportModal(brs, function () { inventory(panel, root); }); };
+      var newBtn = root.querySelector("[data-new-product]");
+      if (newBtn) newBtn.onclick = function () { newProductModal(brs, cats, function () { inventory(panel, root); }); };
     }).catch(function (err) { panel.innerHTML = V._error(err); });
+  }
+
+  /** Agrupa filas de producto (una por sucursal) por SKU. */
+  function groupBySku(rows, branches) {
+    var map = {};
+    (rows || []).forEach(function (r) {
+      var g = map[r.sku] || (map[r.sku] = {
+        sku: r.sku, name: r.name, price: r.price, image_url: r.image_url,
+        category_slug: r.category_slug || "", status: r.status,
+        total: 0, byBranch: {}
+      });
+      g.total += r.stock || 0;
+      g.byBranch[r.branch_id] = (g.byBranch[r.branch_id] || 0) + (r.stock || 0);
+      if (r.status === "active") g.status = "active";
+    });
+    return Object.keys(map).map(function (k) { return map[k]; })
+      .sort(function (a, b) { return a.name.localeCompare(b.name); });
+  }
+
+  function delButton(sku, name) {
+    return V._delButton({ attr: "data-del-sku", value: sku, name: name });
+  }
+
+  function productsTable(list) {
+    if (!list.length) return '<p class="muted">' + esc(I18N.t("empty.none")) + '</p>';
+    return V._table([
+      { key: "name", label: I18N.t("col.product"), render: function (r) {
+        return (r.image_url ? '<img src="' + esc(r.image_url) + '" alt="" style="width:34px;height:44px;object-fit:cover;border-radius:6px;vertical-align:middle;margin-right:.5rem" onerror="this.style.display=\'none\'">' : "") +
+          '<b>' + esc(r.name) + '</b><br><span class="mono muted" style="font-size:.7rem">' + esc(r.sku) + '</span>';
+      } },
+      { key: "category_slug", label: I18N.t("col.category"), render: function (r) {
+        return '<span class="badge">' + esc(PRV_LABEL[r.category_slug] || r.category_slug || "—") + '</span>';
+      } },
+      { key: "price", label: I18N.t("col.price"), cls: "num right", render: function (r) { return UI.money(r.price); } },
+      { key: "total", label: I18N.t("col.stock"), cls: "num right", render: function (r) {
+        var cls = r.total === 0 ? "badge--danger" : (r.total <= 6 ? "badge--warn" : "badge--ok");
+        return '<span class="badge ' + cls + '">' + r.total + '</span>';
+      } },
+      { key: "sku", label: I18N.t("col.actions"), render: function (r) {
+        return delButton(r.sku, r.name);
+      } }
+    ], list);
+  }
+
+  /* ---- Alta de producto — modal ÚNICO compartido por Admin y Gerente ---- */
+  function newProductModal(branches, cats, done) {
+    var c = document.createElement("form");
+    var catOpts = cats.map(function (x) {
+      return '<option value="' + esc(x.slug) + '">' + esc(I18N.pick({ es: x.name_es, en: x.name_en })) + '</option>';
+    }).join("");
+    c.innerHTML =
+      row("prodadm.name", '<input class="input" name="name" required maxlength="180">') +
+      '<div class="grid-2">' +
+        row("prodadm.category", '<select class="select" name="category_slug" required>' + catOpts + '</select>') +
+        row("prodadm.price", '<input class="input" type="number" name="price" min="0" step="0.01" required>') +
+      '</div>' +
+      '<div class="grid-2">' +
+        row("prodadm.maker", '<input class="input" name="manufacturer" maxlength="120" placeholder="Good Smile Company, Panini, DC…" list="prodadm-makers">' +
+          '<datalist id="prodadm-makers">' + EDITORIALS.map(function (e) { return '<option value="' + esc(e) + '">'; }).join("") + '</datalist>') +
+        row("prodadm.scale", '<input class="input" name="scale" maxlength="60" placeholder="1/7, Nendoroid, POP UP PARADE…">') +
+      '</div>' +
+      row("prodadm.image", '<input class="input" name="image_url" type="text" ' +
+        'placeholder="https://… (varias URLs separadas por coma = galería)">') +
+      '<p class="field__label mono" style="font-size:.7rem;color:var(--faint);text-transform:uppercase;letter-spacing:.1em;margin:.4rem 0 .5rem">' +
+        esc(I18N.t("prodadm.stockByBranch")) + '</p>' +
+      '<div class="pkm-branches">' + branches.map(function (b) {
+        return '<label class="pkm-branch"><span>' + esc(b.name) + '</span>' +
+          '<input class="input" type="number" min="0" step="1" value="0" data-branch="' + b.id + '"></label>';
+      }).join("") + '</div>' +
+      formButtons();
+
+    var m = UI.modal({ title: I18N.t("prodadm.new"), content: c, wide: true });
+    bindForm(c, m, function (payload) {
+      var stock = {}, any = false;
+      c.querySelectorAll("[data-branch]").forEach(function (inp) {
+        var n = Math.max(0, parseInt(inp.value, 10) || 0);
+        if (n > 0) { stock[inp.getAttribute("data-branch")] = n; any = true; }
+      });
+      if (!any) { return Promise.reject(new Error(I18N.t("prodadm.needStock"))); }
+
+      var slug = payload.category_slug;
+      var skuSlug = payload.name.toUpperCase().replace(/[^A-Z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 22);
+      var maker = (payload.manufacturer || "").trim();
+      var scale = (payload.scale || "").trim();
+      var images = (payload.image_url || "").split(",")
+        .map(function (s) { return s.trim(); }).filter(Boolean);
+      var draft = {
+        source: "manual",
+        sku: (PRV_PREFIX[slug] || "GEN") + "-" + skuSlug,
+        name: payload.name.trim(),
+        category_slug: slug,
+        price: parseFloat(payload.price) || 0,
+        image_url: images.join(","),
+        manufacturer: maker,
+        scale: scale,
+        description: [maker, scale, "Alta manual"].filter(Boolean).join(" · "),
+        stock_by_branch: stock
+      };
+      return API.post("products/import", draft).then(function () {
+        UI.toast(I18N.t("toast.created"), "ok");
+        UI.closeModal();
+        V._catalogChanged();
+        done();
+      });
+    });
+  }
+
+  /* ---------------- Importar carta Pokémon TCG ---------------- */
+  function pkmImportModal(branchesList, done) {
+    if (!window.PokemonAPI) { UI.toast("Servicio Pokémon TCG no disponible.", "error"); return; }
+
+    var wrap = document.createElement("div");
+    wrap.className = "pkm-import";
+    wrap.innerHTML =
+      '<div class="pkm-search" data-pkm-search>' +
+        '<input class="input" data-pkm-q placeholder="' + esc(I18N.t("pkm.searchPh")) + '" autocomplete="off">' +
+        '<select class="select" data-pkm-set><option value="">' + esc(I18N.t("pkm.allSets")) + '</option></select>' +
+      '</div>' +
+      '<div class="pkm-results" data-pkm-results><p class="muted">' + esc(I18N.t("pkm.hint")) + '</p></div>' +
+      '<div data-pkm-form hidden></div>';
+    UI.modal({ title: I18N.t("pkm.title"), content: wrap, wide: true });
+
+    var qEl = wrap.querySelector("[data-pkm-q]");
+    var setEl = wrap.querySelector("[data-pkm-set]");
+    var searchEl = wrap.querySelector("[data-pkm-search]");
+    var resultsEl = wrap.querySelector("[data-pkm-results]");
+    var formEl = wrap.querySelector("[data-pkm-form]");
+    var lastCards = [];
+
+    PokemonAPI.listSets().then(function (sets) {
+      setEl.insertAdjacentHTML("beforeend", sets.slice(0, 300).map(function (s) {
+        return '<option value="' + esc(s.id) + '">' + esc(s.name + (s.series ? " — " + s.series : "")) + '</option>';
+      }).join(""));
+    });
+
+    var run = UI.debounce(function () {
+      var name = qEl.value.trim();
+      if (name.length < 2 && !setEl.value) {
+        resultsEl.innerHTML = '<p class="muted">' + esc(I18N.t("pkm.hint")) + '</p>';
+        return;
+      }
+      resultsEl.innerHTML = V._loading();
+      PokemonAPI.searchCards({ name: name, setId: setEl.value, pageSize: 24 }).then(function (res) {
+        lastCards = res.cards;
+        if (!res.cards.length) {
+          resultsEl.innerHTML = '<div class="state"><div class="state__icon">🔍</div><p>' + esc(I18N.t("empty.none")) + '</p></div>';
+          return;
+        }
+        resultsEl.innerHTML = '<div class="pkm-grid">' + res.cards.map(cardCell).join("") + '</div>' +
+          '<p class="muted mono" style="font-size:.72rem;margin-top:.6rem">' + res.total + ' ' + esc(I18N.t("pkm.results")) + '</p>';
+      }).catch(function (e) {
+        resultsEl.innerHTML = '<p class="muted">' + esc((e && e.message) || "Error") + '</p>';
+      });
+    }, 320);
+    qEl.addEventListener("input", run);
+    setEl.addEventListener("change", run);
+
+    resultsEl.addEventListener("click", function (e) {
+      var b = e.target.closest("[data-pick]");
+      if (!b) return;
+      var card = lastCards.find(function (c) { return c.id === b.getAttribute("data-pick"); });
+      if (card) showForm(card);
+    });
+
+    function cardCell(c) {
+      var price = PokemonAPI.marketPrice(c);
+      return '<article class="pkm-card">' +
+        '<img class="pkm-card__img" src="' + esc(c.imageSmall) + '" alt="' + esc(c.name) + '" loading="lazy">' +
+        '<div class="pkm-card__body">' +
+          '<h4 class="pkm-card__name">' + esc(c.name) + '</h4>' +
+          '<p class="pkm-card__meta">' + esc([c.supertype].concat(c.types || []).filter(Boolean).join(" · ") || "—") + '</p>' +
+          (c.rarity ? '<span class="pkm-rarity">' + esc(c.rarity) + '</span>' : '<span></span>') +
+          '<p class="pkm-card__price">' + (price != null ? UI.money(price) : "—") + '</p>' +
+          '<button class="btn btn--neon btn--sm" data-pick="' + esc(c.id) + '">' + esc(I18N.t("pkm.select")) + '</button>' +
+        '</div>' +
+      '</article>';
+    }
+
+    function showForm(card) {
+      var price = PokemonAPI.marketPrice(card) || 0;
+      searchEl.hidden = true;
+      resultsEl.hidden = true;
+      formEl.hidden = false;
+      formEl.innerHTML =
+        '<button class="btn btn--ghost btn--sm" data-pkm-back>← ' + esc(I18N.t("pkm.back")) + '</button>' +
+        '<div class="pkm-selected">' +
+          '<img src="' + esc(card.image || card.imageSmall) + '" alt="' + esc(card.name) + '">' +
+          '<div class="pkm-selected__info">' +
+            '<h3>' + esc(card.name) + '</h3>' +
+            '<p class="muted">' + esc([card.set && card.set.name, card.number && ("#" + card.number), card.rarity].filter(Boolean).join(" · ")) + '</p>' +
+            '<div class="field"><label>' + esc(I18N.t("pkm.price")) + ' (MXN)</label>' +
+              '<input class="input" type="number" min="0" step="0.01" data-pkm-price value="' + price.toFixed(2) + '"></div>' +
+            '<div class="field"><label>SKU</label><input class="input" data-pkm-sku value="' + esc(PokemonAPI.skuFor(card)) + '"></div>' +
+          '</div>' +
+        '</div>' +
+        '<p class="pkm-form__h">' + esc(I18N.t("pkm.stockByBranch")) + '</p>' +
+        '<div class="pkm-branches">' + branchesList.map(function (b) {
+          return '<label class="pkm-branch"><span>' + esc(b.name) + '</span>' +
+            '<input class="input" type="number" min="0" step="1" value="0" data-branch="' + b.id + '"></label>';
+        }).join("") + '</div>' +
+        '<div style="display:flex;gap:.6rem;justify-content:flex-end;margin-top:1rem">' +
+          '<button class="btn btn--ghost" data-pkm-cancel>' + esc(I18N.t("btn.cancel")) + '</button>' +
+          '<button class="btn btn--neon" data-pkm-save>' + esc(I18N.t("pkm.save")) + '</button>' +
+        '</div>';
+
+      function backToList() {
+        formEl.hidden = true; formEl.innerHTML = "";
+        resultsEl.hidden = false; searchEl.hidden = false;
+      }
+      formEl.querySelector("[data-pkm-back]").onclick = backToList;
+      formEl.querySelector("[data-pkm-cancel]").onclick = backToList;
+
+      formEl.querySelector("[data-pkm-save]").onclick = function () {
+        var stock = {}, any = false;
+        formEl.querySelectorAll("[data-branch]").forEach(function (inp) {
+          var n = Math.max(0, parseInt(inp.value, 10) || 0);
+          if (n > 0) { stock[inp.getAttribute("data-branch")] = n; any = true; }
+        });
+        if (!any) { UI.toast(I18N.t("pkm.needStock"), "warn"); return; }
+
+        var draft = PokemonAPI.toProductDraft(card, stock);
+        draft.price = parseFloat(formEl.querySelector("[data-pkm-price]").value) || draft.price;
+        draft.sku = (formEl.querySelector("[data-pkm-sku]").value || "").trim().toUpperCase() || draft.sku;
+
+        var btn = formEl.querySelector("[data-pkm-save]");
+        btn.classList.add("is-loading");
+        API.post("products/import", draft).then(function (r) {
+          var n = (r.created ? r.created.length : 0) + (r.updated ? r.updated.length : 0);
+          UI.toast(I18N.t("pkm.saved", { n: n }), "ok");
+          UI.closeModal();
+          V._catalogChanged();
+          done();
+        }).catch(function (err) {
+          btn.classList.remove("is-loading");
+          apiToast(err);
+        });
+      };
+    }
+  }
+
+  /* ---------------- Importar / alta rápida de FIGURA ---------------- */
+  function figureImportModal(branchesList, done) {
+    if (!window.FigureAPI) { UI.toast(I18N.t("fig.unavailable"), "error"); return; }
+
+    var wrap = document.createElement("div");
+    wrap.className = "pkm-import";
+    wrap.innerHTML =
+      '<div class="pkm-search" data-fig-search>' +
+        '<input class="input" data-fig-q placeholder="' + esc(I18N.t("fig.searchPh")) + '" autocomplete="off">' +
+      '</div>' +
+      '<div class="pkm-results" data-fig-results><p class="muted">' + esc(I18N.t("fig.hint")) + '</p></div>' +
+      '<div data-fig-form hidden></div>';
+    UI.modal({ title: I18N.t("fig.title"), content: wrap, wide: true });
+
+    var qEl = wrap.querySelector("[data-fig-q]");
+    var searchEl = wrap.querySelector("[data-fig-search]");
+    var resultsEl = wrap.querySelector("[data-fig-results]");
+    var formEl = wrap.querySelector("[data-fig-form]");
+    var lastItems = [];
+
+    var run = UI.debounce(function () {
+      var name = qEl.value.trim();
+      if (name.length < 2) { resultsEl.innerHTML = '<p class="muted">' + esc(I18N.t("fig.hint")) + '</p>'; return; }
+      resultsEl.innerHTML = V._loading();
+      FigureAPI.search({ name: name }).then(function (res) {
+        lastItems = res.items;
+        if (!res.items.length) {
+          resultsEl.innerHTML = '<div class="state"><div class="state__icon">🔍</div><p>' + esc(I18N.t("empty.none")) + '</p></div>';
+          return;
+        }
+        var srcNote = res.source === "amiami" ? "AmiAmi" : I18N.t("fig.localSource");
+        resultsEl.innerHTML = '<div class="pkm-grid">' + res.items.map(cell).join("") + '</div>' +
+          '<p class="muted mono" style="font-size:.72rem;margin-top:.6rem">' + res.items.length + ' ' + esc(I18N.t("fig.results")) + ' · ' + esc(srcNote) + '</p>';
+      }).catch(function (e) {
+        resultsEl.innerHTML = '<p class="muted">' + esc((e && e.message) || "Error") + '</p>';
+      });
+    }, 340);
+    qEl.addEventListener("input", run);
+
+    resultsEl.addEventListener("click", function (e) {
+      var b = e.target.closest("[data-pick]");
+      if (!b) return;
+      var f = lastItems[+b.getAttribute("data-pick")];
+      if (f) showForm(f);
+    });
+
+    function cell(f, i) {
+      var price = FigureAPI.suggestedPriceMXN(f);
+      return '<article class="pkm-card">' +
+        '<img class="pkm-card__img" src="' + esc(f.image_url) + '" alt="' + esc(f.name) + '" loading="lazy" ' +
+          'onerror="this.onerror=null;this.src=\'assets/images/figures/placeholder.svg\'">' +
+        '<div class="pkm-card__body">' +
+          '<h4 class="pkm-card__name">' + esc(f.name) + '</h4>' +
+          '<p class="pkm-card__meta">' + esc([f.manufacturer, f.scale].filter(Boolean).join(" · ") || "—") + '</p>' +
+          '<p class="pkm-card__price">' + (price != null ? UI.money(price) : "—") + '</p>' +
+          '<button class="btn btn--neon btn--sm" data-pick="' + i + '">' + esc(I18N.t("fig.select")) + '</button>' +
+        '</div>' +
+      '</article>';
+    }
+
+    function showForm(fig) {
+      var price = FigureAPI.suggestedPriceMXN(fig) || 0;
+      searchEl.hidden = true; resultsEl.hidden = true; formEl.hidden = false;
+      formEl.innerHTML =
+        '<button class="btn btn--ghost btn--sm" data-fig-back>← ' + esc(I18N.t("fig.back")) + '</button>' +
+        '<div class="pkm-selected">' +
+          '<img src="' + esc(fig.image_url) + '" alt="' + esc(fig.name) + '" ' +
+            'onerror="this.onerror=null;this.src=\'assets/images/figures/placeholder.svg\'">' +
+          '<div class="pkm-selected__info">' +
+            '<h3>' + esc(fig.name) + '</h3>' +
+            '<div class="field"><label>' + esc(I18N.t("prod.manufacturer")) + '</label>' +
+              '<input class="input" data-fig-maker value="' + esc(fig.manufacturer) + '"></div>' +
+            '<div class="field"><label>' + esc(I18N.t("prod.scale")) + '</label>' +
+              '<input class="input" data-fig-scale value="' + esc(fig.scale) + '"></div>' +
+            '<div class="field"><label>' + esc(I18N.t("fig.price")) + ' (MXN)</label>' +
+              '<input class="input" type="number" min="0" step="0.01" data-fig-price value="' + price.toFixed(2) + '"></div>' +
+            '<div class="field"><label>SKU</label><input class="input" data-fig-sku value="' + esc(FigureAPI.skuFor(fig)) + '"></div>' +
+          '</div>' +
+        '</div>' +
+        '<p class="pkm-form__h">' + esc(I18N.t("fig.stockByBranch")) + '</p>' +
+        '<div class="pkm-branches">' + branchesList.map(function (b) {
+          return '<label class="pkm-branch"><span>' + esc(b.name) + '</span>' +
+            '<input class="input" type="number" min="0" step="1" value="0" data-branch="' + b.id + '"></label>';
+        }).join("") + '</div>' +
+        '<div style="display:flex;gap:.6rem;justify-content:flex-end;margin-top:1rem">' +
+          '<button class="btn btn--ghost" data-fig-cancel>' + esc(I18N.t("btn.cancel")) + '</button>' +
+          '<button class="btn btn--neon" data-fig-save>' + esc(I18N.t("fig.save")) + '</button>' +
+        '</div>';
+
+      function back() { formEl.hidden = true; formEl.innerHTML = ""; resultsEl.hidden = false; searchEl.hidden = false; }
+      formEl.querySelector("[data-fig-back]").onclick = back;
+      formEl.querySelector("[data-fig-cancel]").onclick = back;
+
+      formEl.querySelector("[data-fig-save]").onclick = function () {
+        var stock = {}, any = false;
+        formEl.querySelectorAll("[data-branch]").forEach(function (inp) {
+          var n = Math.max(0, parseInt(inp.value, 10) || 0);
+          if (n > 0) { stock[inp.getAttribute("data-branch")] = n; any = true; }
+        });
+        if (!any) { UI.toast(I18N.t("fig.needStock"), "warn"); return; }
+
+        fig.manufacturer = (formEl.querySelector("[data-fig-maker]").value || "").trim() || fig.manufacturer;
+        fig.scale = (formEl.querySelector("[data-fig-scale]").value || "").trim() || fig.scale;
+        var draft = FigureAPI.toProductDraft(fig, stock);
+        draft.price = parseFloat(formEl.querySelector("[data-fig-price]").value) || draft.price;
+        draft.sku = (formEl.querySelector("[data-fig-sku]").value || "").trim().toUpperCase() || draft.sku;
+
+        var btn = formEl.querySelector("[data-fig-save]");
+        btn.classList.add("is-loading");
+        API.post("products/import", draft).then(function (r) {
+          var n = (r.created ? r.created.length : 0) + (r.updated ? r.updated.length : 0);
+          UI.toast(I18N.t("fig.saved", { n: n }), "ok");
+          UI.closeModal();
+          V._catalogChanged();
+          done();
+        }).catch(function (err) {
+          btn.classList.remove("is-loading");
+          apiToast(err);
+        });
+      };
+    }
   }
 
   function alertsTable(rows) {
@@ -307,4 +716,5 @@
   }
 
   V.admin = { render: render, mount: mount, roles: ["admin"] };
+  V.productModal = newProductModal;   // modal de alta compartido (usado también por Gerente)
 })();

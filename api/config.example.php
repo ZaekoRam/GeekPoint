@@ -37,6 +37,12 @@ return [
         'default_rate' => 0.16, // IVA México
     ],
 
+    // ---- Integraciones externas (opcionales) ----
+    'integrations' => [
+        // https://dev.pokemontcg.io/  — deja vacío para usar el límite público.
+        'pokemontcg_key' => '',
+    ],
+
     // ---- Entorno ----
     // 'dev' muestra errores detallados; 'prod' los oculta.
     'env' => 'dev',

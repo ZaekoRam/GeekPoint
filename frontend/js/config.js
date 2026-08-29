@@ -33,5 +33,7 @@
     buildDate: "2026-08-26",
     currency: "MXN",
     locale: { es: "es-MX", en: "en-US" }
+    // Pokémon TCG se consume vía el proxy PHP /api/pokemon/* ; la API key
+    // (opcional) se configura en api/config.php -> integrations.pokemontcg_key
   };
 })();

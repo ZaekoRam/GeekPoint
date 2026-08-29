@@ -13,6 +13,38 @@
 
   var EMOJI = { manga: "📗", figuras: "🗿", tcg: "🃏", comics: "💥", coleccionables: "🎁" };
 
+  /* Botón "Imprimir" con la impresora animada (.printer). Conserva onclick=window.print(). */
+  function printBtn() {
+    return '<button type="button" class="btn btn--ghost btn--sm printbtn" data-print>' +
+      '<span class="printer" aria-hidden="true">' +
+        '<span class="printer__paper"><svg viewBox="0 0 8 8" class="printer__svg" fill="none">' +
+          '<path d="M6.28951 1.3867C6.91292 0.809799 7.00842 0 7.00842 0C7.00842 0 6.45246 0.602112 5.54326 0.602112C4.82505 0.602112 4.27655 0.596787 4.07703 0.595012L3.99644 0.594302C1.94904 0.594302 0.290039 2.25224 0.290039 4.29715C0.290039 6.34206 1.94975 8 3.99644 8C6.04312 8 7.70284 6.34206 7.70284 4.29715C7.70347 3.73662 7.57647 3.18331 7.33147 2.67916C7.08647 2.17502 6.7299 1.73327 6.2888 1.38741L6.28951 1.3867ZM3.99679 6.532C2.76133 6.532 1.75875 5.53084 1.75875 4.29609C1.75875 3.06133 2.76097 2.06018 3.99679 2.06018C4.06423 2.06014 4.13163 2.06311 4.1988 2.06905L4.2414 2.07367C4.25028 2.07438 4.26057 2.0758 4.27406 2.07651C4.81533 2.1436 5.31342 2.40616 5.67465 2.81479C6.03589 3.22342 6.23536 3.74997 6.23554 4.29538C6.23554 5.53084 5.23439 6.532 3.9975 6.532H3.99679Z"/>' +
+          '<path d="M6.756 1.82386C6.19293 2.09 5.58359 2.24445 4.96173 2.27864C4.74513 2.17453 4.51296 2.10653 4.27441 2.07734C4.4718 2.09225 5.16906 2.07947 5.90892 1.66374C6.04642 1.58672 6.1743 1.49364 6.28986 1.38647C6.45751 1.51849 6.61346 1.6647 6.756 1.8235V1.82386Z"/>' +
+        '</svg></span>' +
+        '<span class="printer__dot"></span>' +
+        '<span class="printer__out"><span class="printer__paper-out"></span></span>' +
+      '</span>' +
+      '<span>' + esc(I18N.t("btn.print")) + '</span>' +
+    '</button>';
+  }
+
+  /* Selector de tamaño de papel para la impresión del ticket (térmica / A4). */
+  function printOptsHTML() {
+    var m = (window.UI && UI.printMode && UI.printMode()) || "80";
+    function opt(v, label) { return '<option value="' + v + '"' + (m === v ? ' selected' : '') + '>' + label + '</option>'; }
+    return '<label class="ticket-print-opts">' +
+      '<span>' + esc(I18N.t("ticket.paper") || "Papel") + '</span>' +
+      '<select class="select select--sm" data-printmode>' +
+        opt("80", "Térmica 80 mm") + opt("58", "Térmica 58 mm") + opt("a4", "Hoja A4") +
+      '</select></label>';
+  }
+  function bindPrintOpts(scope) {
+    var sel = scope.querySelector("[data-printmode]");
+    if (sel && window.UI && UI.setPrintMode) {
+      sel.addEventListener("change", function () { UI.setPrintMode(sel.value); });
+    }
+  }
+
   function render() {
     return (
       '<div class="pos-view">' +
@@ -20,6 +52,7 @@
           '<h1>' + esc(I18N.t("pos.title")) + '</h1>' +
           '<span class="spacer"></span>' +
           '<span data-branch-slot></span>' +
+          '<button class="btn btn--ghost btn--sm" data-resv-open>🎫 ' + esc(I18N.t("resv.pos")) + '</button>' +
           '<a class="btn btn--ghost btn--sm" href="' + esc(STORE.homeRoute()) + '" data-link>← ' + esc(I18N.t("nav.home")) + '</a>' +
           '<button class="btn btn--ghost btn--sm" data-logout>' + esc(I18N.t("cta.logout")) + '</button>' +
         '</div>' +
@@ -61,6 +94,7 @@
     $("[data-q]", root).addEventListener("input", onQ);
 
     root.addEventListener("click", function (e) {
+      if (e.target.closest("[data-resv-open]")) { resvModal(root); return; }
       var addBtn = e.target.closest("[data-add]");
       if (addBtn) {
         var p = ctx.products.find(function (x) { return x.id == addBtn.getAttribute("data-add"); });
@@ -69,7 +103,18 @@
       }
       var inc = e.target.closest("[data-inc]"); if (inc) return STORE.cartInc(+inc.getAttribute("data-inc"));
       var dec = e.target.closest("[data-dec]"); if (dec) return STORE.cartDec(+dec.getAttribute("data-dec"));
-      var rm = e.target.closest("[data-rm]"); if (rm) return STORE.cartRemove(+rm.getAttribute("data-rm"));
+      var rm = e.target.closest("[data-rm]");
+      if (rm) {
+        var id = +rm.getAttribute("data-rm");
+        var row = rm.closest(".citem");
+        if (row && !UI.reduced) {
+          row.classList.add("cart-item-leaving");
+          setTimeout(function () { STORE.cartRemove(id); }, 200);
+        } else {
+          STORE.cartRemove(id);
+        }
+        return;
+      }
       var clr = e.target.closest("[data-clear]"); if (clr) return STORE.cartClear();
       var pm = e.target.closest("[data-method]"); if (pm) { ctx.method = pm.getAttribute("data-method"); renderCart(root); return; }
       var charge = e.target.closest("[data-charge]"); if (charge) return checkout(root);
@@ -293,11 +338,154 @@
     var wrap = document.createElement("div");
     wrap.innerHTML = ticketHTML(s) +
       '<div class="ticket__actions">' +
-        '<button class="btn btn--ghost btn--sm" onclick="window.print()">' + esc(I18N.t("btn.print")) + '</button>' +
+        printOptsHTML() +
+        printBtn() +
         '<a class="btn btn--neon btn--sm" href="#/ticket/' + s.id + '" data-link>' + esc(I18N.t("btn.viewTicket")) + '</a>' +
       '</div>';
     UI.modal({ content: wrap });
+    bindPrintOpts(wrap);
     wrap.querySelector("[data-link]").addEventListener("click", UI.closeModal);
+    // "Imprimir": lanza la impresión y vuelve al POS en un solo paso.
+    wrap.querySelector("[data-print]").addEventListener("click", function () {
+      window.print();
+      UI.closeModal();
+    });
+  }
+
+  /* ---------------- Apartados (cobro de reservas de la tienda) ---------------- */
+  function skuFromRef(ref) {
+    return String(ref || "").replace(/^local-(tcg|comics|manga|figuras|coleccionables|preventa)-/, "").toUpperCase();
+  }
+
+  function resvModal(root) {
+    var wrap = document.createElement("div");
+    wrap.className = "resv-pos";
+    wrap.innerHTML =
+      '<div class="resv-lookup">' +
+        '<input class="input" data-resv-folio placeholder="' + esc(I18N.t("resv.lookup")) + '" autocomplete="off">' +
+        '<button class="btn btn--neon btn--sm" data-resv-find>' + esc(I18N.t("resv.searchBtn")) + '</button>' +
+      '</div>' +
+      '<p class="mono" style="font-size:.68rem;color:var(--faint);letter-spacing:.12em;text-transform:uppercase;margin-bottom:.5rem">' + esc(I18N.t("resv.pending")) + '</p>' +
+      '<div class="resv-list" data-resv-list>' + V._loading() + '</div>' +
+      '<div data-resv-detail></div>';
+    UI.modal({ title: I18N.t("resv.pos"), content: wrap, wide: true });
+
+    var listEl = wrap.querySelector("[data-resv-list]");
+    var detailEl = wrap.querySelector("[data-resv-detail]");
+    var folioEl = wrap.querySelector("[data-resv-folio]");
+
+    function rowHTML(r) {
+      var prods = r.items_summary || (r.items || []).map(function (it) { return it.quantity + "× " + it.title; }).join(" · ");
+      return '<div class="resv-item" data-folio="' + esc(r.folio) + '">' +
+        '<div class="resv-item__main">' +
+          '<div class="resv-item__folio">' + esc(r.folio) + '</div>' +
+          '<div class="resv-item__meta">' + esc(r.customer_name) +
+            (r.customer_phone ? ' · ☎ ' + esc(r.customer_phone) : '') +
+            (r.branch_name ? ' · ' + esc(r.branch_name) : '') + '</div>' +
+          '<div class="resv-item__prods">' + esc(prods || '—') + '</div>' +
+        '</div>' +
+        '<div class="resv-item__side">' +
+          '<div class="resv-item__total mono">' + UI.money(r.total) + '</div>' +
+          '<button class="btn btn--neon btn--sm" data-resv-charge="' + esc(r.folio) + '">' + esc(I18N.t("resv.chargeAtRegister")) + '</button>' +
+          '<button class="btn btn--ghost btn--sm" data-resv-cancel="' + esc(r.folio) + '">' + esc(I18N.t("btn.cancel")) + '</button>' +
+        '</div>' +
+      '</div>';
+    }
+
+    function loadList() {
+      listEl.innerHTML = V._loading();
+      API.get("reservations?status=pendiente" + (ctx.branchId ? "&branch_id=" + ctx.branchId : "")).then(function (d) {
+        var rs = d.reservations || [];
+        listEl.innerHTML = rs.length ? rs.map(rowHTML).join("")
+          : '<p class="muted">' + esc(I18N.t("resv.none")) + '</p>';
+      }).catch(function (e) { listEl.innerHTML = V._error(e); });
+    }
+    loadList();
+
+    function showDetail(r) {
+      var pending = r.status === "pendiente";
+      detailEl.innerHTML =
+        '<div class="card" style="margin-top:1rem;padding:1rem">' +
+          '<h3 style="font-size:1rem">' + esc(r.folio) + ' · <span class="badge">' + esc(I18N.t("resv.status." + r.status)) + '</span></h3>' +
+          '<p class="muted" style="font-size:.82rem;margin:.3rem 0">' + esc(I18N.t("resv.customer")) + ': ' + esc(r.customer_name) +
+            (r.customer_phone ? ' · ' + esc(r.customer_phone) : '') + (r.customer_email ? ' · ' + esc(r.customer_email) : '') +
+            (r.branch_name ? ' · ' + esc(r.branch_name) : '') + '</p>' +
+          '<div class="resv-detail__items">' + (r.items || []).map(function (it) {
+            return '<div style="display:flex;justify-content:space-between;font-size:.84rem;gap:.8rem">' +
+              '<span>' + it.quantity + '× ' + esc(it.title) + '</span><span class="mono">' + UI.money(it.line_total) + '</span></div>';
+          }).join("") + '</div>' +
+          '<div style="display:flex;justify-content:space-between;margin-top:.6rem;font-weight:700">' +
+            '<span>' + esc(I18N.t("pos.total")) + '</span><span class="mono">' + UI.money(r.total) + '</span></div>' +
+          (pending ? '<div style="display:flex;gap:.6rem;margin-top:1rem;flex-wrap:wrap">' +
+            '<button class="btn btn--ghost btn--sm" data-resv-cancel="' + esc(r.folio) + '">' + esc(I18N.t("resv.cancelBtn")) + '</button>' +
+            '<button class="btn btn--neon" data-resv-charge="' + esc(r.folio) + '">' + esc(I18N.t("resv.charge")) + '</button>' +
+          '</div>' : '') +
+        '</div>';
+    }
+
+    function fetchFolio(folio) {
+      detailEl.innerHTML = V._loading();
+      API.get("reservations/" + encodeURIComponent(folio)).then(showDetail).catch(function () {
+        detailEl.innerHTML = '<p class="muted" style="margin-top:1rem">' + esc(I18N.t("resv.notfound")) + '</p>';
+      });
+    }
+
+    function chargeReservation(folio) {
+      var btn = wrap.querySelector('[data-resv-charge="' + folio + '"]');
+      if (btn) btn.classList.add("is-loading");
+      API.get("reservations/" + encodeURIComponent(folio)).then(function (r) {
+        var wanted = (r.items || []).map(function (it) { return { sku: skuFromRef(it.product_ref), qty: it.quantity }; })
+          .filter(function (x) { return x.sku; });
+        return Promise.all(wanted.map(function (x) {
+          return API.get("products?branch_id=" + ctx.branchId + "&q=" + encodeURIComponent(x.sku) + "&limit=5")
+            .then(function (d) {
+              var p = (d.products || []).find(function (pp) { return pp.sku === x.sku; });
+              if (!p) return 0;
+              for (var i = 0; i < x.qty; i++) STORE.cartAdd(mapProduct(p));
+              return 1;
+            }).catch(function () { return 0; });
+        })).then(function (hits) {
+          var n = hits.reduce(function (a, b) { return a + b; }, 0);
+          return API.patch("reservations/" + encodeURIComponent(folio) + "/status", { status: "cobrada" }).then(function () {
+            UI.toast(I18N.t("resv.cobradaMsg") + " · " + I18N.t("resv.loaded", { n: n }), "ok");
+            UI.closeModal();
+            loadProducts(root);
+          });
+        });
+      }).catch(function (err) {
+        if (btn) btn.classList.remove("is-loading");
+        UI.toast((err && err.message) || I18N.t("toast.error"), "error");
+      });
+    }
+
+    function cancelReservation(folio) {
+      if (!window.confirm(I18N.t("resv.confirmCancel", { folio: folio }))) return;
+      API.patch("reservations/" + encodeURIComponent(folio) + "/status", { status: "cancelada" }).then(function () {
+        UI.toast(I18N.t("resv.canceladaMsg"), "ok");
+        detailEl.innerHTML = "";
+        loadList();
+      }).catch(function (err) { UI.toast((err && err.message) || I18N.t("toast.error"), "error"); });
+    }
+
+    wrap.addEventListener("click", function (e) {
+      // Botones primero: no deben disparar el detalle de la fila.
+      var chg = e.target.closest("[data-resv-charge]");
+      if (chg) return chargeReservation(chg.getAttribute("data-resv-charge"));
+      var can = e.target.closest("[data-resv-cancel]");
+      if (can) return cancelReservation(can.getAttribute("data-resv-cancel"));
+      if (e.target.closest("[data-resv-find]")) {
+        var f = folioEl.value.trim().toUpperCase();
+        return f && fetchFolio(f);
+      }
+      var itm = e.target.closest("[data-folio]");
+      if (itm) return fetchFolio(itm.getAttribute("data-folio"));
+    });
+    folioEl.addEventListener("keydown", function (e) {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      var f = folioEl.value.trim().toUpperCase();
+      if (f) fetchFolio(f);
+    });
   }
 
   // Vista ruta #/ticket/:id
@@ -309,9 +497,13 @@
       API.get("sales/" + params.id).then(function (d) {
         host.innerHTML = ticketHTML(d.sale) +
           '<div class="ticket__actions">' +
-            '<button class="btn btn--ghost btn--sm" onclick="window.print()">' + esc(I18N.t("btn.print")) + '</button>' +
+            printOptsHTML() +
+            printBtn() +
             '<a class="btn btn--neon btn--sm" href="#/pos" data-link>' + esc(I18N.t("ticket.back")) + '</a>' +
           '</div>';
+        bindPrintOpts(host);
+        var pb = host.querySelector("[data-print]");
+        if (pb) pb.addEventListener("click", function () { window.print(); });
       }).catch(function (err) { host.innerHTML = V._error(err); });
     }
   };
