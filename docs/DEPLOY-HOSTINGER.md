@@ -25,16 +25,18 @@ Tiempo aproximado: 15–20 minutos. No hace falta compilar nada.
 
 ## 3. Subir los archivos
 
-Con el **Administrador de archivos** de hPanel (o FTP / FileZilla):
+El proyecto ya trae la carpeta **`public_html/`** lista. Sube **todo su contenido**
+al `public_html/` de Hostinger con el **Administrador de archivos** de hPanel
+(o FTP / FileZilla). Debe quedar así:
 
 ```
-public_html/
-├── index.html          ← contenido de la carpeta frontend/
+public_html/                (raíz web de Hostinger)
+├── index.html
 ├── .htaccess
 ├── assets/
 ├── lib/
 ├── js/
-└── api/                ← la carpeta api/ completa
+└── api/                    ← la carpeta api/ va DENTRO de public_html/
     ├── index.php
     ├── config.php
     ├── .htaccess
@@ -42,13 +44,12 @@ public_html/
     └── controllers/
 ```
 
-> Sube **el contenido** de `frontend/` a la raíz de `public_html/`, y la carpeta
-> `api/` entera dentro de `public_html/`.
 > Resultado: la web queda en `https://tudominio.com/` y la API en
-> `https://tudominio.com/api/`.
+> `https://tudominio.com/api/`.  `config.js` deriva la ruta de la API sola
+> (raíz del dominio o subcarpeta).
 
-**No subas:** `database/`, `docs/`, `dev-server.php`, `README.md` (no estorban, pero
-no sirven en el hosting).
+**No subas** (están fuera de `public_html/` a propósito): `database/`, `docs/`,
+`dev-server.php`, `README.md` (no estorban, pero no sirven en el hosting).
 
 **Carpeta `api/cache/`:** súbela (aunque esté vacía) y asegúrate de que tenga
 permisos de escritura (755 o 775). Ahí se guarda el catálogo de MyAnimeList y las

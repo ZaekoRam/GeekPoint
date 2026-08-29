@@ -4,7 +4,7 @@
     {
       "name": "geekpoint-dev",
       "runtimeExecutable": "C:/xampp/php/php.exe",
-      "runtimeArgs": ["-S", "localhost:8766", "dev-server.php"],
+      "runtimeArgs": ["-S", "localhost:8766", "-t", "public_html", "dev-server.php"],
       "port": 8766,
       "autoPort": true
     }

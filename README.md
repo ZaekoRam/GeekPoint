@@ -26,34 +26,36 @@ Detalles técnicos:
 
 ```
 punto de venta/
-├── frontend/                 ← lo que ve el usuario (subir a Hostinger tal cual)
+├── public_html/              ← RAÍZ WEB — sube TODO su contenido a Hostinger tal cual
 │   ├── index.html
 │   ├── .htaccess             ← cabeceras de caché (Apache/LiteSpeed)
 │   ├── assets/css/           ← tokens (Manga Ink + tema oscuro), base, components, store, app
+│   ├── assets/images/        ← placeholders locales (figuras, etc.)
 │   ├── lib/                  ← gsap, ScrollTrigger, three, manifest (locales, sin CDN)
-│   └── js/
-│       ├── config.js         ← detecta la URL de la API
-│       ├── i18n.js           ← diccionarios ES / EN
-│       ├── catalog.js        ← catálogo de tienda (Jikan) + portadas "ink" de respaldo
-│       ├── three-hero.js     ← hero 3D con interacción estilo "Wii menu"
-│       ├── api.js  store.js  ui.js  router.js  main.js
-│       └── views/            ← store, login, admin, manager, pos, shell
+│   ├── js/
+│   │   ├── config.js         ← detecta la URL de la API (raíz o subcarpeta)
+│   │   ├── i18n.js           ← diccionarios ES / EN
+│   │   ├── catalog.js        ← catálogo de tienda (AniList/Jikan) + portadas "ink" de respaldo
+│   │   ├── three-hero.js     ← hero 3D con interacción estilo "Wii menu"
+│   │   ├── api.js  store.js  ui.js  router.js  main.js
+│   │   ├── services/         ← pokemonApi, figureApi
+│   │   └── views/            ← store, login, admin, manager, pos, shell
+│   └── api/                  ← API REST en PHP (dentro de public_html/)
+│       ├── index.php         ← front controller (todas las rutas entran aquí)
+│       ├── config.php        ← credenciales de la BD  (EDITAR en producción)
+│       ├── config.example.php
+│       ├── .htaccess         ← enruta /api/* a index.php
+│       ├── src/              ← Database, Router, Request, Response, Auth, Validator, Controller
+│       ├── controllers/      ← Auth, Branch, User, Category, Product, Register, Inventory, Sale, Report, Catalog, Pokemon, Figure, Reservation
+│       ├── cache/            ← catálogo + imágenes cacheadas (se regenera solo)
+│       └── tools/hash.php    ← genera hashes bcrypt (dev)
 │
-├── api/                      ← API REST en PHP (subir a Hostinger)
-│   ├── index.php             ← front controller (todas las rutas entran aquí)
-│   ├── config.php            ← credenciales de la BD  (EDITAR en producción)
-│   ├── config.example.php
-│   ├── .htaccess             ← enruta /api/* a index.php
-│   ├── src/                  ← Database, Router, Request, Response, Auth, Validator, Controller
-│   ├── controllers/          ← Auth, Branch, User, Category, Product, Register, Inventory, Sale, Report, Catalog
-│   ├── cache/                ← catálogo Jikan + imágenes cacheadas (se regenera solo)
-│   └── tools/hash.php        ← genera hashes bcrypt (dev)
-│
-├── database/
+├── database/                 ← NO subir a public_html (solo para importar en phpMyAdmin)
 │   ├── schema.sql            ← crea todas las tablas
-│   └── seed.sql              ← datos de demostración
+│   ├── seed.sql              ← datos de demostración
+│   └── migrations/           ← cambios incrementales de esquema/datos
 │
-├── dev-server.php            ← servidor de pruebas local (no se usa en producción)
+├── dev-server.php            ← servidor de pruebas local (sirve public_html/; no se usa en producción)
 └── docs/
     ├── DEPLOY-HOSTINGER.md   ← guía de publicación paso a paso
     └── API.md                ← referencia de endpoints
@@ -86,19 +88,21 @@ pestaña *Importar* → `database/schema.sql`, luego otra vez → `database/seed
 
 ```bash
 cd "C:\Users\ramir\OneDrive\Desktop\punto de venta"
-C:\xampp\php\php.exe -S localhost:8765 dev-server.php
+C:\xampp\php\php.exe -S localhost:8766 dev-server.php
 ```
 
 ### d) Abre la app
 
-<http://localhost:8765/frontend/>
+<http://localhost:8766/>
 
-> El `dev-server.php` sólo se usa para probar sin Apache. En Hostinger no hace falta:
+> El `dev-server.php` sólo se usa para probar sin Apache: sirve `public_html/`
+> como raíz web, igual que Hostinger. En producción no hace falta —
 > Apache + los `.htaccess` hacen el ruteo.
 
 ### Alternativa: carpeta en `htdocs`
-Copia `frontend/` y `api/` dentro de `C:\xampp\htdocs\geekpoint\` y abre
-`http://localhost/geekpoint/frontend/`. `config.js` detecta la ruta automáticamente.
+Copia el **contenido** de `public_html/` dentro de `C:\xampp\htdocs\geekpoint\` y abre
+`http://localhost/geekpoint/`. `config.js` detecta la ruta automáticamente
+(funciona en la raíz del dominio y en subcarpetas).
 
 ---
 
@@ -167,8 +171,9 @@ recuerda la preferencia.
 ## 5. Publicar en Hostinger
 
 Ver **[docs/DEPLOY-HOSTINGER.md](docs/DEPLOY-HOSTINGER.md)**.
-Resumen: subir `frontend/` y `api/` a `public_html/`, crear la BD MySQL en el panel,
-importar `schema.sql` + `seed.sql`, y editar `api/config.php` con los datos de la BD.
+Resumen: subir **el contenido de `public_html/`** (incluida su carpeta `api/`) a
+`public_html/` de Hostinger, crear la BD MySQL en el panel, importar
+`schema.sql` + `seed.sql`, y editar `public_html/api/config.php` con los datos de la BD.
 
 ---
 

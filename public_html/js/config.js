@@ -16,15 +16,14 @@
     // 2) file:// → no hay backend posible
     if (location.protocol === "file:") return null;
 
-    // 3) servido por HTTP: la API vive junto a /frontend/  →  ../api
-    var path = location.pathname;
-    var marker = "/frontend/";
-    var idx = path.indexOf(marker);
-    if (idx !== -1) {
-      return location.origin + path.slice(0, idx) + "/api";
-    }
-    // 4) frontend en la raíz del dominio → /api
-    return location.origin + "/api";
+    // 3) La API vive en  <carpeta del index.html>/api  — funciona tanto si el
+    //    sitio está en la raíz del dominio (public_html/) como en una subcarpeta:
+    //      "/"                    -> "/api"
+    //      "/index.html"          -> "/api"
+    //      "/geekpoint/"          -> "/geekpoint/api"
+    //      "/geekpoint/index.html"-> "/geekpoint/api"
+    var dir = location.pathname.replace(/[^/]*$/, "");   // quita el nombre del archivo
+    return location.origin + dir + "api";
   }
 
   window.__CONFIG__ = {

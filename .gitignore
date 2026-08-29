@@ -1,5 +1,5 @@
 # Configuración con credenciales reales
-api/config.php
+public_html/api/config.php
 
 # Dependencias / temporales
 node_modules/
@@ -8,4 +8,4 @@ node_modules/
 Thumbs.db
 
 # Subidas de imágenes de producto en runtime
-frontend/assets/uploads/
+public_html/assets/uploads/
