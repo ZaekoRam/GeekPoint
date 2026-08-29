@@ -84,28 +84,31 @@ class ProductController extends Controller
         }
         Auth::assertBranchAccess($user, $branchId);
 
-        $sku = strtoupper(trim($d['sku']));
+        $sku = strtoupper(trim((string) $d['sku']));
         if (Database::scalar('SELECT id FROM products WHERE branch_id = ? AND sku = ?', [$branchId, $sku])) {
             Response::error(409, 'duplicate', 'Ya existe un producto con ese SKU en la sucursal.');
         }
 
         $catId = $this->intOrNull($d['category_id'] ?? null);
         $stock = max(0, (int) ($d['stock'] ?? 0));
+        $img       = $this->sanitizeImageList($d['image_url'] ?? '');
+        $figurePng = $this->sanitizeImageUrl($d['figure_png_url'] ?? null);
 
         Database::begin();
         try {
             Database::run(
                 'INSERT INTO products
-                  (branch_id, sku, name, category_id, description, price, tax_rate, stock, min_stock, image_url, status)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                  (branch_id, sku, name, category_id, description, price, tax_rate, stock, min_stock, image_url, figure_png_url, status)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                 [
-                    $branchId, $sku, trim($d['name']), $catId,
-                    $d['description'] ?? '',
+                    $branchId, $sku, mb_substr(trim((string) $d['name']), 0, 180), $catId,
+                    mb_substr((string) ($d['description'] ?? ''), 0, 500),
                     round((float) $d['price'], 2),
-                    isset($d['tax_rate']) ? (float) $d['tax_rate'] : App::config('tax')['default_rate'],
+                    isset($d['tax_rate']) && is_numeric($d['tax_rate']) ? (float) $d['tax_rate'] : App::config('tax')['default_rate'],
                     $stock,
                     max(0, (int) ($d['min_stock'] ?? 3)),
-                    $d['image_url'] ?? '',
+                    $img,
+                    $figurePng,
                     $this->pickEnum($d['status'] ?? 'active', ['active', 'inactive'], 'active'),
                 ]
             );
@@ -151,10 +154,11 @@ class ProductController extends Controller
         }
 
         // Normaliza y valida sucursales ANTES de abrir la transacción.
+        // Sanea claves/valores para evitar FK inválidas o "Array to int".
         $entries = [];
         foreach ($stockByBranch as $bid => $qty) {
             $bid = (int) $bid;
-            $qty = max(0, (int) $qty);
+            $qty = is_array($qty) ? 0 : max(0, (int) $qty);
             if ($bid <= 0) continue;
             Auth::assertBranchAccess($user, $bid);
             if (!Database::scalar('SELECT id FROM branches WHERE id = ?', [$bid])) {
@@ -166,15 +170,18 @@ class ProductController extends Controller
             Response::validation(['stock_by_branch' => ['Indica el stock para al menos una sucursal.']]);
         }
 
-        $sku      = strtoupper(trim($d['sku']));
-        $catId    = $this->categoryIdBySlug($d['category_slug'] ?? 'tcg');
-        $taxRate  = isset($d['tax_rate']) ? (float) $d['tax_rate'] : App::config('tax')['default_rate'];
+        $str = function ($v) { return is_scalar($v) ? (string) $v : ''; };
+
+        $sku      = strtoupper(trim($str($d['sku'] ?? '')));
+        $catId    = $this->categoryIdBySlug($str($d['category_slug'] ?? 'tcg') ?: 'tcg');
+        $taxRate  = isset($d['tax_rate']) && is_numeric($d['tax_rate']) ? (float) $d['tax_rate'] : App::config('tax')['default_rate'];
         $minStock = max(0, (int) ($d['min_stock'] ?? 3));
-        $price    = round((float) $d['price'], 2);
-        $name     = mb_substr(trim((string) $d['name']), 0, 180);
-        $desc     = mb_substr((string) ($d['description'] ?? ''), 0, 500);
-        $img      = mb_substr((string) ($d['image_url'] ?? ''), 0, 1000);   // admite varias URLs (galería)
-        $ref      = trim(($d['source'] ?? 'import') . ' ' . ($d['external_id'] ?? ''));
+        $price    = round((float) ($d['price'] ?? 0), 2);
+        $name     = mb_substr(trim($str($d['name'] ?? '')), 0, 180);
+        $desc     = mb_substr($str($d['description'] ?? ''), 0, 500);
+        $img      = $this->sanitizeImageList($d['image_url'] ?? '');            // fotos de galería (varias URLs)
+        $figurePng = $this->sanitizeImageUrl($d['figure_png_url'] ?? null);     // figura recortada; '' -> NULL
+        $ref      = mb_substr(trim($str($d['source'] ?? 'import') . ' ' . $str($d['external_id'] ?? '')), 0, 60);
 
         $out = ['sku' => $sku, 'created' => [], 'updated' => []];
 
@@ -190,8 +197,8 @@ class ProductController extends Controller
                     $newStock = (int) $existing['stock'] + $qty;
                     Database::run(
                         'UPDATE products SET name = ?, category_id = ?, description = ?, price = ?,
-                                image_url = ?, stock = ?, status = "active" WHERE id = ?',
-                        [$name, $catId, $desc, $price, $img, $newStock, $pid]
+                                image_url = ?, figure_png_url = ?, stock = ?, status = "active" WHERE id = ?',
+                        [$name, $catId, $desc, $price, $img, $figurePng, $newStock, $pid]
                     );
                     if ($qty > 0) {
                         $this->logMovement($bid, $pid, $user['id'], 'restock', $qty, $newStock, 'IMPORT', $ref);
@@ -200,9 +207,9 @@ class ProductController extends Controller
                 } else {
                     Database::run(
                         'INSERT INTO products
-                           (branch_id, sku, name, category_id, description, price, tax_rate, stock, min_stock, image_url, status)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "active")',
-                        [$bid, $sku, $name, $catId, $desc, $price, $taxRate, $qty, $minStock, $img]
+                           (branch_id, sku, name, category_id, description, price, tax_rate, stock, min_stock, image_url, figure_png_url, status)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "active")',
+                        [$bid, $sku, $name, $catId, $desc, $price, $taxRate, $qty, $minStock, $img, $figurePng]
                     );
                     $pid = Database::lastId();
                     if ($qty > 0) {
@@ -242,19 +249,29 @@ class ProductController extends Controller
         );
         if ($dupe) Response::error(409, 'duplicate', 'Ese SKU ya existe en la sucursal.');
 
+        // Imágenes: si el form manda el campo se sanea (galería -> lista; figura
+        // sin fondo -> string|NULL); si NO lo manda, se conserva lo que había.
+        $img = array_key_exists('image_url', $d)
+            ? $this->sanitizeImageList($d['image_url'])
+            : (string) ($current['image_url'] ?? '');
+        $figurePng = array_key_exists('figure_png_url', $d)
+            ? $this->sanitizeImageUrl($d['figure_png_url'])
+            : ($current['figure_png_url'] ?? null);
+
         // El stock NO se cambia aquí: usa PATCH /products/{id}/stock
         Database::run(
             'UPDATE products SET sku = ?, name = ?, category_id = ?, description = ?,
-                    price = ?, tax_rate = ?, min_stock = ?, image_url = ?, status = ?
+                    price = ?, tax_rate = ?, min_stock = ?, image_url = ?, figure_png_url = ?, status = ?
              WHERE id = ?',
             [
-                $sku, trim($d['name']),
+                $sku, mb_substr(trim((string) $d['name']), 0, 180),
                 $this->intOrNull($d['category_id'] ?? $current['category_id']),
-                $d['description'] ?? $current['description'],
+                mb_substr((string) ($d['description'] ?? $current['description']), 0, 500),
                 round((float) $d['price'], 2),
-                isset($d['tax_rate']) ? (float) $d['tax_rate'] : $current['tax_rate'],
+                isset($d['tax_rate']) && is_numeric($d['tax_rate']) ? (float) $d['tax_rate'] : $current['tax_rate'],
                 max(0, (int) ($d['min_stock'] ?? $current['min_stock'])),
-                $d['image_url'] ?? $current['image_url'],
+                $img,
+                $figurePng,
                 $this->pickEnum($d['status'] ?? $current['status'], ['active', 'inactive'], $current['status']),
                 $id,
             ]
@@ -358,6 +375,117 @@ class ProductController extends Controller
     }
 
     // ---------------------------------------------------------------
+
+    /**
+     * POST /products/upload  (multipart/form-data, campo "file")
+     * Sube UNA imagen local a /uploads/products/ y devuelve su URL pública
+     * absoluta para guardarla luego en image_url / figure_png_url.
+     * Si el usuario pega una URL externa, NO usa este endpoint.
+     */
+    public function upload()
+    {
+        $this->authRole(['admin', 'manager']);
+
+        $f = $_FILES['file'] ?? ($_FILES['image'] ?? null);
+        if (!$f || !isset($f['tmp_name'])) {
+            Response::error(400, 'no_file', 'No se recibió ningún archivo.');
+        }
+        if (($f['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+            $map = [
+                UPLOAD_ERR_INI_SIZE => 'El archivo excede el límite del servidor.',
+                UPLOAD_ERR_FORM_SIZE => 'El archivo es demasiado grande.',
+                UPLOAD_ERR_PARTIAL => 'La subida se interrumpió.',
+                UPLOAD_ERR_NO_FILE => 'No se recibió ningún archivo.',
+                UPLOAD_ERR_NO_TMP_DIR => 'Falta la carpeta temporal en el servidor.',
+                UPLOAD_ERR_CANT_WRITE => 'El servidor no pudo escribir el archivo.',
+            ];
+            Response::error(400, 'upload_error', $map[$f['error']] ?? 'Error al subir el archivo.');
+        }
+
+        $maxBytes = 6 * 1024 * 1024;   // 6 MB
+        if (($f['size'] ?? 0) <= 0 || $f['size'] > $maxBytes) {
+            Response::error(400, 'bad_size', 'La imagen debe pesar entre 1 byte y 6 MB.');
+        }
+        if (!is_uploaded_file($f['tmp_name'])) {
+            Response::error(400, 'bad_upload', 'Subida no válida.');
+        }
+
+        // Tipo real (rechaza archivos disfrazados). SVG NO se acepta por subida
+        // (riesgo XSS): para SVG, pega la URL en el campo de texto.
+        $allowed = [
+            IMAGETYPE_JPEG => 'jpg',
+            IMAGETYPE_PNG  => 'png',
+            IMAGETYPE_GIF  => 'gif',
+            IMAGETYPE_WEBP => 'webp',
+        ];
+        $info = @getimagesize($f['tmp_name']);
+        $type = $info[2] ?? null;
+        if (!$type || !isset($allowed[$type])) {
+            Response::error(400, 'bad_type', 'Formato no permitido. Usa JPG, PNG, WEBP o GIF.');
+        }
+        $ext = $allowed[$type];
+
+        $dir = dirname(__DIR__, 2) . '/uploads/products';
+        if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
+            Response::error(500, 'mkdir_failed', 'No se pudo crear /uploads/products en el servidor.');
+        }
+
+        try {
+            $rand = bin2hex(random_bytes(6));
+        } catch (Exception $e) {
+            $rand = substr(md5(uniqid('', true)), 0, 12);
+        }
+        $name = date('Ymd_His') . '_' . $rand . '.' . $ext;
+        $dest = $dir . '/' . $name;
+
+        if (!move_uploaded_file($f['tmp_name'], $dest)) {
+            Response::error(500, 'move_failed', 'No se pudo guardar el archivo en el servidor.');
+        }
+        @chmod($dest, 0644);
+
+        // URL pública ABSOLUTA (funciona en dominio raíz o en subcarpeta).
+        $https  = (!empty($_SERVER['HTTPS']) && strtolower($_SERVER['HTTPS']) !== 'off')
+            || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https')
+            || (($_SERVER['SERVER_PORT'] ?? '') == 443);
+        $scheme = $https ? 'https' : 'http';
+        $host   = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        // SCRIPT_NAME = /api/index.php  ->  base ""   |   /sub/api/index.php -> "/sub"
+        $base = str_replace('\\', '/', dirname(dirname($_SERVER['SCRIPT_NAME'] ?? '/api/index.php')));
+        $base = ($base === '/' || $base === '.') ? '' : rtrim($base, '/');
+        $relative = $base . '/uploads/products/' . $name;
+        $url = $scheme . '://' . $host . $relative;
+
+        Response::ok(['url' => $url, 'path' => $relative, 'name' => $name], 201);
+    }
+
+    /**
+     * Lista de URLs de imagen (galería). Acepta string "a,b,c" o array.
+     * Devuelve "a,b,c" saneada (trim, sin vacíos, deduplicada, con topes).
+     */
+    private function sanitizeImageList($v, $maxEach = 1000, $maxTotal = 4000, $maxItems = 12)
+    {
+        $parts = is_array($v) ? $v : explode(',', (string) $v);
+        $clean = [];
+        foreach ($parts as $u) {
+            $u = trim(is_scalar($u) ? (string) $u : '');
+            if ($u === '') continue;
+            $u = mb_substr($u, 0, $maxEach);
+            $clean[$u] = true;                       // dedupe por clave
+            if (count($clean) >= $maxItems) break;
+        }
+        return mb_substr(implode(',', array_keys($clean)), 0, $maxTotal);
+    }
+
+    /**
+     * URL única (figura sin fondo). Acepta string o array (toma el 1º).
+     * Devuelve string saneada, o NULL si va vacía (columna figure_png_url es NULL).
+     */
+    private function sanitizeImageUrl($v, $max = 2000)
+    {
+        if (is_array($v)) { $v = reset($v); }
+        $v = trim(is_scalar($v) ? (string) $v : '');
+        return $v !== '' ? mb_substr($v, 0, $max) : null;
+    }
 
     private function logMovement($branchId, $productId, $userId, $type, $delta, $resulting, $ref, $note)
     {

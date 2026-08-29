@@ -147,8 +147,6 @@
     return '<span class="ptag ptag--rare ptag--rare-' + rarityKind(r) + '">' + esc(r) + '</span>';
   }
 
-  var FIG_PLACEHOLDER = "assets/images/figures/placeholder.svg";
-
   function cardHTML(p) {
     var tags = (p.tags || []).map(function (t) {
       return '<span class="ptag ptag--' + esc(t) + '">' + esc(I18N.t("ptag." + t)) + '</span>';
@@ -158,28 +156,36 @@
     }
     var totalStock = (p.branches || []).reduce(function (n, b) { return n + (b.stock || 0); }, 0);
     var isFigure = p.category === "figuras";
-    // Fallback de imagen: figuras -> placeholder local dedicado; resto -> el listener de mount().
-    var onErr = isFigure
-      ? ' onerror="this.onerror=null;this.src=\'' + FIG_PLACEHOLDER + '\'"'
-      : '';
-    var img0 = esc(Catalog.coverURL(p));
 
-    // FIGURAS: tarjeta "caja pop-out" — la figura sobresale del empaque en hover.
-    var media = isFigure
-      ? '<div class="pcard__media figure-card-box">' +
-          '<img class="figure-card-box__bg" src="' + img0 + '" alt="" aria-hidden="true"' + onErr + ' />' +
-          '<img class="figure-card-box__fig" src="' + img0 + '" alt="' + esc(p.title) + '" loading="lazy"' + onErr + ' />' +
-          '<span class="figure-card-box__frame" aria-hidden="true"></span>' +
-          '<div class="pcard__glow"></div>' +
-          (tags ? '<div class="pcard__tags">' + tags + '</div>' : "") +
-          '<span class="pcard__view">' + esc(I18N.t("prod.view3d")) + ' ↗</span>' +
-        '</div>'
-      : '<div class="pcard__media">' +
-          '<img src="' + img0 + '" alt="' + esc(p.title) + '" loading="lazy" decoding="async"' + onErr + ' />' +
+    // FIGURAS: la portada de la grilla es SIEMPRE el "expositor" — una CAJA 3D
+    // de exhibición VACÍA (marco exterior, fondo neutro-oscuro, piso en
+    // perspectiva y frente transparente) dibujada por CSS, que ALOJA el PNG
+    // recortado del personaje (figure_png_url); éste "despega" hacia arriba al
+    // hover, sin recortarse. Las fotos de galería (image_url) NO se usan aquí.
+    // Sin PNG => la caja se muestra vacía (nunca una silueta vectorial).
+    var media;
+    if (isFigure) {
+      var figPng = esc(Catalog.figurePngURL(p));
+      media =
+        '<div class="pcard__media box-card-container" style="--fig-accent:' + esc(p.accent || "#8b5bff") + '">' +
+          '<div class="box-3d-display" aria-hidden="true"></div>' +
+          (figPng
+            ? '<img class="figure-png" src="' + figPng + '" alt="' + esc(p.title) + '" ' +
+              'loading="lazy" decoding="async" onerror="this.remove()" />'
+            : "") +
           '<div class="pcard__glow"></div>' +
           (tags ? '<div class="pcard__tags">' + tags + '</div>' : "") +
           '<span class="pcard__view">' + esc(I18N.t("prod.view3d")) + ' ↗</span>' +
         '</div>';
+    } else {
+      media =
+        '<div class="pcard__media">' +
+          '<img src="' + esc(Catalog.coverURL(p)) + '" alt="' + esc(p.title) + '" loading="lazy" decoding="async" />' +
+          '<div class="pcard__glow"></div>' +
+          (tags ? '<div class="pcard__tags">' + tags + '</div>' : "") +
+          '<span class="pcard__view">' + esc(I18N.t("prod.view3d")) + ' ↗</span>' +
+        '</div>';
+    }
     return (
       '<article class="pcard tilt' + (isFigure ? ' pcard--figure' : '') + '" data-id="' + esc(p.id) + '">' +
         media +
@@ -201,17 +207,22 @@
 
   function bindCard(card) {
     var id = card.getAttribute("data-id");
+    var isFigure = card.classList.contains("pcard--figure");
     if (UI.fineHover) {
       var glow = $(".pcard__glow", card);
       card.addEventListener("mousemove", function (e) {
         var r = card.getBoundingClientRect();
         var px = (e.clientX - r.left) / r.width, py = (e.clientY - r.top) / r.height;
-        card.style.transform = "perspective(800px) rotateX(" + ((0.5 - py) * 9).toFixed(2) +
-          "deg) rotateY(" + ((px - 0.5) * 9).toFixed(2) + "deg) translateY(-4px)";
+        // Las figuras NO se inclinan ni escalan (hacían un "pop-out" raro,
+        // salían disparadas de la celda); el resto conserva el tilt 3D.
+        if (!isFigure) {
+          card.style.transform = "perspective(800px) rotateX(" + ((0.5 - py) * 9).toFixed(2) +
+            "deg) rotateY(" + ((px - 0.5) * 9).toFixed(2) + "deg) translateY(-4px)";
+        }
         if (glow) { glow.style.setProperty("--mx", (px * 100) + "%"); glow.style.setProperty("--my", (py * 100) + "%"); }
       });
       card.addEventListener("mouseout", function (e) {
-        if (!card.contains(e.relatedTarget)) card.style.transform = "";
+        if (!isFigure && !card.contains(e.relatedTarget)) card.style.transform = "";
       });
     }
     card.addEventListener("click", function (e) {
@@ -320,12 +331,21 @@
     var showVolumePicker = isManga && covers.length > 0;
     var startPrice = (covers[0] && covers[0].id && covers[0].price) || p.price;
 
-    // Galería multi-ángulo (figuras / productos con varias imágenes).
-    var gal = (p.images && p.images.length > 1) ? p.images.slice() : [];
-    var galHTML = gal.length
-      ? '<div class="preview3d__thumbs" data-thumbs>' + gal.map(function (u, i) {
-          return '<button type="button" class="preview3d__thumb' + (i === 0 ? " is-active" : "") +
-            '" data-thumb="' + esc(u) + '" aria-label="' + esc(I18N.t("prod.angle")) + ' ' + (i + 1) + '">' +
+    // Galería de fotos reales del producto.
+    // Figuras: cualquier nº de fotos + miniatura "Vista 3D" al frente.
+    // Resto (manga/cómic): solo si hay >1 imagen (comportamiento previo).
+    var gal = isFigure
+      ? ((p.images && p.images.length) ? p.images.slice() : [])
+      : ((p.images && p.images.length > 1) ? p.images.slice() : []);
+    var thumb3dHTML = isFigure
+      ? '<button type="button" class="preview3d__thumb preview3d__thumb--3d is-active" data-thumb-3d ' +
+        'title="' + esc(I18N.t("prod.view3d")) + '" aria-label="' + esc(I18N.t("prod.view3dTab")) + '">' +
+        '<span>3D</span></button>'
+      : "";
+    var galHTML = (thumb3dHTML || gal.length)
+      ? '<div class="preview3d__thumbs" data-thumbs>' + thumb3dHTML + gal.map(function (u, i) {
+          return '<button type="button" class="preview3d__thumb' + (!isFigure && i === 0 ? " is-active" : "") +
+            '" data-thumb="' + esc(u) + '" aria-label="' + esc(I18N.t("prod.photo")) + ' ' + (i + 1) + '">' +
             '<img src="' + esc(u) + '" alt="" loading="lazy" ' +
             'onerror="this.closest(\'.preview3d__thumb\').style.display=\'none\'"></button>';
         }).join("") + '</div>'
@@ -336,6 +356,7 @@
     wrap.innerHTML =
       '<div class="preview3d__col">' +
         '<div class="preview3d__stage"><canvas data-pv3d></canvas>' +
+          '<img class="preview3d__photo" data-pv-photo alt="" hidden>' +
           '<span class="preview3d__hint">' + esc(I18N.t("prod.rotate")) + '</span></div>' +
         galHTML +
       '</div>' +
@@ -362,21 +383,46 @@
       var volSel = wrap.querySelector("[data-vol]");
       var stockBox = wrap.querySelector("[data-vol-stock]");
       var priceEl = wrap.querySelector(".preview3d__price[data-price]");
-      // La textura 3D arranca SIEMPRE con la portada real del producto abierto.
+      // Figuras: spinStage construye una CAJA 3D de exhibición VACÍA y aloja el
+      // PNG del personaje dentro (figurePngUrl). initialUrl solo es el respaldo
+      // SVG de "caja vacía" para el caso sin WebGL. El resto: portada real.
       var stage = spinStage(wrap.querySelector("[data-pv3d]"), p, {
-        initialUrl: (gal[0]) || (covers[0] && covers[0].url) || Catalog.coverURL(p)
+        initialUrl: isFigure
+          ? Catalog.figureBoxURL(p)                      // respaldo sin WebGL (caja vacía)
+          : ((gal[0]) || (covers[0] && covers[0].url) || Catalog.coverURL(p)),
+        figurePngUrl: isFigure ? Catalog.figurePngURL(p) : ""   // personaje dentro de la caja
       });
       // (coverFor se define abajo; el arranque usa la portada real o la de serie)
 
-      // Galería: las miniaturas cambian la imagen/textura principal (multi-ángulo).
       var thumbsEl = wrap.querySelector("[data-thumbs]");
-      if (thumbsEl && stage) {
+      var photoEl = wrap.querySelector("[data-pv-photo]");
+      var canvasEl = wrap.querySelector("[data-pv3d]");
+      var hintEl = wrap.querySelector(".preview3d__hint");
+      if (thumbsEl) {
         thumbsEl.addEventListener("click", function (e) {
-          var b = e.target.closest("[data-thumb]");
-          if (!b) return;
+          var btn = e.target.closest("[data-thumb-3d], [data-thumb]");
+          if (!btn) return;
           thumbsEl.querySelectorAll(".preview3d__thumb").forEach(function (x) { x.classList.remove("is-active"); });
-          b.classList.add("is-active");
-          if (stage.setCover) stage.setCover(b.getAttribute("data-thumb"));
+          btn.classList.add("is-active");
+
+          if (btn.hasAttribute("data-thumb-3d")) {
+            // "Vista 3D": vuelve a la Caja 3D interactiva.
+            if (photoEl) { photoEl.hidden = true; photoEl.removeAttribute("src"); }
+            if (canvasEl) canvasEl.style.visibility = "";
+            if (hintEl) hintEl.style.display = "";
+            return;
+          }
+
+          var url = btn.getAttribute("data-thumb");
+          if (isFigure) {
+            // Oculta el Canvas 3D y muestra la foto 2D en alta resolución.
+            if (photoEl) { photoEl.src = url; photoEl.hidden = false; }
+            if (canvasEl) canvasEl.style.visibility = "hidden";
+            if (hintEl) hintEl.style.display = "none";
+          } else if (stage && stage.setCover) {
+            // Manga/cómic: la miniatura cambia la textura de la caja (multi-ángulo).
+            stage.setCover(url);
+          }
         });
       }
 
@@ -510,9 +556,70 @@
     scene.add(new THREE.AmbientLight(0xffffff, 1.3));
     var d = new THREE.DirectionalLight(0xffffff, 1.4); d.position.set(3, 4, 6); scene.add(d);
 
+    // ---------------------------------------------------------------
+    // FIGURAS — misma CAJA DE EXHIBICIÓN 3D interactiva que el Hero y las
+    // tarjetas del catálogo (HERO3D.buildDisplayCase): vitrina con panel
+    // trasero SÓLIDO de marca GeekPoint, marco exterior, filo de acento y
+    // el PNG del personaje DENTRO. Vista por defecto del modal; abajo los
+    // thumbnails cambian a las fotos 2D y "3D" vuelve a esta caja.
+    // ---------------------------------------------------------------
+    if (p.category === "figuras" && window.HERO3D && HERO3D.buildDisplayCase) {
+      var built = HERO3D.buildDisplayCase({ W: 2.7, H: 3.3, D: 1.8, accent: p.accent || "#8b5bff" });
+      var kase = built.root;
+      scene.add(kase);
+
+      var figUrl = opts.figurePngUrl ||
+        ((window.Catalog && Catalog.figurePngURL) ? Catalog.figurePngURL(p) : "");
+      if (figUrl) built.loadPng(figUrl);
+
+      // Menos luz de relleno (la vitrina lleva su propia luz) + key blanca.
+      scene.children.forEach(function (o) {
+        if (o.isAmbientLight) o.intensity = 1.0;
+        else if (o.isDirectionalLight) o.intensity = 1.1;
+      });
+      var keyF = new THREE.PointLight(0xffffff, 16, 22);
+      keyF.position.set(0, 2.2, 6); scene.add(keyF);
+
+      // Encuadre + leve giro inicial (da volumen a la caja).
+      cam.position.set(0, 0.2, 6.2);
+      cam.lookAt(0, 0, 0);
+      kase.rotation.y = -0.42;
+
+      // Interacción: arrastrar para girar; deriva lenta a MITAD de velocidad.
+      var IDLEF = UI.reduced ? 0.0006 : 0.0013;
+      var dragF = false, lxF = 0, lyF = 0, vyF = IDLEF, vxF = 0;
+      canvas.addEventListener("pointerdown", function (e) { dragF = true; lxF = e.clientX; lyF = e.clientY; try { canvas.setPointerCapture(e.pointerId); } catch (err) {} });
+      canvas.addEventListener("pointerup", function () { dragF = false; });
+      canvas.addEventListener("pointercancel", function () { dragF = false; });
+      canvas.addEventListener("pointermove", function (e) {
+        if (!dragF) return;
+        vyF = (e.clientX - lxF) * 0.006;
+        vxF = (e.clientY - lyF) * 0.006;
+        kase.rotation.y += vyF;
+        kase.rotation.x = Math.max(-0.5, Math.min(0.5, kase.rotation.x + vxF));
+        lxF = e.clientX; lyF = e.clientY;
+      });
+
+      (function loopF() {
+        if (!canvas.isConnected) { renderer.dispose(); return; }
+        requestAnimationFrame(loopF);
+        if (!dragF) {
+          vyF += (IDLEF - vyF) * 0.04;
+          vxF += (0 - vxF) * 0.05;
+          kase.rotation.y += vyF;
+          kase.rotation.x += vxF + (0 - kase.rotation.x) * 0.03;
+        }
+        renderer.render(scene, cam);
+      })();
+
+      return { setCover: function () {} };
+    }
+
+    // (Figuras normalmente ya retornó arriba con su CAJA 3D; solo caen aquí si
+    // HERO3D no está disponible — degradan a caja lisa, sin cantos de página.)
     var isTome = p.category !== "tcg" && p.category !== "figuras";
     var isManga = p.category === "manga";
-    var kind = p.category === "tcg" ? [1.6, 2.24, 0.05] : (p.category === "figuras" ? [1.8, 1.9, 1.0] : [1.55, 2.2, 0.34]);
+    var kind = p.category === "tcg" ? [1.6, 2.24, 0.05] : [1.55, 2.2, 0.34];
     var geo = new THREE.BoxGeometry(kind[0], kind[1], kind[2]);
     var accent = new THREE.Color(p.accent || "#ffd400");
     // Front a color pleno (sin tinte gris): el material queda blanco y la
@@ -562,17 +669,17 @@
         if (front.map) front.map.dispose();
         front.map = t; front.color.set("#fff"); front.needsUpdate = true;
       }, undefined, function () {
-        // 404 / CORS: figuras -> placeholder local dedicado; resto -> placeholder genérico.
+        // 404 / CORS -> portada de reemplazo genérica.
         if (isRetry || mine !== reqId) return;
-        var fb = p.category === "figuras" ? "assets/images/figures/placeholder.svg"
-                                          : (Catalog.placeholderCover && Catalog.placeholderCover(p));
+        var fb = Catalog.placeholderCover && Catalog.placeholderCover(p);
         if (fb && fb !== url) applyCover(fb, true);
       });
     }
     applyCover(opts.initialUrl || Catalog.coverURL(p));
 
-    // Rotación muy lenta y fluida (con easing tras arrastrar).
-    var IDLE = UI.reduced ? 0.0015 : 0.0035;
+    // Rotación muy lenta y fluida (con easing tras arrastrar) — a MITAD de
+    // velocidad para un giro más suave y elegante.
+    var IDLE = UI.reduced ? 0.00075 : 0.00175;
     var drag = false, lastX = 0, lastY = 0, velY = IDLE, velX = 0;
     canvas.addEventListener("pointerdown", function (e) { drag = true; lastX = e.clientX; lastY = e.clientY; try { canvas.setPointerCapture(e.pointerId); } catch (err) {} });
     canvas.addEventListener("pointerup", function () { drag = false; });
@@ -665,6 +772,9 @@
         grid.addEventListener("error", function (e) {
           var img = e.target;
           if (!img || img.tagName !== "IMG" || img.__ph) return;
+          // Figuras: si el PNG del personaje falla, se retira y queda la CAJA 3D
+          // vacía como portada (nunca una silueta/placeholder de reemplazo).
+          if (img.classList && img.classList.contains("figure-png")) { img.remove(); return; }
           img.__ph = true;
           var card = img.closest(".pcard");
           var p = card && Catalog.get(card.getAttribute("data-id"));

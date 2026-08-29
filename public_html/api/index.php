@@ -47,11 +47,31 @@ class App
 
         set_exception_handler(function ($e) {
             Database::rollback();
-            Response::error(
-                500,
-                'server_error',
-                App::isDev() ? $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine() : 'Error interno del servidor.'
-            );
+
+            // ⚠️ TEMPORAL (depuración): expone el error real de PHP/SQL en la
+            //    respuesta JSON. Cuando termines de depurar el alta de productos,
+            //    pon SHOW_REAL_ERRORS = false (o borra este bloque extra).
+            $SHOW_REAL_ERRORS = true;
+            $verbose = App::isDev() || $SHOW_REAL_ERRORS;
+
+            $message = $verbose
+                ? $e->getMessage() . ' @ ' . basename($e->getFile()) . ':' . $e->getLine()
+                : 'Error interno del servidor.';
+
+            $extra = [];
+            if ($verbose) {
+                $extra['debug'] = [
+                    'type' => get_class($e),
+                    'file' => $e->getFile() . ':' . $e->getLine(),
+                ];
+                if ($e instanceof PDOException && is_array($e->errorInfo ?? null)) {
+                    $extra['debug']['sqlstate']    = $e->errorInfo[0] ?? null;
+                    $extra['debug']['driver_code'] = $e->errorInfo[1] ?? null;
+                    $extra['debug']['driver_msg']  = $e->errorInfo[2] ?? null;
+                }
+            }
+
+            Response::error(500, 'server_error', $message, $extra);
         });
         set_error_handler(function ($no, $str, $file, $line) {
             if (!(error_reporting() & $no)) return false;
@@ -103,9 +123,14 @@ $router  = new Router();
 $router->get('', function () {
     Response::ok(['service' => 'GeekPoint POS API', 'version' => '1.0.0', 'time' => date('c')]);
 });
+// "up" = el backend PHP responde.  El estado de la BD va aparte (db: true|false)
+// para que el front NO marque "servidor caído" cuando solo falla MySQL.
 $router->get('health', function () {
-    Database::scalar('SELECT 1');
-    Response::ok(['status' => 'up']);
+    Response::ok([
+        'status' => 'up',
+        'time'   => date('c'),
+        'db'     => Database::ping(),
+    ]);
 });
 
 // --- Auth ---
@@ -148,6 +173,7 @@ $router->get('figures/search', function () use ($request) { (new FigureControlle
 $router->get('products',            function () use ($request) { (new ProductController($request))->index(); });
 $router->post('products',           function () use ($request) { (new ProductController($request))->store(); });
 $router->post('products/import',    function () use ($request) { (new ProductController($request))->import(); });
+$router->post('products/upload',    function () use ($request) { (new ProductController($request))->upload(); });
 $router->delete('products/sku/{sku}', function ($p) use ($request) { (new ProductController($request))->destroyBySku($p['sku']); });
 $router->get('products/{id}',       function ($p) use ($request) { (new ProductController($request))->show($p['id']); });
 $router->put('products/{id}',       function ($p) use ($request) { (new ProductController($request))->update($p['id']); });

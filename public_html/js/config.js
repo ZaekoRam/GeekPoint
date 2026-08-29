@@ -4,26 +4,45 @@
 (function () {
   "use strict";
 
-  function deriveApiBase() {
-    // 1) override manual (?api=... o localStorage)
-    try {
-      var q = new URLSearchParams(location.search).get("api");
-      if (q) { localStorage.setItem("gp_api_base", q); }
-      var saved = localStorage.getItem("gp_api_base");
-      if (saved) return saved.replace(/\/+$/, "");
-    } catch (e) {}
+  function isDevHost() {
+    return /^(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|.+\.local)$/i.test(location.hostname || "");
+  }
+  function isSameOrigin(url) {
+    try { return new URL(url, location.href).origin === location.origin; }
+    catch (e) { return false; }
+  }
 
-    // 2) file:// → no hay backend posible
+  function deriveApiBase() {
+    // file:// → no hay backend posible
     if (location.protocol === "file:") return null;
 
-    // 3) La API vive en  <carpeta del index.html>/api  — funciona tanto si el
-    //    sitio está en la raíz del dominio (public_html/) como en una subcarpeta:
-    //      "/"                    -> "/api"
-    //      "/index.html"          -> "/api"
-    //      "/geekpoint/"          -> "/geekpoint/api"
-    //      "/geekpoint/index.html"-> "/geekpoint/api"
+    // Base RELATIVA a la carpeta del index.html. fetch() la resuelve contra el
+    // documento, así que funciona igual en local y en Hostinger, en la raíz del
+    // dominio o en una subcarpeta, y sin riesgo de contenido mixto (http/https):
+    //   "/"                     -> "/api"
+    //   "/index.html"           -> "/api"
+    //   "/geekpoint/"           -> "/geekpoint/api"
+    //   "/geekpoint/index.html" -> "/geekpoint/api"
     var dir = location.pathname.replace(/[^/]*$/, "");   // quita el nombre del archivo
-    return location.origin + dir + "api";
+    var relative = (dir + "api").replace(/\/{2,}/g, "/");
+
+    // Override manual (?api=... o localStorage) SOLO en desarrollo o si apunta al
+    // mismo origen. Evita que un "gp_api_base = http://localhost:8766/api"
+    // guardado en un navegador de desarrollo rompa el sitio en producción.
+    try {
+      var dev = isDevHost();
+      var q = new URLSearchParams(location.search).get("api");
+      if (q && (dev || isSameOrigin(q))) {
+        localStorage.setItem("gp_api_base", q);
+      }
+      var saved = localStorage.getItem("gp_api_base");
+      if (saved) {
+        if (dev || isSameOrigin(saved)) return saved.replace(/\/+$/, "");
+        localStorage.removeItem("gp_api_base");   // valor de otro origen en prod → se descarta
+      }
+    } catch (e) {}
+
+    return relative;
   }
 
   window.__CONFIG__ = {

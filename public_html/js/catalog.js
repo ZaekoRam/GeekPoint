@@ -15,6 +15,18 @@
     return Math.abs(h);
   }
 
+  /* Fisher-Yates: baraja la lista COMPLETA en el sitio. Se aplica una vez por
+     carga de página (en load()), así el Hero 3D y el grid muestran portadas
+     distintas en cada refresh, pero el orden se mantiene estable mientras
+     navegas entre categorías / buscas. */
+  function shuffle(arr) {
+    for (var i = arr.length - 1; i > 0; i--) {
+      var j = (Math.random() * (i + 1)) | 0;
+      var t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+    }
+    return arr;
+  }
+
   var BRANCHES = [
     { code: "GKP-CDMX", name: "Reforma" },
     { code: "GKP-GDL",  name: "Chapultepec" },
@@ -105,6 +117,8 @@
       var volCovers = (fromApi && p.volume_covers && p.volume_covers.length)
         ? p.volume_covers.map(function (vc) { return { v: String(vc.v), url: absUrl(vc.url, apiBase) }; })
         : [];
+      var figurePngRaw = p.figure_png_url || "";
+      var figurePng = (fromApi && apiBase && figurePngRaw) ? absUrl(figurePngRaw, apiBase) : figurePngRaw;
       return {
         id: String(p.id),
         title: p.title || "Sin título",
@@ -122,7 +136,8 @@
         score: p.score || null,
         accent: p.accent || accentFor(p),
         cover: cover,                       // portada real (proxy) o ""
-        images: images,                     // galería: [url1, url2, …] (1ª = portada)
+        images: images,                     // galería: fotos reales del producto [url1, url2, …]
+        figurePng: figurePng,               // figura/personaje recortado (PNG transparente) para la vista 3D pop-out
         series: p.series || p.title || "",
         search_title: p.search_title || p.series || p.title || "",  // título para MangaDex (romaji)
         volume_covers: volCovers,          // [{v, url}] portadas oficiales por tomo
@@ -239,7 +254,7 @@
     return out;
   }
 
-  function buildItems(raw, fromApi) { return groupManga(normalize(raw, fromApi)); }
+  function buildItems(raw, fromApi) { return shuffle(groupManga(normalize(raw, fromApi))); }
 
   function coverURL(p) {
     if (p.cover) return p.cover;
@@ -276,6 +291,37 @@
         tspans +
         '<rect x="40" y="712" width="200" height="44" fill="' + accent + '"/>' +
         '<text x="140" y="742" text-anchor="middle" font-family="Bangers, Anton, sans-serif" font-size="24" fill="#0c0c0e" letter-spacing="2">GEEKPOINT</text>' +
+      '</svg>';
+    return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+  }
+
+  /** Caja de EXPOSICIÓN VACÍA (SVG data-URI) — fondo de la tarjeta/visor de
+      figura. El personaje (figure_png_url) se dibuja ENCIMA, no aquí. */
+  function figureBoxURL(p) {
+    var accent = (p && p.accent) || "#8b5bff";
+    var maker = String((p && (p.manufacturer || p.author)) || "GEEKPOINT COLLECTION")
+      .toUpperCase().slice(0, 22);
+    var svg =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800" viewBox="0 0 600 800">' +
+        '<defs>' +
+          '<linearGradient id="bx" x1="0" y1="0" x2="0" y2="1">' +
+            '<stop offset="0" stop-color="#191922"/><stop offset="1" stop-color="#0b0b12"/></linearGradient>' +
+          '<radialGradient id="sp" cx="50%" cy="30%" r="58%">' +
+            '<stop offset="0" stop-color="' + accent + '" stop-opacity=".38"/>' +
+            '<stop offset="1" stop-color="' + accent + '" stop-opacity="0"/></radialGradient>' +
+        '</defs>' +
+        '<rect width="600" height="800" fill="url(#bx)"/>' +
+        '<rect width="600" height="800" fill="url(#sp)"/>' +
+        '<rect x="26" y="26" width="548" height="748" rx="4" fill="none" stroke="' + accent + '" stroke-width="4" opacity=".85"/>' +
+        '<rect x="40" y="40" width="520" height="720" fill="none" stroke="#0c0c0e" stroke-width="10"/>' +
+        '<rect x="52" y="112" width="496" height="588" fill="#f4efe6"/>' +
+        '<ellipse cx="300" cy="660" rx="150" ry="34" fill="#0c0c0e" opacity=".16"/>' +
+        '<ellipse cx="300" cy="652" rx="150" ry="34" fill="none" stroke="' + accent + '" stroke-width="3" opacity=".7"/>' +
+        '<rect x="40" y="40" width="520" height="64" fill="' + accent + '"/>' +
+        '<text x="60" y="82" font-family="Anton, Arial Black, sans-serif" font-size="28" fill="#0c0c0e" letter-spacing="1">' + xml(maker) + '</text>' +
+        '<rect x="40" y="696" width="520" height="64" fill="#0c0c0e" opacity=".82"/>' +
+        '<text x="300" y="722" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="16" letter-spacing="2" fill="#efe9d8">SOPORTE 3D &#183; FIGURA NO INCLUIDA</text>' +
+        '<text x="300" y="746" text-anchor="middle" font-family="Bangers, Anton, sans-serif" font-size="18" letter-spacing="2" fill="' + accent + '">GEEKPOINT</text>' +
       '</svg>';
     return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
   }
@@ -325,6 +371,16 @@
     coverURL: coverURL,
     inkCover: inkCover,
     placeholderCover: placeholderCover,
+    /** URL del PNG RECORTADO del personaje (fondo transparente) que se aloja
+        DENTRO de la caja 3D de exhibición. Es la columna products.figure_png_url;
+        si el producto no la trae devuelve "" y la caja se muestra VACÍA
+        (nunca una silueta vectorial de reemplazo). */
+    figurePngURL: function (p) {
+      return (p && p.figurePng) ? p.figurePng : "";
+    },
+    /** Caja de exposición VACÍA (SVG data-URI) — solo respaldo sin WebGL para el
+        visor del modal. El personaje va ENCIMA vía figurePngURL(). */
+    figureBoxURL: figureBoxURL,
     /**
      * Carátula estilizada para un TOMO sin arte remoto real (Manhwa/Webtoon
      * cuyas APIs no traen portada por volumen físico).  Muestra la serie y el

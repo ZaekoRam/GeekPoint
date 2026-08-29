@@ -487,3 +487,124 @@ body.in-app .printbtn .printer { --pr-bg: var(--surface); }
   .cart-item-leaving { animation-duration: .001s; }
   .cartbtn__count.is-bump { animation: none; }
 }
+
+/* =============================================================
+   Toggle de Modo Oscuro (botón SVG sol/luna) + Circular Reveal
+   ============================================================= */
+
+/* ---- Animación circular estilo Hostinger ----
+   El wipe corre 100% en CSS sobre la instantánea NUEVA (clip-path que
+   se expande desde el punto del clic). La instantánea vieja queda
+   estática debajo → no hay fotograma "congelado" ni parpadeo.
+   theme.js añade la clase .theme-toggle-transition al <html> y define
+   --h-theme-toggle-x/y (y --r) justo antes de startViewTransition. */
+:root.theme-toggle-transition::view-transition-old(root) {
+  mix-blend-mode: normal;
+  animation: none;
+  z-index: 1;
+}
+:root.theme-toggle-transition::view-transition-new(root) {
+  mix-blend-mode: normal;
+  z-index: 9999;
+  animation: 0.55s cubic-bezier(0.4, 0, 0.2, 1) h-theme-toggle-reveal;
+}
+@keyframes h-theme-toggle-reveal {
+  0%   { clip-path: circle(0 at var(--h-theme-toggle-x, 50%) var(--h-theme-toggle-y, 50%)); }
+  100% { clip-path: circle(var(--h-theme-toggle-r, 150vmax) at var(--h-theme-toggle-x, 50%) var(--h-theme-toggle-y, 50%)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root.theme-toggle-transition::view-transition-new(root),
+  :root.theme-toggle-transition::view-transition-old(root) { animation: none !important; }
+}
+
+/* ---- Botón toggle SVG (sol/luna) ----
+   Estado del checkbox:  SIN marcar = modo CLARO → SOL
+                          MARCADO   = modo OSCURO → LUNA   */
+.themeToggle {
+  color: #bbb;
+  width: 3em;
+  display: inline-block;
+}
+
+.st-sunMoonThemeToggleBtn {
+  position: relative;
+  cursor: pointer;
+}
+
+.st-sunMoonThemeToggleBtn .themeToggleInput {
+  opacity: 0;
+  width: 100%;
+  aspect-ratio: 1;
+  position: absolute;
+  z-index: 1;
+}
+
+.st-sunMoonThemeToggleBtn svg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  transition: transform 0.4s ease;
+  transform: rotate(90deg);              /* SOL por defecto (modo claro) */
+}
+
+.st-sunMoonThemeToggleBtn svg .sunMoon {
+  transform-origin: center center;
+  transition: inherit;
+  transform: scale(0.55);                /* disco pequeño = cuerpo del sol */
+}
+
+.st-sunMoonThemeToggleBtn svg .sunRay {
+  transform-origin: center center;
+  transition: transform 0.4s ease;
+  transform: scale(1);                   /* rayos visibles = sol */
+}
+
+.st-sunMoonThemeToggleBtn svg mask > circle {
+  transition: transform 0.64s cubic-bezier(0.41, 0.64, 0.32, 1.575);
+  transform: translate(16px, -3px);      /* máscara fuera → disco completo */
+}
+
+.st-sunMoonThemeToggleBtn svg .sunRay2 { transition-delay: 0.05s; }
+.st-sunMoonThemeToggleBtn svg .sunRay3 { transition-delay: 0.1s; }
+.st-sunMoonThemeToggleBtn svg .sunRay4 { transition-delay: 0.17s; }
+.st-sunMoonThemeToggleBtn svg .sunRay5 { transition-delay: 0.25s; }
+.st-sunMoonThemeToggleBtn svg .sunRay6 { transition-delay: 0.29s; }
+
+/* MARCADO = modo OSCURO → LUNA */
+.st-sunMoonThemeToggleBtn .themeToggleInput:checked + svg {
+  transform: rotate(40deg);
+}
+.st-sunMoonThemeToggleBtn .themeToggleInput:checked + svg mask > circle {
+  transform: translate(0px, 0px);        /* la máscara muerde el disco → media luna */
+}
+.st-sunMoonThemeToggleBtn .themeToggleInput:checked + svg .sunMoon {
+  transform: scale(1);
+}
+.st-sunMoonThemeToggleBtn .themeToggleInput:checked + svg .sunRay {
+  transform: scale(0);                   /* rayos ocultos = luna */
+}
+
+/* ---- Ajustes de integración con el header GeekPoint ---- */
+.themeToggle {
+  aspect-ratio: 1;          /* el input/svg son absolute → el label necesita alto */
+  flex: none;
+  color: var(--muted);      /* #bbb quedaba muy bajo de contraste sobre el papel */
+  transition: color .15s var(--ease-out), transform .16s var(--ease-bounce);
+}
+.themeToggle:hover { color: var(--text); transform: translateY(-2px); }
+.themeToggle:active { transform: translateY(0) scale(.96); }
+.st-sunMoonThemeToggleBtn .themeToggleInput:focus-visible + svg {
+  outline: 3px solid var(--neon-cyan);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .st-sunMoonThemeToggleBtn svg,
+  .st-sunMoonThemeToggleBtn svg * { transition: none !important; animation: none !important; }
+}
+@media (max-width: 768px) { .themeToggle { width: 2.25em; } }
+
+/* Fuera de alcance: el toggle es solo para la tienda pública. */
+body.in-app .themeToggle { display: none; }

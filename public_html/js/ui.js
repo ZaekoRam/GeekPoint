@@ -29,16 +29,25 @@
     };
   }
 
+  /**
+   * Formato de moneda ÚNICO para toda la tienda, idéntico en ES y EN:
+   *   "$3,800.00 MXN"
+   * No depende de I18N.lang (evita que "en" pinte "MX$3,800.00").
+   * Agrupación es-MX (coma millares, punto decimales) + símbolo "$" + " MXN".
+   */
   function money(n) {
-    var cfg = window.__CONFIG__ || {};
-    var loc = (cfg.locale && cfg.locale[(window.I18N && I18N.lang) || "es"]) || "es-MX";
+    var amount = Number(n);
+    if (!isFinite(amount)) amount = 0;
+    var neg = amount < 0;
+    var digits;
     try {
-      return new Intl.NumberFormat(loc, {
-        style: "currency", currency: cfg.currency || "MXN", minimumFractionDigits: 2
-      }).format(Number(n) || 0);
+      digits = new Intl.NumberFormat("es-MX", {
+        minimumFractionDigits: 2, maximumFractionDigits: 2
+      }).format(Math.abs(amount));
     } catch (e) {
-      return "$" + (Number(n) || 0).toFixed(2);
+      digits = Math.abs(amount).toFixed(2);
     }
+    return (neg ? "-$" : "$") + digits + " MXN";
   }
 
   function num(n, digits) {

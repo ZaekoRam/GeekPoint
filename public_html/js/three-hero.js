@@ -30,10 +30,21 @@
     usedCovers: {}        // urls de portada ya usadas (evita repetir)
   };
 
-  /* Reparte por categoría (round-robin) para garantizar tomos + cartas + cajas. */
+  /* Fisher-Yates in-place: variedad distinta en cada carga del Hero. */
+  function shuffle(arr) {
+    for (var i = arr.length - 1; i > 0; i--) {
+      var j = (Math.random() * (i + 1)) | 0;
+      var t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+    }
+    return arr;
+  }
+
+  /* Reparte por categoría (round-robin) para garantizar tomos + cartas + cajas.
+     Cada bucket se baraja para que no salgan siempre los mismos ítems al frente. */
   function interleave(list, max) {
     var buckets = { manga: [], comics: [], tcg: [], figuras: [] };
     list.forEach(function (p) { (buckets[p.category] || (buckets.manga)).push(p); });
+    Object.keys(buckets).forEach(function (k) { shuffle(buckets[k]); });
     var order = ["manga", "tcg", "figuras", "comics"];
     var out = [], i = 0;
     while (out.length < max && out.length < list.length) {
@@ -176,7 +187,8 @@
   var _backTex = {};
   function backTexture(category) {
     var isComic = category === "comics" || category === "comic";
-    var label = isComic ? "FULL COLOR EDITION" : "MANGA INK EDITION";
+    var label = category === "figuras" ? "COLLECTOR EDITION"
+              : (isComic ? "FULL COLOR EDITION" : "MANGA INK EDITION");
     if (_backTex[label]) return _backTex[label];
     var c = document.createElement("canvas");
     c.width = 512; c.height = 700;
@@ -195,6 +207,131 @@
     g.strokeStyle = "#ffd400"; g.lineWidth = 8; g.strokeRect(14, 14, 484, 672);
     _backTex[label] = mkTex(c);
     return _backTex[label];
+  }
+
+  /* =============================================================
+     CAJA DE EXHIBICIÓN 3D  (componente compartido Hero + modal catálogo)
+     -------------------------------------------------------------------
+     Vitrina abierta construida con planos: piso, techo, dos paredes, un
+     PANEL TRASERO SÓLIDO con la marca GeekPoint, marco exterior negro y
+     filo de acento. Aloja DOS planos con el PNG del personaje:
+       · pngInside  — visible por defecto, dentro de la caja.
+       · pngOut     — oculto; en hover "sale volando" mientras pngInside
+                      se desvanece a opacity 0 (sin ilusión de duplicado).
+     Devuelve { root, pngInside, pngOut, loadPng }.
+     ============================================================= */
+  function buildDisplayCase(opts) {
+    opts = opts || {};
+    var W = opts.W || 1.9, H = opts.H || 2.0, D = opts.D || 1.0;
+    var hero = !!opts.hero;
+    var accent = new THREE.Color(opts.accent || "#8b5bff");
+    var root = new THREE.Group();
+
+    var wallMat  = new THREE.MeshStandardMaterial({ color: "#16161f", roughness: .96, side: THREE.DoubleSide });
+    var floorMat = new THREE.MeshStandardMaterial({ color: "#23232f", roughness: .82, side: THREE.DoubleSide });
+
+    function plane(w, h, m) { return new THREE.Mesh(new THREE.PlaneGeometry(w, h), m); }
+    var flr = plane(W, D, floorMat); flr.rotation.x = -Math.PI / 2; flr.position.y = -H / 2; root.add(flr);
+    var cei = plane(W, D, wallMat);  cei.rotation.x =  Math.PI / 2; cei.position.y =  H / 2; root.add(cei);
+    var lft = plane(D, H, wallMat);  lft.rotation.y =  Math.PI / 2; lft.position.x = -W / 2; root.add(lft);
+    var rgt = plane(D, H, wallMat);  rgt.rotation.y = -Math.PI / 2; rgt.position.x =  W / 2; root.add(rgt);
+
+    // PANEL TRASERO SÓLIDO: caja fina; cara interior neutra, cara exterior
+    // con la textura de marca GEEKPOINT (nunca transparente en la vista 360°).
+    var backDepth = Math.max(0.06, D * 0.08);
+    var neutral = new THREE.MeshStandardMaterial({ color: "#141419", roughness: .9 });
+    if (hero) { neutral.emissive = accent.clone(); neutral.emissiveIntensity = 0.14; }
+    var branded = new THREE.MeshStandardMaterial({ map: backTexture("figuras"), color: "#ffffff", roughness: .82 });
+    var back = new THREE.Mesh(new THREE.BoxGeometry(W, H, backDepth),
+      [neutral, neutral, neutral, neutral, neutral, branded]);   // [+X,-X,+Y,-Y,+Z int, -Z marca]
+    back.position.set(0, 0, -D / 2 - backDepth / 2 + 0.002);
+    root.add(back);
+
+    // Marco exterior (barras negras) alrededor de la abertura frontal.
+    var frMat = new THREE.MeshStandardMaterial({ color: "#0c0c0e", roughness: .55 });
+    var frT = Math.max(0.08, W * 0.09), frZ = D / 2 + 0.01;
+    function frBar(w, h, x, y) {
+      var b = new THREE.Mesh(new THREE.BoxGeometry(w, h, frT), frMat);
+      b.position.set(x, y, frZ); root.add(b);
+    }
+    frBar(W + frT * 2, frT, 0,  H / 2 + frT / 2);
+    frBar(W + frT * 2, frT, 0, -H / 2 - frT / 2);
+    frBar(frT, H, -W / 2 - frT / 2, 0);
+    frBar(frT, H,  W / 2 + frT / 2, 0);
+
+    // Filo de acento en el borde interior de la abertura.
+    var acMat = new THREE.MeshBasicMaterial({ color: accent });
+    var acT = Math.max(0.03, W * 0.03), acZ = D / 2 + 0.02;
+    function acBar(w, h, x, y) {
+      var b = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.02), acMat);
+      b.position.set(x, y, acZ); root.add(b);
+    }
+    acBar(W, acT, 0,  H / 2 - acT / 2);
+    acBar(W, acT, 0, -H / 2 + acT / 2);
+    acBar(acT, H, -W / 2 + acT / 2, 0);
+    acBar(acT, H,  W / 2 - acT / 2, 0);
+
+    // Relleno de acento hacia la pared trasera (solo modal: en el Hero se
+    // simula con emissive para no acumular luces por caja).
+    if (!hero) {
+      var glow = new THREE.PointLight(accent.getHex(), 14, Math.max(6, D * 6));
+      glow.position.set(0, H * 0.1, D / 2 - D * 0.3);
+      root.add(glow);
+      var contact = new THREE.Mesh(new THREE.PlaneGeometry(W * 0.62, D * 0.5),
+        new THREE.MeshBasicMaterial({ color: "#000", transparent: true, opacity: .4 }));
+      contact.rotation.x = -Math.PI / 2;
+      contact.position.set(0, -H / 2 + 0.012, D * 0.06);
+      root.add(contact);
+    }
+
+    // ---- Personaje: PNG dentro (pngInside) + copia pop-out (pngOut) ----
+    var matIn  = new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide });
+    var matOut = new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, opacity: 0, side: THREE.DoubleSide });
+    var fH = H * 0.82, fW = fH * 0.62;
+    var pngInside = new THREE.Mesh(new THREE.PlaneGeometry(fW, fH), matIn);
+    pngInside.position.set(0, -H / 2 + fH / 2 + 0.03, D * 0.12);
+    pngInside.renderOrder = 3;
+    root.add(pngInside);
+    var pngOut = new THREE.Mesh(new THREE.PlaneGeometry(fW, fH), matOut);
+    pngOut.position.set(0, -H / 2 + fH / 2 + 0.03, D / 2 + 0.05);
+    pngOut.userData.baseY = pngOut.position.y;
+    pngOut.userData.baseZ = pngOut.position.z;
+    pngOut.visible = false;
+    pngOut.renderOrder = 5;
+    root.add(pngOut);
+
+    function fitPlanes(iw, ih) {
+      if (!iw || !ih) return;
+      var r = iw / ih, nh = H * 0.82, nw = nh * r;
+      if (nw > W * 0.86) { nw = W * 0.86; nh = nw / r; }
+      [pngInside, pngOut].forEach(function (pl) {
+        pl.geometry.dispose();
+        pl.geometry = new THREE.PlaneGeometry(nw, nh);
+        pl.position.y = -H / 2 + nh / 2 + 0.03;
+      });
+      pngOut.userData.baseY = pngOut.position.y;
+    }
+
+    function loadPng(url) {
+      if (!url) return;
+      var img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = function () {
+        var t1 = new THREE.Texture(img); t1.needsUpdate = true;
+        if ("colorSpace" in t1 && THREE.SRGBColorSpace) t1.colorSpace = THREE.SRGBColorSpace;
+        t1.anisotropy = 4;
+        var t2 = new THREE.Texture(img); t2.needsUpdate = true;
+        if ("colorSpace" in t2 && THREE.SRGBColorSpace) t2.colorSpace = THREE.SRGBColorSpace;
+        t2.anisotropy = 4;
+        matIn.map = t1;  matIn.needsUpdate = true;
+        matOut.map = t2; matOut.needsUpdate = true;
+        fitPlanes(img.naturalWidth, img.naturalHeight);
+      };
+      img.onerror = function () {};
+      img.src = url;
+    }
+
+    return { root: root, pngInside: pngInside, pngOut: pngOut, loadPng: loadPng };
   }
 
   /* =============================================================
@@ -276,7 +413,10 @@
   }
 
   function makeFlat(product, kind) {
-    var dims = kind === "card" ? [1.5, 2.1, 0.05] : [1.85, 1.95, 0.95];
+    // FIGURAS: misma CAJA DE EXHIBICIÓN 3D interactiva del catálogo.
+    if (kind === "box") return makeCase(product);
+
+    var dims = [1.5, 2.1, 0.05];   // carta TCG
     var accent = new THREE.Color(product.accent || "#ffd400");
     var front = new THREE.MeshStandardMaterial({ color: "#cfc8b6", roughness: .55 });
     front.emissive = accent.clone(); front.emissiveIntensity = 0;
@@ -298,6 +438,31 @@
     mesh.userData.coverFront = front;
     S.pick.push(mesh);
     return mesh;
+  }
+
+  /* FIGURAS — vitrina 3D flotante del Hero (misma pieza que el modal).
+     Casco invisible = objetivo de raycast + ancla de transform; la caja
+     de exhibición va dentro. Por defecto vuela con el PNG DENTRO; el
+     "pop-out" del hover lo maneja tick() vía pngInside / pngOut. */
+  function makeCase(product) {
+    var built = buildDisplayCase({ W: 1.9, H: 2.0, D: 1.0, accent: product.accent || "#8b5bff", hero: true });
+
+    var hull = new THREE.Mesh(
+      new THREE.BoxGeometry(1.9, 2.0, 1.0),
+      new THREE.MeshBasicMaterial({ visible: false })
+    );
+    hull.add(built.root);
+
+    var pngUrl = (window.Catalog && Catalog.figurePngURL) ? Catalog.figurePngURL(product) : (product.figurePng || "");
+    if (pngUrl) built.loadPng(pngUrl);
+
+    hull.userData.owner = hull;
+    hull.userData.product = product;
+    hull.userData.type = "case";
+    hull.userData.pngInside = built.pngInside;
+    hull.userData.pngOut = built.pngOut;
+    S.pick.push(hull);
+    return hull;
   }
 
   /* =============================================================
@@ -415,7 +580,8 @@
     var t = now * 0.001;
     var sp = S.reduced ? 0.4 : 1;
 
-    S.group.rotation.y += 0.0009 * sp;
+    // Auto-rotación a la MITAD de velocidad (movimiento más suave y elegante).
+    S.group.rotation.y += 0.00045 * sp;
     var gy = S.group.rotation.y;
 
     S.objs.forEach(function (u) {
@@ -445,6 +611,22 @@
         d.coverFront.emissiveIntensity = e * 0.25;
       } else if (d.coverFront) {
         d.coverFront.emissiveIntensity = e * 0.5;
+      }
+
+      // FIGURAS: "pop-out". En reposo la figura va DENTRO de la caja (pngInside
+      // visible). Al hover, pngOut "sale volando" hacia arriba/afuera mientras
+      // pngInside se desvanece a opacity 0 → el personaje abandona el empaque
+      // (nunca se ve duplicado).
+      if (d.pngInside) {
+        d.pngInside.material.opacity = Math.max(0, 1 - e * 1.7);
+        d.pngInside.visible = e < 0.9;
+        var po = d.pngOut;
+        po.visible = e > 0.02;
+        po.material.opacity = Math.min(1, e * 1.4);
+        po.position.y = po.userData.baseY + e * (S.reduced ? 1.2 : 2.4);
+        po.position.z = po.userData.baseZ + e * (S.reduced ? 0.35 : 0.75);
+        var pscale = 1 + e * (S.reduced ? 0.08 : 0.2);
+        po.scale.set(pscale, pscale, pscale);
       }
     });
 
@@ -492,5 +674,5 @@
     if (document.hidden) stop(); else resume();
   });
 
-  window.HERO3D = { start: start, stop: stop, resume: resume, destroy: destroy, hasWebGL: hasWebGL, pageTexture: pageTexture, backTexture: backTexture };
+  window.HERO3D = { start: start, stop: stop, resume: resume, destroy: destroy, hasWebGL: hasWebGL, pageTexture: pageTexture, backTexture: backTexture, buildDisplayCase: buildDisplayCase };
 })();

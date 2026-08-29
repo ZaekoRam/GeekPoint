@@ -33,13 +33,30 @@ class CatalogController extends Controller
             ['q' => 'Shingeki no Kyojin',    'cat' => 'manga',   'price' => 169, 'tag' => '', 'name' => 'Attack on Titan', 'mal' => 23390, 'tomos' => 34],
             ['q' => 'Solo Leveling',         'cat' => 'manga',   'price' => 219, 'tag' => 'novedad'],
             ['q' => 'Sousou no Frieren',     'cat' => 'manga',   'price' => 175, 'tag' => 'preventa', 'name' => 'Frieren: Beyond Journey\'s End'],
+            ['q' => 'Naruto',                'cat' => 'manga',   'price' => 155, 'tag' => '', 'mal' => 11],
+            ['q' => 'Bleach',                'cat' => 'manga',   'price' => 159, 'tag' => '', 'mal' => 12],
+            ['q' => 'Death Note',            'cat' => 'manga',   'price' => 149, 'tag' => '', 'mal' => 21],
+            ['q' => 'Fullmetal Alchemist',   'cat' => 'manga',   'price' => 189, 'tag' => '', 'mal' => 25],
+            ['q' => 'Tokyo Ghoul',           'cat' => 'manga',   'price' => 165, 'tag' => ''],
+            ['q' => 'Haikyuu!!',             'cat' => 'manga',   'price' => 155, 'tag' => '', 'name' => 'Haikyu!!'],
+            ['q' => 'Kaguya-sama wa Kokurasetai', 'cat' => 'manga', 'price' => 169, 'tag' => '', 'name' => 'Kaguya-sama: Love is War'],
             ['q' => 'JoJo no Kimyou na Bouken', 'cat' => 'comics', 'price' => 299, 'tag' => '', 'name' => "JoJo's Bizarre Adventure"],
+            ['q' => 'Tower of God',          'cat' => 'comics',  'price' => 269, 'tag' => 'novedad'],
+            ['q' => 'The God of High School', 'cat' => 'comics', 'price' => 249, 'tag' => ''],
+            ['q' => 'Omniscient Reader',     'cat' => 'comics',  'price' => 279, 'tag' => '', 'name' => "Omniscient Reader's Viewpoint"],
+            ['q' => 'Noblesse',              'cat' => 'comics',  'price' => 239, 'tag' => ''],
+            ['q' => 'Lookism',               'cat' => 'comics',  'price' => 229, 'tag' => ''],
             ['q' => 'Jujutsu Kaisen 0',      'cat' => 'figuras', 'price' => 2490, 'tag' => 'preventa', 'name' => 'Gojo Satoru - Figura 1/7'],
             ['q' => 'Chainsaw Man',          'cat' => 'figuras', 'price' => 1890, 'tag' => '', 'name' => 'Power - Figura S.H.F.'],
             ['q' => 'Kimetsu no Yaiba',      'cat' => 'figuras', 'price' => 1690, 'tag' => '', 'name' => 'Nezuko - Figura 1/8'],
+            ['q' => 'Re:Zero kara Hajimeru Isekai Seikatsu', 'cat' => 'figuras', 'price' => 2190, 'tag' => '', 'name' => 'Rem - Figura 1/7'],
+            ['q' => 'Spy x Family',          'cat' => 'figuras', 'price' => 1290, 'tag' => 'novedad', 'name' => 'Anya Forger - Nendoroid'],
+            ['q' => 'Darling in the FranXX', 'cat' => 'figuras', 'price' => 2290, 'tag' => '', 'name' => 'Zero Two - Figura 1/7'],
+            ['q' => 'Sousou no Frieren',     'cat' => 'figuras', 'price' => 1990, 'tag' => 'preventa', 'name' => 'Frieren - Figura 1/7'],
             ['q' => 'Pokemon Adventures',    'cat' => 'tcg',     'price' => 1290, 'tag' => 'novedad', 'name' => 'Pokemon TCG - Elite Trainer Box'],
             ['q' => 'One Piece',             'cat' => 'tcg',     'price' => 1490, 'tag' => '', 'name' => 'One Piece TCG - Booster Box'],
             ['q' => 'Yu-Gi-Oh!',             'cat' => 'tcg',     'price' => 1190, 'tag' => '', 'name' => 'Yu-Gi-Oh! TCG - Structure Deck'],
+            ['q' => 'Magic The Gathering',   'cat' => 'tcg',     'price' => 1390, 'tag' => '', 'name' => 'Magic - Play Booster Box'],
         ];
     }
 
@@ -148,6 +165,11 @@ class CatalogController extends Controller
      */
     private function localProducts()
     {
+        // Sin BD (p. ej. MySQL mal configurado en el hosting) el catálogo público
+        // sigue funcionando solo con las APIs externas: no reventamos la respuesta.
+        if (!Database::ping()) {
+            return [];
+        }
         try {
             $rows = Database::all(
                 "SELECT p.sku,
@@ -155,6 +177,7 @@ class CatalogController extends Controller
                         c.slug             AS category,
                         MAX(p.description) AS description,
                         MAX(p.image_url)   AS image_url,
+                        MAX(p.figure_png_url) AS figure_png_url,
                         ROUND(AVG(p.price), 2) AS price,
                         SUM(p.stock)       AS stock,
                         GROUP_CONCAT(CONCAT(b.code, '|', b.name, '|', p.stock) SEPARATOR ';;') AS branchmap
@@ -168,7 +191,7 @@ class CatalogController extends Controller
                  ORDER BY name",
                 []
             );
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
             return [];
         }
 
@@ -225,6 +248,9 @@ class CatalogController extends Controller
                 'cover'        => $imgs[0] ?? '',
                 'cover_raw'    => $imgs[0] ?? '',
                 'images'       => $imgs,
+                'figure_png_url' => (isset($r['figure_png_url']) && $r['figure_png_url'] !== '')
+                                      ? (string) $r['figure_png_url']
+                                      : null,   // PNG recortado (transparente) para la vista 3D pop-out
                 'tags'         => [],
                 'rarity'       => $rarity,
                 'manufacturer' => $manufacturer,

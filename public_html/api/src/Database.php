@@ -40,6 +40,38 @@ class Database
         return self::$pdo;
     }
 
+    /**
+     * ¿La base de datos acepta conexión?  Devuelve bool y NO aborta la
+     * petición (pdo() llama a Response::error()+exit al fallar; esto no).
+     * Úsalo en endpoints que deben responder aunque MySQL esté caído
+     * (p. ej. /health o el catálogo público, que tiene APIs externas).
+     */
+    public static function ping()
+    {
+        if (self::$pdo instanceof PDO) {
+            return true;
+        }
+        try {
+            $cfg = App::config('db');
+            $dsn = sprintf(
+                'mysql:host=%s;port=%d;dbname=%s;charset=%s',
+                $cfg['host'],
+                (int) $cfg['port'],
+                $cfg['name'],
+                $cfg['charset']
+            );
+            self::$pdo = new PDO($dsn, $cfg['user'], $cfg['pass'], [
+                PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                PDO::ATTR_EMULATE_PREPARES   => false,
+                PDO::ATTR_TIMEOUT            => 3,
+            ]);
+            return true;
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
     /** Ejecuta una consulta preparada y devuelve el statement. */
     public static function run($sql, array $params = [])
     {

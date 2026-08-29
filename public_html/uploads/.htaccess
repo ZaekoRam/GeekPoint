@@ -1,0 +1,25 @@
+# =============================================================
+#  /uploads  — SOLO archivos estáticos subidos por el panel.
+#  Nunca ejecutar código aquí (defensa ante subidas maliciosas).
+# =============================================================
+
+# Desactiva cualquier motor de scripting
+<IfModule mod_php.c>   php_flag engine off </IfModule>
+<IfModule mod_php7.c>  php_flag engine off </IfModule>
+<IfModule mod_php8.c>  php_flag engine off </IfModule>
+
+RemoveHandler .php .phtml .php3 .php4 .php5 .php6 .php7 .php8 .pht .phar .cgi .pl .py .sh
+RemoveType    .php .phtml .php3 .php4 .php5 .php6 .php7 .php8 .pht .phar
+
+<FilesMatch "\.(php[0-9]?|phtml|phar|pht|cgi|pl|py|sh|htaccess)$">
+  Require all denied
+</FilesMatch>
+
+Options -ExecCGI -Indexes
+
+# Cache larga para las imágenes servidas
+<IfModule mod_headers.c>
+  <FilesMatch "\.(png|jpe?g|webp|gif|svg|avif)$">
+    Header set Cache-Control "public, max-age=2592000"
+  </FilesMatch>
+</IfModule>

@@ -102,7 +102,8 @@ CREATE TABLE `products` (
   `tax_rate`    DECIMAL(4,3)  NOT NULL DEFAULT 0.160,   -- IVA México 16%
   `stock`       INT NOT NULL DEFAULT 0,
   `min_stock`   INT NOT NULL DEFAULT 3,
-  `image_url`   VARCHAR(1000) NOT NULL DEFAULT '',   -- 1+ URLs separadas por coma (1ª = portada)
+  `image_url`   VARCHAR(1000) NOT NULL DEFAULT '',   -- fotos de galería del producto: 1+ URLs separadas por coma
+  `figure_png_url` TEXT NULL,   -- figura/personaje recortado (PNG transparente) para la vista 3D pop-out; NULL si no hay
   `status`      ENUM('active','inactive') NOT NULL DEFAULT 'active',
   `created_at`  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at`  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

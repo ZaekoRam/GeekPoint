@@ -89,12 +89,15 @@ buena práctica dejarlo puesto.)*
 ## 5. Probar
 
 1. Abre `https://tudominio.com/api/health` → debe responder
-   `{"ok":true,"data":{"status":"up"}}`.
+   `{"ok":true,"data":{"status":"up","time":"…","db":true}}`.
 2. Abre `https://tudominio.com/` → carga la landing.
 3. **Acceder al panel** → entra con `admin@geekpoint.mx` / `password`.
 
-Si `health` da error 500: revisa `api/config.php` (credenciales) y que la base
-tenga las tablas importadas.
+Si `health` responde con `"db": false` (o sigue dando 500): la API está bien
+desplegada pero **no conecta con MySQL** — revisa las credenciales de
+`api/config.php` (en Hostinger el `host` suele ser `localhost`) y que la base
+tenga las tablas importadas. La **tienda** funciona igual en ese estado (catálogo
+por AniList, sin banner amarillo); solo el **panel** necesita la BD.
 Si la web carga pero el login dice *"No hay conexión con la API"*: comprueba que la
 carpeta `api/` esté dentro de `public_html/` y que exista `public_html/api/.htaccess`.
 

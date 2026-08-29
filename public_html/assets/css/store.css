@@ -8,12 +8,29 @@
   min-height: calc(100svh - var(--topbar-h));
   display: grid; align-items: center;
   padding: clamp(2rem, 7vh, 5rem) var(--gutter) 3.5rem;
+  /* Corte limpio: ni el canvas, ni las piezas flotantes, ni sus sombras
+     asoman por debajo del Hero. El límite con la sección beige es un
+     borde directo fondo-oscuro → fondo-beige, SIN franja intermedia
+     (antes había un border-bottom de 4px que el canvas no tapaba). */
   overflow: hidden;
+  /* Fix de subpíxel en la unión Hero ↔ sección beige (franja negra en
+     Firefox/Edge/Opera; Chrome redondea distinto): se fuerza una capa
+     de compositing propia y un stacking context propio para que el borde
+     inferior del canvas WebGL se ajuste a pixel entero y no deje residuo
+     al scrollear, y se solapa 1px la sección de abajo para cerrar el hueco. */
+  isolation: isolate;
+  transform: translateZ(0);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  margin-bottom: -1px;
   background: var(--ink);
   color: var(--paper-2);
-  border-bottom: 4px solid var(--ink);
 }
-.hero__canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; }
+.hero__canvas {
+  position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
 .hero__lines {
   position: absolute; inset: 0; z-index: 0; pointer-events: none; opacity: .5;
   background:
@@ -35,7 +52,26 @@
 .hero__title .yellow { color: var(--panini); text-shadow: 4px 4px 0 rgba(0,0,0,.6); }
 .hero__lead { font-size: clamp(1rem, 2.1vw, 1.2rem); color: #d9d9de; max-width: 46ch; margin-bottom: 1.8rem; }
 .hero__cta { display: flex; flex-wrap: wrap; gap: .8rem; }
-.hero__scroll { position: absolute; left: 50%; bottom: 1.1rem; z-index: 2; transform: translateX(-50%); color: var(--panini); font-family: var(--mono); font-size: .68rem; letter-spacing: .2em; text-transform: uppercase; animation: bob 1.8s var(--ease-soft) infinite; }
+/* "Desliza": texto suelto sobre el canvas — NO va en un contenedor de ancho
+   completo. Sin fondo, borde ni sombra; sin alto fijo. Se centra con
+   position:absolute + translateX(-50%) y el Hero (overflow:hidden) lo recorta
+   si el "bob" lo acercara al borde. */
+.hero__scroll {
+  position: absolute;
+  left: 50%;
+  bottom: 20px;
+  z-index: 2;
+  transform: translateX(-50%);
+  color: var(--panini);
+  font-family: var(--mono);
+  font-size: .68rem;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  pointer-events: none;
+  will-change: transform;
+  animation: bob 1.8s var(--ease-soft) infinite;
+}
 @keyframes bob { 0%,100% { transform: translate(-50%,0); } 50% { transform: translate(-50%,7px); } }
 @media (prefers-reduced-motion: reduce) { .hero__scroll { animation: none; } }
 
@@ -113,45 +149,86 @@
 .pcard__media .ink-cover { width: 100%; height: 100%; }
 
 /* =============================================================
-   FIGURAS — tarjeta "Caja Pop-Out" (empaque de coleccionista GeekPoint)
+   FIGURAS — tarjeta "expositor": CAJA 3D DE EXHIBICIÓN VACÍA + PNG.
+   La caja (marco exterior, fondo neutro-oscuro, piso en perspectiva y
+   frente transparente) se dibuja con CSS y es SIEMPRE la portada de la
+   grilla. El personaje (figure_png_url) va DENTRO y "despega" hacia
+   arriba al hover, sin recortarse. Nunca una silueta vectorial.
    ============================================================= */
-.pcard--figure { overflow: visible; }
-.pcard--figure:hover { z-index: 5; }               /* la figura sobresale por encima de la fila */
-.figure-card-box {
-  overflow: visible !important;
-  background: radial-gradient(120% 90% at 50% 15%, #1a1a24, #0b0b12 70%);
-  display: grid; place-items: center;
+.pcard--figure { overflow: visible; }                 /* la figura sale de la tarjeta */
+.pcard--figure:hover { z-index: 5; }                  /* por encima de las vecinas */
+
+.box-card-container {
+  position: relative;
+  overflow: visible !important;                        /* no recorta la figura al salir */
+  background: #0b0b12;
 }
-.figure-card-box__frame {
-  position: absolute; inset: 9px; pointer-events: none; border-radius: 3px;
-  border: 1.5px solid rgba(0, 229, 255, .5);
-  box-shadow: inset 0 0 20px rgba(0, 229, 255, .16), 0 0 0 1px rgba(255, 212, 0, .28);
+
+/* ---- La caja de exhibición VACÍA (marco + fondo + piso + paredes) ----
+   Sin z-index: es el primer hijo y queda debajo de glow / tags / view /
+   figure-png por orden de pintado. */
+.box-3d-display {
+  position: absolute; inset: 0;
+  pointer-events: none;
+  overflow: hidden;                                    /* recorta solo su interior */
+  border: 6px solid #0c0c0e;                           /* marco exterior */
+  background:
+    /* reflejo tenue de "vidrio" en el frente */
+    linear-gradient(122deg, rgba(255,255,255,.10) 0%, rgba(255,255,255,0) 26%,
+                            rgba(255,255,255,0) 72%, rgba(255,255,255,.06) 100%),
+    /* marca GEEKPOINT tenue en el panel trasero */
+    url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='420'%20height='120'%3E%3Ctext%20x='210'%20y='86'%20text-anchor='middle'%20font-family='Arial%20Black,Arial,sans-serif'%20font-weight='900'%20font-size='58'%20letter-spacing='3'%20fill='%23c8c8d7'%20fill-opacity='0.13'%3EGEEKPOINT%3C/text%3E%3C/svg%3E")
+      no-repeat center 30% / 64% auto,
+    /* pared trasera / fondo neutro-oscuro */
+    linear-gradient(180deg, #20202c 0%, #14141f 52%, #0b0b12 100%);
+  box-shadow:
+    inset 0 0 0 2px var(--fig-accent, #8b5bff),        /* filo de acento del expositor */
+    inset 52px 0 48px -30px rgba(0,0,0,.75),           /* pared lateral izquierda */
+    inset -52px 0 48px -30px rgba(0,0,0,.75),          /* pared lateral derecha */
+    inset 0 30px 46px -12px rgba(0,0,0,.6),            /* techo en sombra */
+    inset 0 -22px 34px -10px rgba(0,0,0,.55);          /* base en sombra */
 }
-.figure-card-box__bg {
-  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
-  opacity: .92;
-  transition: opacity .35s var(--ease-out), transform .35s var(--ease-out), filter .35s var(--ease-out);
+/* luz cenital de acento */
+.box-3d-display::before {
+  content: "";
+  position: absolute; left: 50%; top: -32%;
+  width: 130%; height: 62%;
+  transform: translateX(-50%);
+  background: radial-gradient(closest-side, var(--fig-accent, #8b5bff) 0%, rgba(0,0,0,0) 70%);
+  opacity: .3;
 }
-.figure-card-box__fig {
-  position: relative; z-index: 3;
-  width: 84%; height: 92%; object-fit: contain;
-  filter: drop-shadow(0 8px 12px rgba(0, 0, 0, .55));
-  transition: transform .5s var(--ease-bounce), filter .35s var(--ease-out);
+/* piso en perspectiva (trapecio que se aleja) */
+.box-3d-display::after {
+  content: "";
+  position: absolute; left: 0; right: 0; bottom: 0;
+  height: 38%;
+  background: linear-gradient(180deg, #2a2a38 0%, #131320 100%);
+  clip-path: polygon(14% 0, 86% 0, 100% 100%, 0 100%);
+  box-shadow: inset 0 2px 0 rgba(255,255,255,.07);
 }
-.pcard--figure:hover .figure-card-box__bg { opacity: .15; transform: scale(1.05); filter: blur(1px); }
-.pcard--figure:hover .figure-card-box__fig {
-  transform: translateY(-28px) scale(1.1);
-  filter: drop-shadow(0 10px 15px rgba(255, 212, 0, 0.4));
+
+/* ---- Personaje PNG (figure_png_url) alojado DENTRO de la caja ---- */
+/* especificidad > `.pcard__media img` para ganar el width/height/object-fit */
+.box-card-container .figure-png {
+  position: absolute; left: 50%; bottom: 8%;
+  width: 75%; height: auto; max-height: 92%;
+  transform: translateX(-50%);
+  object-fit: contain; z-index: 2; pointer-events: none;
+  filter: drop-shadow(0 12px 16px rgba(0, 0, 0, .6));
+  transition: transform 0.3s ease-in-out, filter 0.3s ease-in-out;
+  will-change: transform;
 }
-.pcard--figure:hover .figure-card-box__frame { border-color: rgba(0, 229, 255, .85); }
+/* PUM: el personaje despega y sale por arriba de la caja, sin cortarse. */
+.pcard--figure:hover .figure-png {
+  transform: translateX(-50%) translateY(-45px) scale(1.1);
+  filter: drop-shadow(0 30px 28px rgba(0, 0, 0, .5));
+}
 @media (hover: none) {
-  .pcard--figure:hover .figure-card-box__fig { transform: none; }
-  .pcard--figure:hover .figure-card-box__bg { opacity: .92; transform: none; filter: none; }
+  .pcard--figure:hover .figure-png { transform: translateX(-50%); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .figure-card-box__bg, .figure-card-box__fig { transition: none; }
-  .pcard--figure:hover .figure-card-box__fig { transform: none; filter: drop-shadow(0 10px 15px rgba(255,212,0,.4)); }
-  .pcard--figure:hover .figure-card-box__bg { opacity: .3; }
+  .figure-png { transition: none; }
+  .pcard--figure:hover .figure-png { transform: translateX(-50%) scale(1.04); }
 }
 .pcard__glow {
   position: absolute; inset: 0; pointer-events: none; opacity: 0;
@@ -295,6 +372,25 @@ body:not(.in-app) .btn--panini.is-pop { animation: ctaPop .4s var(--ease-bounce)
 .preview3d__thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .preview3d__thumb:hover { transform: translateY(-2px); }
 .preview3d__thumb.is-active { box-shadow: 0 0 0 2px var(--neon-cyan), 3px 3px 0 var(--ink); border-color: var(--neon-cyan); }
+
+/* Miniatura destacada "Vista 3D" (vuelve a la caja interactiva) */
+.preview3d__thumb--3d {
+  display: grid; place-items: center;
+  font-family: var(--display); font-size: 1rem; letter-spacing: .04em;
+  color: var(--paper-2); background: linear-gradient(135deg, #14141c, var(--ink));
+  border-color: var(--neon-cyan);
+}
+.preview3d__thumb--3d span { line-height: 1; }
+.preview3d__thumb--3d::after {
+  content: ""; position: absolute; inset: 4px; border: 1px dashed rgba(0,229,255,.5);
+}
+.preview3d__thumb--3d { position: relative; }
+
+/* Foto 2D en alta resolución (tapa el canvas al elegir una miniatura de galería) */
+.preview3d__photo {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: contain; background: var(--ink); z-index: 2;
+}
 .preview3d__hint { position: absolute; left: 0; right: 0; bottom: 0; text-align: center; font-family: var(--mono); font-size: .6rem; letter-spacing: .12em; color: var(--paper-2); background: rgba(0,0,0,.5); padding: .3rem; }
 .preview3d h3 { font-family: var(--display); text-transform: uppercase; font-size: 1.5rem; }
 .preview3d__meta { font-size: .84rem; color: var(--muted); display: flex; flex-direction: column; gap: .4rem; margin: .6rem 0; }

@@ -13,11 +13,19 @@
 
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23ffd400'/%3E%3Ctext x='50' y='72' font-size='68' text-anchor='middle' font-family='Arial Black,sans-serif' font-weight='900'%3EG%3C/text%3E%3C/svg%3E" />
 
-  <link rel="stylesheet" href="assets/css/tokens.css?v=20260828_v6" />
-  <link rel="stylesheet" href="assets/css/base.css?v=20260828_v6" />
-  <link rel="stylesheet" href="assets/css/components.css?v=20260828_v6" />
-  <link rel="stylesheet" href="assets/css/store.css?v=20260828_v6" />
-  <link rel="stylesheet" href="assets/css/app.css?v=20260828_v6" />
+  <!-- Anti-flash de Modo Oscuro: aplica data-theme antes de pintar. Por defecto: claro. -->
+  <script>
+    try {
+      if (localStorage.getItem('gp_theme') === 'dark')
+        document.documentElement.setAttribute('data-theme', 'dark');
+    } catch (e) {}
+  </script>
+
+  <link rel="stylesheet" href="assets/css/tokens.css?v=20260829_v23" />
+  <link rel="stylesheet" href="assets/css/base.css?v=20260829_v23" />
+  <link rel="stylesheet" href="assets/css/components.css?v=20260829_v23" />
+  <link rel="stylesheet" href="assets/css/store.css?v=20260829_v23" />
+  <link rel="stylesheet" href="assets/css/app.css?v=20260829_v23" />
 </head>
 <body>
   <a class="skip-link" href="#main">Saltar al contenido</a>
@@ -44,6 +52,25 @@
     </nav>
 
     <div class="topbar__actions">
+      <label for="themeToggle" class="themeToggle st-sunMoonThemeToggleBtn" title="Cambiar tema" aria-label="Cambiar a tema oscuro">
+        <input type="checkbox" id="themeToggle" class="themeToggleInput" />
+        <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor" stroke="none">
+          <mask id="moon-mask">
+            <rect x="0" y="0" width="20" height="20" fill="white"></rect>
+            <circle cx="11" cy="3" r="8" fill="black"></circle>
+          </mask>
+          <circle class="sunMoon" cx="10" cy="10" r="8" mask="url(#moon-mask)"></circle>
+          <g>
+            <circle class="sunRay sunRay1" cx="18" cy="10" r="1.5"></circle>
+            <circle class="sunRay sunRay2" cx="14" cy="16.928" r="1.5"></circle>
+            <circle class="sunRay sunRay3" cx="6" cy="16.928" r="1.5"></circle>
+            <circle class="sunRay sunRay4" cx="2" cy="10" r="1.5"></circle>
+            <circle class="sunRay sunRay5" cx="6" cy="3.1718" r="1.5"></circle>
+            <circle class="sunRay sunRay6" cx="14" cy="3.1718" r="1.5"></circle>
+          </g>
+        </svg>
+      </label>
+
       <div class="lang-toggle" data-lang-toggle role="group" aria-label="Idioma / Language">
         <button type="button" data-lang="es" class="is-active" aria-label="Español">
           <span class="lang-toggle__flag" aria-hidden="true">🇲🇽</span><span class="lang-toggle__code">ES</span>
@@ -155,24 +182,25 @@
   <script defer src="lib/gsap.min.js"></script>
   <script defer src="lib/ScrollTrigger.min.js"></script>
   <script defer src="lib/three.min.js"></script>
-  <script defer src="lib/barcode.js?v=20260828_v6"></script>
-  <script defer src="lib/manifest.js?v=20260828_v6"></script>
-  <script defer src="js/config.js?v=20260828_v6"></script>
-  <script defer src="js/i18n.js?v=20260828_v6"></script>
-  <script defer src="js/ui.js?v=20260828_v6"></script>
-  <script defer src="js/api.js?v=20260828_v6"></script>
-  <script defer src="js/services/pokemonApi.js?v=20260828_v6"></script>
-  <script defer src="js/services/figureApi.js?v=20260828_v6"></script>
-  <script defer src="js/store.js?v=20260828_v6"></script>
-  <script defer src="js/catalog.js?v=20260828_v6"></script>
-  <script defer src="js/three-hero.js?v=20260828_v6"></script>
-  <script defer src="js/views/shell.js?v=20260828_v6"></script>
-  <script defer src="js/views/store.js?v=20260828_v6"></script>
-  <script defer src="js/views/login.js?v=20260828_v6"></script>
-  <script defer src="js/views/admin.js?v=20260828_v6"></script>
-  <script defer src="js/views/manager.js?v=20260828_v6"></script>
-  <script defer src="js/views/pos.js?v=20260828_v6"></script>
-  <script defer src="js/router.js?v=20260828_v6"></script>
-  <script defer src="js/main.js?v=20260828_v6"></script>
+  <script defer src="lib/barcode.js?v=20260829_v23"></script>
+  <script defer src="lib/manifest.js?v=20260829_v23"></script>
+  <script defer src="js/config.js?v=20260829_v23"></script>
+  <script defer src="js/i18n.js?v=20260829_v23"></script>
+  <script defer src="js/ui.js?v=20260829_v23"></script>
+  <script defer src="js/theme.js?v=20260829_v23"></script>
+  <script defer src="js/api.js?v=20260829_v23"></script>
+  <script defer src="js/services/pokemonApi.js?v=20260829_v23"></script>
+  <script defer src="js/services/figureApi.js?v=20260829_v23"></script>
+  <script defer src="js/store.js?v=20260829_v23"></script>
+  <script defer src="js/catalog.js?v=20260829_v23"></script>
+  <script defer src="js/three-hero.js?v=20260829_v23"></script>
+  <script defer src="js/views/shell.js?v=20260829_v23"></script>
+  <script defer src="js/views/store.js?v=20260829_v23"></script>
+  <script defer src="js/views/login.js?v=20260829_v23"></script>
+  <script defer src="js/views/admin.js?v=20260829_v23"></script>
+  <script defer src="js/views/manager.js?v=20260829_v23"></script>
+  <script defer src="js/views/pos.js?v=20260829_v23"></script>
+  <script defer src="js/router.js?v=20260829_v23"></script>
+  <script defer src="js/main.js?v=20260829_v23"></script>
 </body>
 </html>

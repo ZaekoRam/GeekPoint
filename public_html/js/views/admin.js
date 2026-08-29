@@ -339,6 +339,41 @@
     ], list);
   }
 
+  /* Campo de imagen: acepta URL externa O archivo local (con vista previa). */
+  function imageField(name, i18nKey, ph, multiple) {
+    return row(i18nKey,
+      '<input class="input" name="' + name + '" type="text" placeholder="' + esc(ph) + '">' +
+      '<div class="uplfield">' +
+        '<label class="uplfield__btn">' +
+          '<input type="file" data-file="' + name + '" accept="image/png,image/jpeg,image/webp,image/gif"' +
+            (multiple ? ' multiple' : '') + '>' +
+          '<span>📁 ' + esc(I18N.t("prodadm.orUpload")) + '</span>' +
+        '</label>' +
+        '<div class="uplfield__prev" data-prev="' + name + '"></div>' +
+      '</div>');
+  }
+
+  function renderPreviews(fileInput, box) {
+    box.innerHTML = "";
+    Array.prototype.slice.call(fileInput.files || []).forEach(function (f) {
+      if (!/^image\//.test(f.type)) return;
+      var img = document.createElement("img");
+      img.src = URL.createObjectURL(f);
+      img.alt = f.name;
+      img.onload = function () { URL.revokeObjectURL(img.src); };
+      box.appendChild(img);
+    });
+  }
+
+  /** Sube cada File a /products/upload y resuelve con la lista de URLs públicas. */
+  function uploadFiles(files) {
+    return Promise.all(files.map(function (f) {
+      var fd = new FormData();
+      fd.append("file", f);
+      return API.upload("products/upload", fd).then(function (r) { return r.url; });
+    }));
+  }
+
   /* ---- Alta de producto — modal ÚNICO compartido por Admin y Gerente ---- */
   function newProductModal(branches, cats, done) {
     var c = document.createElement("form");
@@ -356,8 +391,10 @@
           '<datalist id="prodadm-makers">' + EDITORIALS.map(function (e) { return '<option value="' + esc(e) + '">'; }).join("") + '</datalist>') +
         row("prodadm.scale", '<input class="input" name="scale" maxlength="60" placeholder="1/7, Nendoroid, POP UP PARADE…">') +
       '</div>' +
-      row("prodadm.image", '<input class="input" name="image_url" type="text" ' +
-        'placeholder="https://… (varias URLs separadas por coma = galería)">') +
+      imageField("figure_png_url", "prodadm.figurePng",
+        "https://….png  —  o sube un PNG recortado del equipo", false) +
+      imageField("image_url", "prodadm.image",
+        "https://…, https://…  —  o sube fotos del equipo", true) +
       '<p class="field__label mono" style="font-size:.7rem;color:var(--faint);text-transform:uppercase;letter-spacing:.1em;margin:.4rem 0 .5rem">' +
         esc(I18N.t("prodadm.stockByBranch")) + '</p>' +
       '<div class="pkm-branches">' + branches.map(function (b) {
@@ -367,6 +404,14 @@
       formButtons();
 
     var m = UI.modal({ title: I18N.t("prodadm.new"), content: c, wide: true });
+
+    // Vista previa de los archivos locales elegidos.
+    c.querySelectorAll("[data-file]").forEach(function (fi) {
+      fi.addEventListener("change", function () {
+        renderPreviews(fi, c.querySelector('[data-prev="' + fi.getAttribute("data-file") + '"]'));
+      });
+    });
+
     bindForm(c, m, function (payload) {
       var stock = {}, any = false;
       c.querySelectorAll("[data-branch]").forEach(function (inp) {
@@ -379,21 +424,40 @@
       var skuSlug = payload.name.toUpperCase().replace(/[^A-Z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 22);
       var maker = (payload.manufacturer || "").trim();
       var scale = (payload.scale || "").trim();
-      var images = (payload.image_url || "").split(",")
-        .map(function (s) { return s.trim(); }).filter(Boolean);
-      var draft = {
-        source: "manual",
-        sku: (PRV_PREFIX[slug] || "GEN") + "-" + skuSlug,
-        name: payload.name.trim(),
-        category_slug: slug,
-        price: parseFloat(payload.price) || 0,
-        image_url: images.join(","),
-        manufacturer: maker,
-        scale: scale,
-        description: [maker, scale, "Alta manual"].filter(Boolean).join(" · "),
-        stock_by_branch: stock
-      };
-      return API.post("products/import", draft).then(function () {
+      var typedGallery = (payload.image_url || "").split(",").map(function (s) { return s.trim(); }).filter(Boolean);
+      var typedFigure  = (payload.figure_png_url || "").trim();
+
+      var figFiles = Array.prototype.slice.call(
+        (c.querySelector('[data-file="figure_png_url"]') || {}).files || []).slice(0, 1);
+      var galFiles = Array.prototype.slice.call(
+        (c.querySelector('[data-file="image_url"]') || {}).files || []);
+
+      if (figFiles.length || galFiles.length) UI.toast(I18N.t("prodadm.uploading"), "ok");
+
+      // 1) sube los archivos locales (si hay); 2) arma el draft con URLs + subidas.
+      return Promise.all([
+        figFiles.length ? uploadFiles(figFiles) : Promise.resolve([]),
+        galFiles.length ? uploadFiles(galFiles) : Promise.resolve([])
+      ]).catch(function (err) {
+        throw new Error((err && err.message) || I18N.t("prodadm.uploadFail"));
+      }).then(function (res) {
+        var figurePng = res[0][0] || typedFigure;
+        var images = typedGallery.concat(res[1]);
+        var draft = {
+          source: "manual",
+          sku: (PRV_PREFIX[slug] || "GEN") + "-" + skuSlug,
+          name: payload.name.trim(),
+          category_slug: slug,
+          price: parseFloat(payload.price) || 0,
+          image_url: images.join(","),          // fotos de galería (URLs + subidas)
+          figure_png_url: figurePng,            // figura recortada (PNG transparente) para la vista 3D
+          manufacturer: maker,
+          scale: scale,
+          description: [maker, scale, "Alta manual"].filter(Boolean).join(" · "),
+          stock_by_branch: stock
+        };
+        return API.post("products/import", draft);
+      }).then(function () {
         UI.toast(I18N.t("toast.created"), "ok");
         UI.closeModal();
         V._catalogChanged();

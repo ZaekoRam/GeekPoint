@@ -246,6 +246,22 @@ body.in-app [data-static-store] { display: none !important; }
 .pkm-branch span { font-size: .82rem; }
 .pkm-branch .input { width: 5rem; text-align: right; }
 
+/* ---------- Campo de imagen: URL o archivo local ---------- */
+.uplfield { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; margin-top: .4rem; }
+.uplfield__btn {
+  display: inline-flex; align-items: center; gap: .4rem;
+  font-size: .78rem; color: var(--muted); cursor: pointer;
+  padding: .35rem .6rem; border: 1px dashed var(--line); border-radius: var(--radius-sm);
+  transition: border-color .15s, color .15s, background .15s;
+}
+.uplfield__btn:hover { color: var(--text); border-color: var(--accent); background: var(--surface-2); }
+.uplfield__btn input[type="file"] { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+.uplfield__prev { display: flex; gap: .4rem; flex-wrap: wrap; }
+.uplfield__prev img {
+  width: 46px; height: 46px; object-fit: cover;
+  border: 2px solid var(--line); border-radius: var(--radius-sm); background: #0b0c10;
+}
+
 /* ---------- Misc ---------- */
 .stack-list { display: flex; flex-direction: column; gap: .6rem; }
 .linerow { display: flex; justify-content: space-between; align-items: center; padding: .8rem 1rem; border-radius: 12px; background: var(--surface-2); font-size: .88rem; }

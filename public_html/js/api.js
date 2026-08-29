@@ -31,8 +31,10 @@
       return Promise.reject(new ApiError("no_api_base", 0, null));
     }
     var url = base + "/" + String(path).replace(/^\/+/, "");
+    var isForm = (typeof FormData !== "undefined") && (body instanceof FormData);
     var headers = { "Accept": "application/json" };
-    if (body !== undefined && body !== null) headers["Content-Type"] = "application/json";
+    // multipart: NO fijar Content-Type (el navegador pone el boundary).
+    if (body !== undefined && body !== null && !isForm) headers["Content-Type"] = "application/json";
     var tk = token();
     if (tk) headers["Authorization"] = "Bearer " + tk;
 
@@ -42,7 +44,7 @@
     return fetch(url, {
       method: method,
       headers: headers,
-      body: body != null ? JSON.stringify(body) : undefined,
+      body: isForm ? body : (body != null ? JSON.stringify(body) : undefined),
       signal: ctrl.signal,
       cache: "no-store"
     }).then(function (res) {
@@ -81,13 +83,22 @@
     request: request,
     get: function (p, opts) { return request("GET", p, null, opts); },
     post: function (p, body, opts) { return request("POST", p, body, opts); },
+    /** Subida de archivo (multipart). `formData` debe ser un FormData. */
+    upload: function (p, formData, opts) {
+      return request("POST", p, formData, opts || { timeout: 30000 });
+    },
     put: function (p, body, opts) { return request("PUT", p, body, opts); },
     patch: function (p, body, opts) { return request("PATCH", p, body, opts); },
     del: function (p, opts) { return request("DELETE", p, null, opts); },
     health: function () {
       return request("GET", "health", null, { timeout: 6000, noAuthRedirect: true })
         .then(function () { return true; })
-        .catch(function () { return false; });
+        .catch(function (err) {
+          // El backend RESPONDIÓ (aunque sea 500 por MySQL) ⇒ está desplegado y
+          // "up": no mostramos el banner de "servidor no responde". Solo se da
+          // por caído si NO hubo respuesta (status 0 = red/DNS/timeout/CORS).
+          return !!(err && err.status && err.status > 0);
+        });
     },
     ApiError: ApiError
   };

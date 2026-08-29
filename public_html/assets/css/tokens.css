@@ -76,6 +76,58 @@
 }
 
 /* =============================================================
+   Modo Oscuro de la TIENDA — activado por el toggle (data-theme).
+   Se limita a  body:not(.in-app)  para no colisionar con el tema
+   cyber de los módulos internos, que sigue mandando en .in-app.
+   ============================================================= */
+:root[data-theme="dark"] { color-scheme: dark; }
+
+:root[data-theme="dark"] body:not(.in-app) {
+  /* Papel/tinta invertidos → chrome (topbar, botones, splash) sigue el tema */
+  --paper:      #12121a;
+  --paper-2:    #1b1b24;
+  --paper-3:    #23232f;
+  --ink:        #f2efe6;
+  --ink-2:      #e8e4d8;
+  --ink-soft:   #b6b3a7;
+
+  /* Semántica */
+  --bg:        #0f0f15;
+  --bg-2:      #14141c;
+  --surface:   #1b1b24;
+  --surface-2: #23232f;
+  --surface-3: #2c2c3a;
+  --text:   #f2efe6;
+  --muted:  #a4a1af;
+  --faint:  #77757f;
+  --line:      #3b3b49;
+  --line-soft: #26262f;
+  --accent:    var(--text);
+  --accent-2:  var(--panini);
+
+  /* Sombras "manga": el offset duro de tinta no lee sobre oscuro → sombra negra suave */
+  --shadow-hard:    4px 4px 0 rgba(0,0,0,.55);
+  --shadow-hard-sm: 2px 2px 0 rgba(0,0,0,.55);
+  --shadow-pop:     6px 6px 0 var(--panini-deep);
+  --halftone: rgba(255,255,255,.045);
+
+  --nm-out: var(--shadow-hard-sm);
+  --nm-out-sm: var(--shadow-hard-sm);
+
+  --btn-bg: var(--surface-2);
+  --btn-fg: var(--text);
+  --btn-shadow: var(--shadow-hard-sm);
+  --btn-border: var(--ink);
+}
+
+/* El HERO es una isla oscura por diseño (lienzo 3D detrás del texto):
+   se "des-invierte" localmente para que no quede crema. */
+:root[data-theme="dark"] body:not(.in-app) .hero {
+  --ink:      #0a0a0f;   /* restaura el fondo oscuro del hero */
+  --paper-2:  #f4f1e8;   /* restaura el texto claro del hero  */
+}
+
+/* =============================================================
    Tema SISTEMA (oscuro) — activo en login y módulos internos
    ============================================================= */
 body.in-app,
