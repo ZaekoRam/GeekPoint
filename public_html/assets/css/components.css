@@ -319,6 +319,8 @@ body.in-app .modal__close { background: var(--surface-2); color: var(--text); bo
 /* ---------- Estados ---------- */
 .state { padding: 3rem 1rem; text-align: center; color: var(--muted); }
 .state__icon { font-size: 2.4rem; margin-bottom: .6rem; }
+/* Glifo vectorial (reemplaza los emojis en estados vacío / carga / error) */
+svg.state__icon { display: block; margin: 0 auto .7rem; color: var(--accent, #8b5bff); opacity: .9; }
 .skeleton { background: linear-gradient(90deg, var(--surface-2), var(--surface-3), var(--surface-2)); background-size: 200% 100%; animation: sk 1.3s linear infinite; }
 @keyframes sk { to { background-position: -200% 0; } }
 

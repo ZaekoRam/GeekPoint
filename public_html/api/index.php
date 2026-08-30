@@ -108,6 +108,18 @@ header('Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization, X-HTTP-Method-Override');
 header('Access-Control-Max-Age: 86400');
 
+// -------------------------------------------------------------------
+//  Anti-caché para TODA respuesta dinámica de la API.
+//  Evita que un proxy/CDN (LiteSpeed en Hostinger), el navegador de
+//  cualquier usuario o un .htaccess sirvan un catálogo / listado de
+//  productos viejo tras un alta o edición. Los endpoints que SÍ deben
+//  cachearse (catalog/image, catalog/cover) reemplazan este header
+//  con su propio `Cache-Control: public, max-age=...`.
+// -------------------------------------------------------------------
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+header('Expires: 0');
+
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'OPTIONS') {
     http_response_code(204);
     exit;

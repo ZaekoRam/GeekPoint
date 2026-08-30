@@ -267,6 +267,20 @@ CREATE TABLE `reservation_items` (
     REFERENCES `reservations` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ---------------------------------------------------------------------
+--  Caché del catálogo externo (AniList / Jikan) — almacén PRIMARIO.
+--  La tienda lee de aquí; las APIs externas solo se consultan con un
+--  ?refresh=1 (botón del panel) o ?warm=1 (cron). Sin esta tabla el
+--  sistema usa api/cache/catalog.json como respaldo.
+-- ---------------------------------------------------------------------
+DROP TABLE IF EXISTS `catalog_cache`;
+CREATE TABLE `catalog_cache` (
+  `cache_key`  VARCHAR(64) NOT NULL,
+  `payload`    LONGTEXT NOT NULL,
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`cache_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- =====================================================================

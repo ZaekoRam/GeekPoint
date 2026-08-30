@@ -75,10 +75,9 @@
 
   var API = {
     get base() { return base; },
-    setBase: function (b) {
-      base = b ? b.replace(/\/+$/, "") : null;
-      try { if (b) localStorage.setItem("gp_api_base", base); } catch (e) {}
-    },
+    // Se ajusta en memoria; NO se persiste (evita arrastrar una ruta fija de
+    // localhost a producción). La base la deriva config.js en cada carga.
+    setBase: function (b) { base = b ? b.replace(/\/+$/, "") : null; },
     get isOnline() { return online; },
     request: request,
     get: function (p, opts) { return request("GET", p, null, opts); },
@@ -91,14 +90,18 @@
     patch: function (p, body, opts) { return request("PATCH", p, body, opts); },
     del: function (p, opts) { return request("DELETE", p, null, opts); },
     health: function () {
-      return request("GET", "health", null, { timeout: 6000, noAuthRedirect: true })
-        .then(function () { return true; })
-        .catch(function (err) {
-          // El backend RESPONDIÓ (aunque sea 500 por MySQL) ⇒ está desplegado y
-          // "up": no mostramos el banner de "servidor no responde". Solo se da
-          // por caído si NO hubo respuesta (status 0 = red/DNS/timeout/CORS).
-          return !!(err && err.status && err.status > 0);
-        });
+      // "up" = el backend respondió ALGO (incluso 4xx/5xx por MySQL). Solo
+      // status 0 (red/DNS/CORS/timeout) cuenta como caído → banner amarillo.
+      // En producción la base es SIEMPRE el mismo origen (/api), así que un
+      // /api/health que responde no debe disparar el banner.
+      function ping(timeout) {
+        return request("GET", "health", null, { timeout: timeout, noAuthRedirect: true })
+          .then(function () { return true; })
+          .catch(function (err) { return !!(err && err.status && err.status > 0); });
+      }
+      // Un reintento antes de dar por caído (hosting compartido puede tardar en
+      // "despertar" en la primera petición).
+      return ping(8000).then(function (up) { return up ? true : ping(6000); });
     },
     ApiError: ApiError
   };

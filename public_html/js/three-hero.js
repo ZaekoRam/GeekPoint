@@ -338,7 +338,18 @@
      Construcción de piezas
      ============================================================= */
 
-  /* Elige la portada de un tomo REAL, sin repetir entre piezas del hero. */
+  /* URL segura como textura (data:/mismo origen tal cual; CDN externo -> proxy). */
+  function tex(url) {
+    return (window.Catalog && Catalog.texURL) ? Catalog.texURL(url) : (url || "");
+  }
+  /* Portada estándar del catálogo (data-URI) — SIEMPRE sirve como textura. */
+  function stdCover(product) {
+    return (window.Catalog && Catalog.placeholderCover)
+      ? Catalog.placeholderCover(product || "item")
+      : "";
+  }
+
+  /* Elige la portada de un tomo, texture-safe. Sin repetir entre piezas. */
   function pickCoverUrl(product) {
     var vc = (product.volume_covers || []).slice();
     if (vc.length) {
@@ -346,11 +357,18 @@
         var k = (Math.random() * (j + 1)) | 0, tmp = vc[j]; vc[j] = vc[k]; vc[k] = tmp;
       }
       for (var m = 0; m < vc.length; m++) {
-        if (!S.usedCovers[vc[m].url]) { S.usedCovers[vc[m].url] = 1; return { url: vc[m].url, v: vc[m].v }; }
+        if (!vc[m].url || S.usedCovers[vc[m].url]) continue;
+        S.usedCovers[vc[m].url] = 1;
+        var t = tex(vc[m].url);
+        if (t) return { url: t, v: vc[m].v };   // "" = CDN sin CORS -> sigue buscando
       }
-      return { url: vc[0].url, v: vc[0].v };
+      if (vc[0].url) { var t0 = tex(vc[0].url); if (t0) return { url: t0, v: vc[0].v }; }
     }
-    return { url: (window.Catalog && Catalog.coverURL(product)) || "", v: null };
+    // Sin portada usable como textura: la del producto (si es texture-safe) o
+    // la portada de marca del catálogo (data-URI, SIEMPRE sirve de textura).
+    var u = product.cover || product.image_url ||
+            (window.Catalog && Catalog.coverURL ? Catalog.coverURL(product) : "");
+    return { url: tex(u) || stdCover(product), v: null };
   }
 
   function makeTome(product) {
@@ -380,7 +398,8 @@
     pivot.position.set(-W / 2, 0, D / 2 + 0.001);
     tome.add(pivot);
 
-    var coverFront = new THREE.MeshStandardMaterial({ color: "#cfc8b6", roughness: .55 });
+    // Base OSCURA (no crema): si la portada tarda o falla no se ve un "bloque blanco".
+    var coverFront = new THREE.MeshStandardMaterial({ color: "#20202a", roughness: .55 });
     coverFront.emissive = new THREE.Color(product.accent || "#ffd400");
     coverFront.emissiveIntensity = 0;
     var cover = new THREE.Mesh(new THREE.BoxGeometry(W, H, CT), [
@@ -391,7 +410,9 @@
     cover.position.set(W / 2, 0, 0);
     pivot.add(cover);
 
-    // Portada REAL del tomo (MangaDex) — variada y sin repetir. Sin sellos.
+    // Portada del tomo, texture-safe. Si falla (CDN sin CORS, 404…) reintenta
+    // UNA vez con la portada estándar del catálogo (data-URI) para que NUNCA
+    // quede un bloque blanco plano.
     var picked = pickCoverUrl(product);
     var img = new Image();
     img.crossOrigin = "anonymous";
@@ -400,8 +421,13 @@
       rightPage.map = mangaPanels(img, seed, false, product.category); rightPage.color.set("#fff"); rightPage.needsUpdate = true;
       leftPage.map = mangaPanels(img, seed + 7, true, product.category); leftPage.color.set("#fff"); leftPage.needsUpdate = true;
     };
-    img.onerror = function () { /* materiales base se quedan */ };
-    img.src = picked.url;
+    img.onerror = function () {
+      if (img.__fb) return;
+      img.__fb = true;
+      var std = stdCover(product);
+      if (std && std !== img.src) img.src = std;
+    };
+    img.src = picked.url || stdCover(product);
 
     body.userData.owner = tome;
     tome.userData = {
@@ -418,7 +444,7 @@
 
     var dims = [1.5, 2.1, 0.05];   // carta TCG
     var accent = new THREE.Color(product.accent || "#ffd400");
-    var front = new THREE.MeshStandardMaterial({ color: "#cfc8b6", roughness: .55 });
+    var front = new THREE.MeshStandardMaterial({ color: "#20202a", roughness: .55 });
     front.emissive = accent.clone(); front.emissiveIntensity = 0;
     var side = new THREE.MeshStandardMaterial({ color: accent, roughness: .5 });
     var edge = new THREE.MeshStandardMaterial({ color: "#e9e4d5", roughness: .9 });
@@ -430,7 +456,13 @@
     img.onload = function () {
       front.map = frameCover(img); front.color.set("#fff"); front.needsUpdate = true;
     };
-    img.src = pickCoverUrl(product).url;
+    img.onerror = function () {
+      if (img.__fb) return;
+      img.__fb = true;
+      var std = stdCover(product);
+      if (std && std !== img.src) img.src = std;
+    };
+    img.src = pickCoverUrl(product).url || stdCover(product);
 
     mesh.userData.owner = mesh;
     mesh.userData.product = product;

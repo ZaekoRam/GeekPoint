@@ -7,12 +7,22 @@
  */
 class CatalogController extends Controller
 {
-    const CACHE_TTL = 86400;   // 24 h  (catálogo)
+    const CACHE_TTL = 604800;  // 7 días — "frescura" del catálogo cacheado.
+                               // Al expirar NO se reconstruye en la petición de
+                               // un visitante: se sirve viejo (stale) y solo un
+                               // ?refresh=1 / ?warm=1 (botón admin o cron) llama
+                               // a las APIs externas. La tienda lee 100% caché.
     const VOL_TTL   = 604800;  // 7 días (portadas por tomo)
+    const TR_TTL    = 2592000; // 30 días (sinopsis traducidas)
+    const TR_BUDGET = 12;      // s máx. de traducción por reconstrucción
     const JIKAN    = 'https://api.jikan.moe/v4';
     const ANILIST  = 'https://graphql.anilist.co';
     const MANGADEX = 'https://api.mangadex.org';
     const MD_UPLOADS = 'https://uploads.mangadex.org';
+    const GTRANSLATE = 'https://translate.googleapis.com/translate_a/single';
+
+    /** Segundos gastados traduciendo en esta petición (presupuesto TR_BUDGET). */
+    private $trSpent = 0.0;
 
     /** Series curadas: query Jikan => metadatos de tienda */
     private static function seed()
@@ -74,6 +84,67 @@ class CatalogController extends Controller
         return dirname(__DIR__) . '/cache/catalog.json';
     }
 
+    /**
+     * Caché del catálogo externo con MySQL como almacén PRIMARIO
+     * (tabla `catalog_cache`) y el archivo JSON como respaldo — así funciona
+     * aunque `api/cache/` no sea escribible en el hosting, y los datos de las
+     * APIs externas quedan "guardados en la base de datos" como pide el flujo.
+     *
+     * @return array|null  ['payload' => array, 'age' => int segundos] o null
+     */
+    private function cacheGet()
+    {
+        // 1) MySQL
+        if (Database::ping()) {
+            try {
+                $row = Database::one(
+                    "SELECT payload, UNIX_TIMESTAMP(updated_at) AS ts
+                       FROM catalog_cache WHERE cache_key = 'catalog' LIMIT 1",
+                    []
+                );
+                if ($row && !empty($row['payload'])) {
+                    $data = json_decode($row['payload'], true);
+                    if (is_array($data) && !empty($data['products'])) {
+                        return ['payload' => $data, 'age' => max(0, time() - (int) $row['ts'])];
+                    }
+                }
+            } catch (\Throwable $e) {
+                // tabla ausente (migración sin correr) -> se intenta el archivo
+            }
+        }
+        // 2) Archivo JSON
+        $file = $this->cacheFile();
+        if (is_file($file)) {
+            $data = json_decode((string) file_get_contents($file), true);
+            if (is_array($data) && !empty($data['products'])) {
+                return ['payload' => $data, 'age' => max(0, time() - (int) filemtime($file))];
+            }
+        }
+        return null;
+    }
+
+    /** Guarda el catálogo en MySQL (primario) y en el archivo JSON (respaldo). */
+    private function cachePut(array $payload)
+    {
+        $json = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+        if (Database::ping()) {
+            try {
+                Database::run(
+                    "INSERT INTO catalog_cache (cache_key, payload, updated_at)
+                     VALUES ('catalog', ?, NOW())
+                     ON DUPLICATE KEY UPDATE payload = VALUES(payload), updated_at = NOW()",
+                    [$json]
+                );
+            } catch (\Throwable $e) {
+                // sin tabla: el archivo abajo cubre
+            }
+        }
+        $file = $this->cacheFile();
+        @mkdir(dirname($file), 0775, true);
+        @file_put_contents($file, $json);
+    }
+
     private function volCacheFile($name)
     {
         return dirname(__DIR__) . '/cache/vol_' . md5(mb_strtolower(trim($name))) . '.json';
@@ -95,24 +166,53 @@ class CatalogController extends Controller
         unset($prod);
     }
 
-    /** GET /catalog  — lista de productos para la tienda */
+    /**
+     * GET /catalog  — lista de productos para la tienda.
+     * GET /catalog?cat=manga  — filtrado por categoría.
+     *
+     * RUTA DEL VISITANTE (sin ?refresh / ?warm): 100% LOCAL, CERO llamadas a
+     * APIs externas. Orden de fuentes:
+     *   1) tabla MySQL `products`  (localProducts)
+     *   2) MySQL `catalog_cache` / archivo catalog.json  (datos externos ya guardados)
+     *   3) fallback PHP estático  (fallbackCatalog — sin red)
+     * Además `ensureCategories()` rellena cualquier categoría clave que falte
+     * (p.ej. manga) desde el fallback PHP, así la tienda SIEMPRE tiene catálogo
+     * aunque la BD esté vacía y sin que el navegador consulte nada externo.
+     *
+     * Solo `?refresh=1` (botón del panel) o `?warm=1` (cron) reconstruyen desde
+     * AniList/Jikan — jamás en una navegación normal.
+     */
     public function index()
     {
-        $file = $this->cacheFile();
         $force = $this->query('refresh') === '1';
+        $warm  = $this->query('warm') === '1';
+        $rebuild = $force || $warm;
+        $cat = $this->catParam();
 
-        $warm = $this->query('warm') === '1';
+        if (!$rebuild) {
+            // ===== CATÁLOGO DETERMINISTA =====
+            // Solo la tabla MySQL `products` + el respaldo estático PHP.
+            // NO se mezcla el catálogo cacheado de AniList/Jikan: esa mezcla
+            // hacía que entre refrescos aparecieran/desaparecieran mangas y
+            // que algún cómic cayera en 'manga' (y al revés). Un visitante
+            // NUNCA dispara peticiones externas y ve SIEMPRE lo mismo.
+            $local = $this->localProducts();
+            $src = $local ? 'local' : 'php-fallback';
 
-        if (!$force && !$warm && is_file($file) && (time() - filemtime($file) < self::CACHE_TTL)) {
-            $cached = json_decode(file_get_contents($file), true);
-            if (is_array($cached) && !empty($cached['products'])) {
-                $this->attachVolumeCovers($cached['products'], false);
-                $this->mergeLocalProducts($cached['products']);
-                Response::ok($cached + ['cached' => true]);
-            }
+            $products = $this->canonicalize($local);            // categoría canónica + portadas garantizadas
+            $products = $this->ensureCategories($products);     // rellena categorías vacías desde el fallback
+            if (!$products) $products = $this->fallbackCatalog();
+            $products = $this->canonicalize($products);         // cubre lo añadido por el fallback
+
+            Response::ok([
+                'products' => $this->filterCat($products, $cat),
+                'source'   => $src,
+                'cached'   => true,
+                'ts'       => time(),
+            ]);
         }
 
-        // 1º AniList (rápido, estable, una sola petición).  2º Jikan/MyAnimeList.
+        // --- Reconstrucción explícita (panel / cron): AniList -> Jikan ---
         $built = $this->buildFromAniList();
         $source = 'anilist';
         if (!$built || count($built) === 0) {
@@ -126,27 +226,89 @@ class CatalogController extends Controller
                 'source'       => $source,
                 'generated_at' => date('c'),
             ];
-            @mkdir(dirname($file), 0775, true);
-            @file_put_contents($file, json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-
-            // Portadas por tomo (MangaDex): con warm=1 se descargan; si no, sólo las ya cacheadas.
+            $this->cachePut($payload);
             $this->attachVolumeCovers($payload['products'], $warm);
             $this->mergeLocalProducts($payload['products']);
-            Response::ok($payload + ['cached' => false]);
+            $payload['products'] = $this->canonicalize($payload['products']);
+            Response::ok($payload + ['cached' => false, 'ts' => time()]);
         }
 
-        // Ambas fuentes caídas: si hay un caché viejo, úsalo; si no, avisa al front.
-        if (is_file($file)) {
-            $old = json_decode(file_get_contents($file), true);
-            if (is_array($old) && !empty($old['products'])) {
-                $this->mergeLocalProducts($old['products']);
-                Response::ok($old + ['cached' => true, 'stale' => true]);
+        // Reconstrucción fallida -> caché vieja -> local -> fallback PHP.
+        $cache = $this->cacheGet();
+        if ($cache) {
+            $payload = $cache['payload'];
+            $this->attachVolumeCovers($payload['products'], false);
+            $this->mergeLocalProducts($payload['products']);
+            $payload['products'] = $this->canonicalize($payload['products']);
+            Response::ok($payload + ['cached' => true, 'stale' => true, 'ts' => time()]);
+        }
+        $local = $this->ensureCategories($this->localProducts());
+        if (!$local) $local = $this->fallbackCatalog();
+        $local = $this->canonicalize($local);
+        Response::ok([
+            'products' => $this->filterCat($local, $cat),
+            'source'   => 'local',
+            'ts'       => time(),
+        ]);
+    }
+
+    /** ?cat=<slug> saneado ('' si no se pidió o no es válido). */
+    private function catParam()
+    {
+        $c = strtolower(trim((string) $this->query('cat', '')));
+        $ok = ['manga', 'figuras', 'tcg', 'comics', 'preventa'];
+        return in_array($c, $ok, true) ? $c : '';
+    }
+
+    /** Filtra la lista por categoría (preventa = categoría o tag). */
+    private function filterCat(array $list, $cat)
+    {
+        if ($cat === '') return array_values($list);
+        return array_values(array_filter($list, function ($p) use ($cat) {
+            if ($cat === 'preventa') {
+                return ($p['category'] ?? '') === 'preventa'
+                    || in_array('preventa', (array) ($p['tags'] ?? []), true);
             }
-        }
+            return ($p['category'] ?? '') === $cat;
+        }));
+    }
 
-        // Sin catálogo externo: al menos devuelve los productos locales importados.
-        $local = $this->localProducts();
-        Response::ok(['products' => $local, 'source' => $local ? 'local' : 'unavailable']);
+    /** Une productos locales (mandan) + externos, sin duplicar por título/serie. */
+    private function mergeCatalogs(array $local, array $ext)
+    {
+        if (!$ext) return $local;
+        $norm = function ($s) {
+            return preg_replace('/[^a-z0-9]+/', '', mb_strtolower(preg_replace('/\s+(vol\.?|tomo|#)\s*\d+.*$/i', '', (string) $s)));
+        };
+        $seen = [];
+        foreach ($local as $p) { $seen[$norm($p['title'] ?? '')] = true; }
+        $out = $local;
+        foreach ($ext as $p) {
+            $k = $norm($p['title'] ?? '');
+            if ($k === '' || isset($seen[$k])) continue;
+            $seen[$k] = true;
+            $out[] = $p;
+        }
+        return $out;
+    }
+
+    /**
+     * Si falta alguna categoría clave (manga, figuras, tcg, comics) rellena
+     * con el fallback PHP — sin pedir NADA a la red.
+     */
+    private function ensureCategories(array $products)
+    {
+        $have = [];
+        foreach ($products as $p) { $have[$p['category'] ?? ''] = true; }
+        $need = array_filter(['manga', 'figuras', 'tcg', 'comics'], function ($c) use ($have) {
+            return empty($have[$c]);
+        });
+        if (!$need) return $products;
+
+        foreach ($this->fallbackCatalog() as $p) {
+            if (in_array($p['category'], $need, true)) $products[] = $p;
+        }
+        return $products;
     }
 
     /** Añade al catálogo los productos reales del POS (categorías tcg/comics). */
@@ -156,6 +318,104 @@ class CatalogController extends Controller
         if ($local) {
             array_splice($products, 0, 0, $local);   // primero, para que se vean arriba
         }
+    }
+
+    /** Stock sintético determinista por sucursal (mismo criterio que el front). */
+    private function synthBranches($id)
+    {
+        $seed = abs(crc32((string) $id));
+        $out = [];
+        foreach (self::branchesPool() as $i => $b) {
+            $stock = ($seed >> ($i * 3)) % 16;
+            if ($stock > 0 || $i === 0) {
+                $out[] = ['code' => $b['code'], 'name' => $b['name'], 'stock' => $stock];
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * FALLBACK 100% PHP — catálogo de respaldo SIN red ni APIs externas.
+     * Se usa cuando la BD no tiene productos (o le falta una categoría).
+     * Las portadas NO se fijan: el front genera su arte "manga ink" en el
+     * navegador (data-URI SVG), así que no hay ninguna petición de imagen.
+     */
+    private function fallbackCatalog()
+    {
+        // [title, author, category, price, tags, volumes, accent, synopsis]
+        $rows = [
+            ['Jujutsu Kaisen', 'Gege Akutami', 'manga', 189, ['novedad'], 27, '#8b5bff', 'Yuji Itadori se traga un dedo maldito y comparte cuerpo con Ryomen Sukuna. Ahora estudia hechicería para exorcizar maldiciones.'],
+            ['Chainsaw Man', 'Tatsuki Fujimoto', 'manga', 179, ['novedad'], 17, '#ff2d95', 'Denji fusiona su cuerpo con Pochita y se convierte en el Hombre Motosierra, cazando demonios para la División de Seguridad Pública.'],
+            ['One Piece', 'Eiichiro Oda', 'manga', 165, [], 108, '#00e5ff', 'Monkey D. Luffy zarpa para encontrar el tesoro legendario One Piece y convertirse en el Rey de los Piratas.'],
+            ['Demon Slayer', 'Koyoharu Gotouge', 'manga', 159, [], 23, '#0b8a3d', 'Tanjiro Kamado se une a los Cazadores de Demonios tras la masacre de su familia y la transformación de su hermana Nezuko.'],
+            ['Spy x Family', 'Tatsuya Endo', 'manga', 179, [], 13, '#ffd400', 'Un espía, una asesina y una telépata fingen ser una familia para cumplir una misión que evita una guerra.'],
+            ['Dandadan', 'Yukinobu Tatsu', 'manga', 175, ['preventa'], 15, '#00e5ff', 'Momo cree en fantasmas, Okarun en aliens. Ambos tienen razón, y ahora comparten poderes sobrenaturales.'],
+            ['Oshi no Ko', 'Aka Akasaka', 'manga', 179, ['preventa'], 14, '#ff2d95', 'Un médico renace como hijo de su ídola favorita y descubre el lado oscuro de la industria del entretenimiento.'],
+            ['Blue Lock', 'Muneyuki Kaneshiro', 'manga', 169, [], 27, '#8b5bff', '300 delanteros compiten en un búnker para forjar al mejor egoísta del fútbol japonés.'],
+            ['Berserk', 'Kentaro Miura', 'manga', 349, [], 42, '#e4002b', 'Guts, el Espadachín Negro, persigue venganza en un mundo medieval brutal poblado de demonios.'],
+            ['Vinland Saga', 'Makoto Yukimura', 'manga', 229, [], 28, '#0b8a3d', 'Thorfinn busca venganza entre vikingos, hasta que la esclavitud le enseña que no tiene enemigos.'],
+            ['Attack on Titan', 'Hajime Isayama', 'manga', 169, [], 34, '#7a5c3e', 'La humanidad vive tras enormes muros para protegerse de los Titanes. Cuando un Titán Colosal derriba la muralla, Eren Jaeger jura exterminarlos a todos.'],
+            ['Naruto', 'Masashi Kishimoto', 'manga', 155, [], 72, '#ffd400', 'Naruto Uzumaki, un ninja adolescente con un zorro de nueve colas sellado dentro, sueña con ser Hokage de su aldea.'],
+            ['Bleach', 'Tite Kubo', 'manga', 159, [], 74, '#00e5ff', 'Ichigo Kurosaki obtiene poderes de Shinigami y debe proteger a los vivos de los espíritus llamados Huecos.'],
+            ['Fullmetal Alchemist', 'Hiromu Arakawa', 'manga', 189, [], 27, '#e4002b', 'Los hermanos Elric buscan la Piedra Filosofal para recuperar sus cuerpos tras una transmutación humana fallida.'],
+            ['Death Note', 'Tsugumi Ohba', 'manga', 149, [], 12, '#8b5bff', 'Light Yagami encuentra un cuaderno que mata a quien escriba su nombre y decide crear un mundo nuevo como su dios.'],
+            ['Tokyo Ghoul', 'Sui Ishida', 'manga', 165, [], 14, '#ff2d95', 'Ken Kaneki sobrevive a un ataque ghoul y despierta convertido en un híbrido atrapado entre dos mundos.'],
+            ['My Hero Academia', 'Kohei Horikoshi', 'manga', 165, [], 40, '#0b8a3d', 'En un mundo donde casi todos tienen superpoderes, Izuku Midoriya nace sin ninguno pero hereda el del héroe número uno.'],
+            ['Hunter x Hunter', 'Yoshihiro Togashi', 'manga', 159, [], 37, '#0b8a3d', 'Gon Freecss se hace cazador para encontrar a su padre y recorre un mundo lleno de bestias, subastas y Nen.'],
+            ['Haikyu!!', 'Haruichi Furudate', 'manga', 155, [], 45, '#ffd400', 'Shoyo Hinata, bajo de estatura pero con un salto imposible, jura llevar al equipo de voleibol del Karasuno a lo más alto.'],
+            ['Kaguya-sama: Love is War', 'Aka Akasaka', 'manga', 169, [], 28, '#ff2d95', 'Dos genios del consejo estudiantil se enamoran, pero ninguno confesará primero: sería admitir la derrota.'],
+            ['Frieren: Beyond Journey\'s End', 'Kanehito Yamada', 'manga', 175, ['preventa'], 13, '#00e5ff', 'La maga elfa Frieren sobrevive siglos a sus compañeros de aventura y emprende un viaje para entender lo que los humanos sentían.'],
+            ['JoJo\'s Bizarre Adventure', 'Hirohiko Araki', 'comics', 299, [], 8, '#ffd400', 'La saga de la familia Joestar contra fuerzas sobrenaturales a lo largo de generaciones y continentes.'],
+            ['Invincible', 'Robert Kirkman', 'comics', 329, [], 25, '#00e5ff', 'Mark Grayson hereda los poderes de su padre, el superhéroe más poderoso del planeta… y su terrible secreto.'],
+            ['Solo Leveling', 'Chugong', 'comics', 259, ['novedad'], 12, '#8b5bff', 'El cazador más débil de la humanidad, Sung Jin-Woo, obtiene un sistema que le permite subir de nivel sin límite.'],
+            ['Tower of God', 'SIU', 'comics', 269, [], 10, '#00e5ff', 'Bam entra a una torre infinita para alcanzar a Rachel, la única persona que conoció, y enfrenta una prueba en cada piso.'],
+            ['Batman: Year One', 'Frank Miller', 'comics', 349, [], 1, '#ffd400', 'El primer año de Bruce Wayne como Batman y el de Jim Gordon en una Gotham podrida hasta los cimientos.'],
+            ['The Sandman', 'Neil Gaiman', 'comics', 389, [], 10, '#8b5bff', 'Sueño, uno de los Eternos, escapa tras 70 años de cautiverio y debe reconstruir su reino y enmendar sus errores.'],
+            ['Watchmen', 'Alan Moore', 'comics', 359, [], 1, '#ff2d95', 'En una América alterna, el asesinato de un vigilante retirado destapa una conspiración que redefine el heroísmo.'],
+            ['Gojo Satoru - Figura 1/7', 'GeekPoint Collection', 'figuras', 2490, ['preventa'], 0, '#8b5bff', 'Escala 1/7, PVC pintado a mano, 27 cm. Incluye efecto de Infinito y base temática.'],
+            ['Power - Figura S.H.F.', 'GeekPoint Collection', 'figuras', 1890, [], 0, '#ff2d95', 'Figura articulada de 16 cm con accesorios intercambiables y hacha de sangre.'],
+            ['Nezuko - Figura 1/8', 'GeekPoint Collection', 'figuras', 1690, [], 0, '#ff2d95', 'Escala 1/8, 21 cm, con caja de bambú y pose de combate en modo demonio.'],
+            ['Rem - Figura 1/7', 'GeekPoint Collection', 'figuras', 2190, [], 0, '#00e5ff', 'Re:Zero. Escala 1/7, 24 cm, con maza y efecto de agua translúcido.'],
+            ['Anya Forger - Nendoroid', 'GeekPoint Collection', 'figuras', 1290, ['novedad'], 0, '#ffd400', 'Spy x Family. Nendoroid de 10 cm con tres caras intercambiables, incluida la sonrisa "heh".'],
+            ['Makima - Figura 1/7', 'GeekPoint Collection', 'figuras', 2390, ['preventa'], 0, '#e4002b', 'Chainsaw Man. Escala 1/7, 25 cm, con base de cadenas y mirada de Control.'],
+            ['Levi Ackerman - Figura 1/7', 'GeekPoint Collection', 'figuras', 2290, [], 0, '#7a5c3e', 'Attack on Titan. Escala 1/7, 26 cm, en pose de maniobra con equipo tridimensional.'],
+            ['Megumin - Nendoroid', 'GeekPoint Collection', 'figuras', 1190, [], 0, '#ff2d95', 'KonoSuba. Nendoroid de 10 cm con báculo, efecto de explosión y cara de conjuro.'],
+            ['Pokémon TCG - Elite Trainer Box', 'The Pokémon Company', 'tcg', 1290, ['novedad'], 0, '#ffd400', 'Caja con 9 sobres, 65 fundas, 45 cartas de Energía, dados y contadores de daño.'],
+            ['One Piece TCG - Booster Box', 'Bandai', 'tcg', 1490, [], 0, '#e4002b', 'Caja sellada con 24 sobres del set más reciente. Ideal para draft y coleccionismo.'],
+            ['Magic - Bundle', 'Wizards of the Coast', 'tcg', 1190, [], 0, '#8b5bff', '9 sobres de Colección, 20 tierras foil, caja de almacenamiento y contador giratorio.'],
+            ['Yu-Gi-Oh! - Structure Deck', 'Konami', 'tcg', 349, [], 0, '#8b5bff', 'Baraja de 40 cartas lista para jugar, con estrategia enfocada y cartas exclusivas.'],
+            ['Disney Lorcana - Illumineer\'s Trove', 'Ravensburger', 'tcg', 1390, ['novedad'], 0, '#00e5ff', '8 sobres, dos mazos de inicio, cartas de tinta y organizador para empezar a jugar.'],
+        ];
+
+        $out = [];
+        foreach ($rows as $r) {
+            list($title, $author, $cat, $price, $tags, $vols, $accent, $syn) = $r;
+            $id = 'fb-' . $cat . '-' . trim(preg_replace('/[^a-z0-9]+/', '-', mb_strtolower($title)), '-');
+            $cover = $this->coverFor($title, $cat, $author, $accent);   // portada garantizada
+            $out[] = [
+                'id'           => $id,
+                'title'        => $title,
+                'series'       => $title,
+                'search_title' => $title,
+                'author'       => $author,
+                'category'     => $cat,
+                'price'        => (float) $price,
+                'currency'     => 'MXN',
+                'cover'        => $cover,
+                'cover_raw'    => $cover,
+                'image_url'    => $cover,
+                'images'       => [$cover],
+                'tags'         => $tags,
+                'synopsis'     => $syn,
+                'volumes'      => $vols ?: null,
+                'tomos'        => $vols ?: null,
+                'score'        => null,
+                'accent'       => $accent,
+                'source'       => 'fallback',
+                'branches'     => $this->synthBranches($id),
+            ];
+        }
+        return $out;
     }
 
     /**
@@ -171,22 +431,30 @@ class CatalogController extends Controller
             return [];
         }
         try {
+            // El filtro de categoría es por TEXTO (slug o nombre ES/EN en
+            // minúsculas), NUNCA por id numérico — los ids no coinciden entre
+            // el entorno local y Hostinger.
             $rows = Database::all(
                 "SELECT p.sku,
-                        MAX(p.name)        AS name,
-                        c.slug             AS category,
-                        MAX(p.description) AS description,
-                        MAX(p.image_url)   AS image_url,
+                        MAX(p.name)          AS name,
+                        c.slug               AS cat_slug,
+                        MAX(c.name_es)       AS cat_es,
+                        MAX(c.name_en)       AS cat_en,
+                        MAX(p.description)   AS description,
+                        MAX(p.image_url)     AS image_url,
                         MAX(p.figure_png_url) AS figure_png_url,
+                        MAX(UNIX_TIMESTAMP(p.updated_at)) AS updated_ts,
                         ROUND(AVG(p.price), 2) AS price,
-                        SUM(p.stock)       AS stock,
+                        SUM(p.stock)         AS stock,
                         GROUP_CONCAT(CONCAT(b.code, '|', b.name, '|', p.stock) SEPARATOR ';;') AS branchmap
                  FROM products p
                  JOIN categories c ON c.id = p.category_id
                  LEFT JOIN branches b ON b.id = p.branch_id
                  WHERE p.status = 'active'
-                   AND (c.slug IN ('tcg', 'comics', 'preventa')
-                        OR p.image_url <> '')
+                   AND ( LOWER(c.slug)    IN ('manga','mangas','figura','figuras','tcg','comic','comics','cómic','cómics','preventa','preventas')
+                      OR LOWER(c.name_es) IN ('manga','mangas','figura','figuras','tcg','tarjetas tcg','cartas tcg','comic','comics','cómic','cómics','preventa','preventas')
+                      OR LOWER(c.name_en) IN ('manga','figures','figure','tcg','trading cards','comic','comics','pre-order','preorder')
+                      OR p.image_url <> '' )
                  GROUP BY p.sku, c.slug
                  ORDER BY name",
                 []
@@ -197,6 +465,9 @@ class CatalogController extends Controller
 
         $out = [];
         foreach (($rows ?: []) as $r) {
+            // Categoría por TEXTO (slug/nombre), nunca por id.
+            $category = $this->catSlug($r['cat_slug'] ?? '', $r['cat_es'] ?? '', $r['cat_en'] ?? '');
+
             $branches = [];
             foreach (explode(';;', (string) $r['branchmap']) as $chunk) {
                 $parts = explode('|', $chunk);
@@ -218,7 +489,7 @@ class CatalogController extends Controller
             // Figuras: "<Fabricante> · <Escala/Línea> · <detalle>"
             $manufacturer = '';
             $scale = '';
-            if ($r['category'] === 'figuras') {
+            if ($category === 'figuras') {
                 $makers = ['Good Smile Company', 'Kotobukiya', 'Max Factory', 'Bandai', 'Banpresto',
                            'Aniplex', 'Alter', 'Kadokawa', 'FuRyu', 'Furyu', 'SEGA', 'Taito',
                            'MegaHouse', 'Megahouse', 'Prime 1 Studio', 'Union Creative', 'GSC'];
@@ -236,33 +507,348 @@ class CatalogController extends Controller
             }
 
             // image_url puede traer VARIAS URLs separadas por coma (galería multi-ángulo).
+            // Cache-busting: a las imágenes SUBIDAS a este servidor se les añade
+            // ?v=<updated_at>.  Las URLs vacías se resuelven luego en
+            // canonicalize() con el mapa de portadas estáticas por título.
+            $ts   = (int) ($r['updated_ts'] ?? 0);
             $imgs = array_values(array_filter(array_map('trim', explode(',', (string) $r['image_url'])), 'strlen'));
+            $imgs = array_map(function ($u) use ($ts) { return $this->bustLocal($u, $ts); }, $imgs);
+
+            // Nº de tomos: segmento "... · 27 tomos" en la descripción (opcional).
+            $volumes = null;
+            foreach ($segs as $sg) {
+                if (preg_match('/^\s*(\d{1,3})\s*tomos?\s*$/iu', trim($sg), $mm)) {
+                    $volumes = (int) $mm[1];
+                    break;
+                }
+            }
+
+            $figurePng = (isset($r['figure_png_url']) && $r['figure_png_url'] !== '')
+                ? $this->bustLocal((string) $r['figure_png_url'], $ts)
+                : null;
+
+            // Sinopsis limpia: quita los segmentos "Fabricante · Escala · Alta manual"
+            // para que la ficha de la tienda muestre solo el texto descriptivo.
+            $synParts = [];
+            foreach ($segs as $sg) {
+                $sg = trim($sg);
+                if ($sg === '' || strcasecmp($sg, 'Alta manual') === 0) continue;
+                if ($manufacturer !== '' && strcasecmp($sg, trim($manufacturer)) === 0) continue;
+                if ($scale !== '' && strcasecmp($sg, trim($scale)) === 0) continue;
+                if (preg_match('/^\s*\d{1,3}\s*tomos?\s*$/iu', $sg)) continue;   // "27 tomos"
+                $synParts[] = $sg;
+            }
+            $synopsisText = $synParts ? implode(' · ', $synParts) : (string) $r['description'];
+
+            // Portada GARANTIZADA no vacía: image_url real -> mapa estático ->
+            // /uploads/<slug> -> generador SVG on-origin.
+            $cover = $this->coverFor($r['name'], $category, '', '', $imgs[0] ?? '', $ts);
 
             $out[] = [
-                'id'           => 'local-' . strtolower($r['category']) . '-' . trim(preg_replace('/[^a-z0-9]+/i', '-', strtolower((string) $r['sku'])), '-'),
+                'id'           => 'local-' . $category . '-' . trim(preg_replace('/[^a-z0-9]+/i', '-', strtolower((string) $r['sku'])), '-'),
                 'title'        => $r['name'],
                 'author'       => '',
-                'category'     => $r['category'],
+                'category'     => $category,
                 'price'        => (float) $r['price'],
                 'currency'     => 'MXN',
-                'cover'        => $imgs[0] ?? '',
-                'cover_raw'    => $imgs[0] ?? '',
-                'images'       => $imgs,
-                'figure_png_url' => (isset($r['figure_png_url']) && $r['figure_png_url'] !== '')
-                                      ? (string) $r['figure_png_url']
-                                      : null,   // PNG recortado (transparente) para la vista 3D pop-out
+                'cover'        => $cover,
+                'cover_raw'    => $imgs[0] ?? $cover,
+                'image_url'    => $cover,               // alias explícito para el JSON / debug
+                'images'       => $imgs ?: [$cover],
+                'figure_png_url' => $figurePng,   // PNG recortado (transparente) para la vista 3D pop-out
                 'tags'         => [],
                 'rarity'       => $rarity,
                 'manufacturer' => $manufacturer,
                 'scale'        => $scale,
-                'synopsis'     => (string) $r['description'],
-                'volumes'      => null,
+                'synopsis'     => $synopsisText,
+                'volumes'      => $volumes,
+                'tomos'        => $volumes,
                 'score'        => null,
                 'source'       => 'local',
                 'branches'     => $branches,
             ];
         }
         return $out;
+    }
+
+    /**
+     * Añade ?v=<ts> SOLO a imágenes subidas a este servidor (/uploads/products/).
+     * No toca data: URIs, el proxy catalog/image ni CDNs externos.
+     */
+    private function bustLocal($url, $ts)
+    {
+        $url = trim((string) $url);
+        if ($url === '' || $ts <= 0) return $url;
+        if (strncmp($url, 'data:', 5) === 0) return $url;
+        if (strpos($url, '/uploads/products/') === false) return $url;
+        if (preg_match('/[?&]v=\d+/', $url)) return $url;   // ya lleva bust
+        return $url . (strpos($url, '?') === false ? '?' : '&') . 'v=' . $ts;
+    }
+
+    /**
+     * Título normalizado para usar como clave (minúsculas, sin marcador de
+     * volumen, solo alfanumérico).  "Berserk Vol. 41" -> "berserk".
+     */
+    private function normTitle($s)
+    {
+        $s = mb_strtolower(trim((string) $s));
+        $s = preg_replace('/\s+(vol\.?|volumen|tomo|t\.?|#|n[°º]\.?)\s*\d+.*$/u', '', $s);
+        return preg_replace('/[^a-z0-9]+/', '', (string) $s);
+    }
+
+    /**
+     * Slug CANÓNICO de categoría a partir del texto (slug / nombre ES / nombre
+     * EN) — nunca de IDs numéricos, que difieren entre local y Hostinger.
+     * Devuelve uno de: manga | figuras | tcg | comics | preventa (o el
+     * original en minúsculas si no reconoce nada).
+     */
+    private function catSlug($slug, $nameEs = '', $nameEn = '')
+    {
+        $canon = ['manga', 'figuras', 'tcg', 'comics', 'preventa'];
+        $s = strtolower(trim((string) $slug));
+        if (in_array($s, $canon, true)) return $s;
+
+        $alias = [
+            'manga' => 'manga', 'mangas' => 'manga',
+            'figura' => 'figuras', 'figuras' => 'figuras', 'figures' => 'figuras', 'figure' => 'figuras',
+            'tcg' => 'tcg', 'tarjetas tcg' => 'tcg', 'cartas tcg' => 'tcg', 'trading cards' => 'tcg', 'tarjetas' => 'tcg',
+            'comic' => 'comics', 'comics' => 'comics', 'cómic' => 'comics', 'cómics' => 'comics', 'comic-book' => 'comics',
+            'preventa' => 'preventa', 'preventas' => 'preventa', 'pre-order' => 'preventa', 'preorder' => 'preventa', 'pre-venta' => 'preventa',
+        ];
+        foreach ([$s, strtolower(trim((string) $nameEs)), strtolower(trim((string) $nameEn))] as $cand) {
+            if ($cand !== '' && isset($alias[$cand])) return $alias[$cand];
+        }
+        return $s !== '' ? $s : 'manga';
+    }
+
+    /**
+     * URL de portada GARANTIZADA (nunca vacía/nula).  SIN dependencias de
+     * runtime: solo URLs que el <img> del navegador carga directo o un
+     * data-URI embebido. Cascada:
+     *   1) `image_url` real de la BD  (con cache-busting si es /uploads/)
+     *   2) mapa de portadas estáticas por título  (manga -> URL CDN DIRECTA)
+     *   3) archivo local  /uploads/covers/<slug>.jpg|png|webp  ó  /uploads/<cat>/<slug>.jpg
+     *   4) data-URI SVG generado aquí en PHP  (embebido, siempre pinta, cero red)
+     */
+    private function coverFor($title, $category, $author = '', $accent = '', $rawUrl = '', $ts = 0)
+    {
+        $rawUrl = trim((string) $rawUrl);
+        if ($rawUrl !== '') return $this->bustLocal($rawUrl, $ts);
+
+        $cat = $this->catSlug($category);
+        $key = $this->normTitle($title);
+
+        // Portada estática de CDN — URL DIRECTA (el <img> la carga sin CORS ni
+        // proxy; solo el visor 3D necesitaría proxy y ya degrada solo).
+        if ($cat === 'manga') {
+            $m = $this->mangaCoverMap();
+            if ($key !== '' && isset($m[$key])) return $m[$key];
+        }
+
+        // Archivo local que el admin haya subido a /uploads/… (URL absoluta al
+        // dominio, NO relativa al /api).
+        $slug = trim(preg_replace('/[^a-z0-9]+/', '-', mb_strtolower((string) $title)), '-');
+        if ($slug !== '') {
+            $root = dirname(dirname(__DIR__));   // .../public_html
+            foreach (["uploads/covers/$slug.jpg", "uploads/covers/$slug.png", "uploads/covers/$slug.webp",
+                      "uploads/$cat/$slug.jpg", "uploads/$cat/$slug.png", "uploads/$slug.jpg"] as $rel) {
+                if (is_file($root . '/' . $rel)) return $this->publicUrl($rel);
+            }
+        }
+
+        // Último recurso: data-URI embebido (no pega a ningún endpoint).
+        return $this->dataCover($title, $cat, $accent);
+    }
+
+    /** URL pública ABSOLUTA (dominio + subcarpeta) para un archivo de public_html/. */
+    private function publicUrl($rel)
+    {
+        $https = (!empty($_SERVER['HTTPS']) && strtolower($_SERVER['HTTPS']) !== 'off')
+            || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https')
+            || (($_SERVER['SERVER_PORT'] ?? '') == 443);
+        $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        $base = str_replace('\\', '/', dirname(dirname($_SERVER['SCRIPT_NAME'] ?? '/api/index.php')));
+        $base = ($base === '/' || $base === '.') ? '' : rtrim($base, '/');
+        return ($https ? 'https' : 'http') . '://' . $host . $base . '/' . ltrim((string) $rel, '/');
+    }
+
+    /**
+     * Portada de respaldo como data-URI SVG (se pinta SIEMPRE, sin ninguna
+     * petición). Sobria: fondo oscuro, título, regla de acento y GEEKPOINT —
+     * SIN la banda de color a todo lo ancho ("caja flotante azul") que se quitó.
+     */
+    private function dataCover($title, $category, $accent = '')
+    {
+        if (!preg_match('/^#[0-9a-fA-F]{6}$/', (string) $accent)) {
+            $pal = ['manga' => '#8b5bff', 'comics' => '#e4002b', 'tcg' => '#00e5ff', 'figuras' => '#ff2d95', 'preventa' => '#ffd400'];
+            $accent = $pal[$category] ?? '#8b5bff';
+        }
+        $label = strtoupper((string) ($category ?: 'GEEKPOINT'));
+        $enc = function ($s) { return htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8'); };
+
+        // Título en 1-3 líneas.
+        $words = preg_split('/\s+/', trim(mb_substr((string) $title, 0, 70)));
+        $lines = []; $cur = '';
+        foreach ($words as $w) {
+            if (mb_strlen(trim($cur . ' ' . $w)) > 14 && $cur !== '') { $lines[] = $cur; $cur = $w; }
+            else { $cur = trim($cur . ' ' . $w); }
+        }
+        if ($cur !== '') $lines[] = $cur;
+        $lines = array_slice($lines, 0, 3);
+        $y0 = 400 - (count($lines) - 1) * 40;
+        $tsp = '';
+        foreach ($lines as $i => $l) {
+            $tsp .= '<text x="46" y="' . ($y0 + $i * 66) . '" font-family="Anton,Arial Black,sans-serif" '
+                . 'font-size="' . (mb_strlen($l) > 11 ? 40 : 50) . '" fill="#e8e8ee">' . $enc($l) . '</text>';
+        }
+
+        $svg = '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800" viewBox="0 0 600 800">'
+            . '<rect width="600" height="800" fill="#141419"/>'
+            . '<rect x="16" y="16" width="568" height="768" fill="none" stroke="' . $accent . '" stroke-width="6" opacity="0.55"/>'
+            . '<rect x="46" y="150" width="120" height="8" fill="' . $accent . '"/>'
+            . '<text x="46" y="130" font-family="JetBrains Mono,monospace" font-size="22" letter-spacing="6" fill="#8b8b96">' . $enc($label) . '</text>'
+            . $tsp
+            . '<text x="46" y="746" font-family="Bangers,Anton,sans-serif" font-size="26" letter-spacing="2" fill="' . $accent . '">GEEKPOINT</text>'
+            . '</svg>';
+
+        return 'data:image/svg+xml;charset=utf-8,' . rawurlencode($svg);
+    }
+
+    /**
+     * Mapa de PORTADAS ESTÁTICAS por título (CDN AniList, alta calidad) para los
+     * mangas cuyo `image_url` está vacío/nulo (antes se traían en vivo).  URLs
+     * fijas y verificadas (HTTP 200).  Se devuelven DIRECTAS: el `<img>` del
+     * navegador las carga sin CORS ni proxy y sin que este servidor tenga que
+     * hacer ninguna petición saliente.  Lo que no esté en el mapa cae a
+     * `dataCover()` (data-URI embebido).
+     */
+    private function mangaCoverMap()
+    {
+        $A = 'https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/';
+        return [
+            'jujutsukaisen'             => $A . 'bx101517-H3TdM3g5ZUe9.jpg',
+            'chainsawman'               => $A . 'bx105778-euxXZEIfDY2u.png',
+            'onepiece'                  => $A . 'bx30013-BeslEMqiPhlk.jpg',
+            'demonslayer'               => $A . 'bx87216-c9bSNVD10UuD.png',
+            'demonslayerkimetsunoyaiba' => $A . 'bx87216-c9bSNVD10UuD.png',
+            'kimetsunoyaiba'            => $A . 'bx87216-c9bSNVD10UuD.png',
+            'spyxfamily'                => $A . 'bx108556-NHjkz0BNJhLx.jpg',
+            'dandadan'                  => $A . 'bx132029-prGF4gePdSKv.jpg',
+            'oshinoko'                  => $A . 'bx117195-r3kf8eF0xkDJ.png',
+            'bluelock'                  => $A . 'bx106130-yPNeuSu75ey1.jpg',
+            'berserk'                   => $A . 'bx30002-Cul4OeN7bYtn.jpg',
+            'vinlandsaga'               => $A . 'bx30642-0mjRDkf4THpo.jpg',
+            'hunterxhunter'             => $A . 'bx30026-uCvXMudMzmwI.jpg',
+            'myheroacademia'            => $A . 'bx85486-INqnYx8gL3eX.jpg',
+            'bokunoheroacademia'        => $A . 'bx85486-INqnYx8gL3eX.jpg',
+            'attackontitan'            => $A . 'bx53390-1RsuABC34P9D.jpg',
+            'shingekinokyojin'         => $A . 'bx53390-1RsuABC34P9D.jpg',
+            'sololeveling'              => $A . 'bx105398-b673Vt5ZSuz3.jpg',
+            'frieren'                   => $A . 'bx118586-CXKgWikBFQgS.jpg',
+            'frierenbeyondjourneysend'  => $A . 'bx118586-CXKgWikBFQgS.jpg',
+            'sousounofrieren'           => $A . 'bx118586-CXKgWikBFQgS.jpg',
+            'jojosbizarreadventure'     => $A . 'bx88339-aGpw5a4g81Au.jpg',
+            'jojonokimyounabouken'      => $A . 'bx88339-aGpw5a4g81Au.jpg',
+            'dragonballsuper'           => $A . 'bx86508-QSahE7mTFEXl.png',
+            'naruto'                    => $A . 'nx30011-9yUF1dXWgDOx.jpg',
+            'bleach'                    => $A . 'bx30012-1epmVfTSv2rr.png',
+            'deathnote'                 => $A . 'bx30021-FE6kmrfpuKyb.jpg',
+            'fullmetalalchemist'        => $A . 'bx30025-mpPVpCKFTowt.png',
+            'haganenorenkinjutsushi'    => $A . 'bx30025-mpPVpCKFTowt.png',
+            'tokyoghoul'                => $A . 'bx63327-glC9cDxYBja9.png',
+            'haikyu'                    => $A . 'bx65243-mR4MnJFmfaOF.png',
+            'haikyuu'                   => $A . 'bx65243-mR4MnJFmfaOF.png',
+            'kaguyasamaloveiswar'       => $A . 'bx86635-EdaLQmsn86Fy.png',
+            'kaguyasamawakokurasetai'   => $A . 'bx86635-EdaLQmsn86Fy.png',
+        ];
+    }
+
+    /**
+     * Categoría CANÓNICA por título — arregla productos mal clasificados para
+     * que cada uno aparezca estrictamente en su sección (manga japonés ->
+     * `manga`; manhwa/webtoon coreano y cómic occidental -> `comics`).
+     */
+    private function titleCategoryMap()
+    {
+        static $map = null;
+        if ($map !== null) return $map;
+        $manga = [
+            'Jujutsu Kaisen', 'Chainsaw Man', 'One Piece', 'Demon Slayer',
+            'Demon Slayer: Kimetsu no Yaiba', 'Kimetsu no Yaiba', 'Spy x Family',
+            'Dandadan', 'Oshi no Ko', 'Blue Lock', 'Berserk', 'Vinland Saga',
+            'Attack on Titan', 'Shingeki no Kyojin', 'Naruto', 'Bleach',
+            'Fullmetal Alchemist', 'Death Note', 'Tokyo Ghoul', 'My Hero Academia',
+            'Boku no Hero Academia', 'Hunter x Hunter', 'Haikyu!!', 'Haikyuu!!',
+            'Kaguya-sama: Love is War', "Frieren: Beyond Journey's End",
+            'Sousou no Frieren', 'Frieren', 'Dragon Ball Super',
+        ];
+        $comics = [
+            'Solo Leveling', 'Tower of God', 'The God of High School',
+            'Omniscient Reader', "Omniscient Reader's Viewpoint", 'Noblesse',
+            'Lookism', "JoJo's Bizarre Adventure", 'JoJo no Kimyou na Bouken',
+            'Invincible', 'Batman: Year One', 'The Sandman', 'Watchmen',
+        ];
+        $map = [];
+        foreach ($manga as $t)  $map[$this->normTitle($t)] = 'manga';
+        foreach ($comics as $t) $map[$this->normTitle($t)] = 'comics';
+        return $map;
+    }
+
+    /**
+     * Enriquece TODA la lista final ANTES de filtrar por categoría:
+     *   1) fija la categoría canónica por título (manga -> manga, manhwa -> comics)
+     *   2) garantiza que `cover` / `image_url` / `cover_raw` / `images` NUNCA
+     *      lleguen vacíos ni null (mapa estático -> /uploads -> generador SVG).
+     */
+    private function canonicalize(array $products)
+    {
+        $catMap = $this->titleCategoryMap();
+        foreach ($products as &$p) {
+            $title = (string) ($p['title'] ?? '');
+            $key   = $this->normTitle($title);
+
+            // 1) categoría canónica
+            if ($key !== '' && isset($catMap[$key])) {
+                $p['category'] = $catMap[$key];
+            }
+            $cat = $this->catSlug($p['category'] ?? 'manga');
+            $p['category'] = $cat;
+
+            // 2) portada garantizada — SIN depender del proxy ni de outbound.
+            //    Una URL absoluta (CDN) o un data-URI se aceptan; un ref a un
+            //    endpoint propio (catalog/cover, catalog/image) NO — se resuelve.
+            $cur = $this->unproxy(trim((string) ($p['cover'] ?? '')));
+            if ($cur === '') $cur = $this->unproxy(trim((string) ($p['cover_raw'] ?? '')));
+            if ($cur !== '' && strncmp($cur, 'catalog/', 8) === 0) $cur = '';
+            if ($cur === '') {
+                $cur = $this->coverFor($title, $cat, (string) ($p['author'] ?? ''), (string) ($p['accent'] ?? ''));
+            }
+            $p['cover']     = $cur;
+            $p['image_url'] = $cur;                       // string válido siempre
+            $p['cover_raw'] = $cur;
+            $imgs = array_values(array_filter(array_map(function ($u) {
+                return $this->unproxy(trim((string) $u));
+            }, (array) ($p['images'] ?? [])), 'strlen'));
+            $p['images'] = $imgs ?: [$cur];
+        }
+        unset($p);
+        return $products;
+    }
+
+    /**
+     * `catalog/image?src=<url>`  ->  `<url>`  (URL directa del CDN).
+     * Así el <img> del catálogo NO depende de que este servidor pueda hacer
+     * peticiones salientes (en Hostinger a veces falla y la portada queda rota).
+     * data: URIs y URLs normales se devuelven tal cual.
+     */
+    private function unproxy($url)
+    {
+        $url = trim((string) $url);
+        if ($url === '' || strncmp($url, 'data:', 5) === 0) return $url;
+        $pos = stripos($url, 'catalog/image?src=');
+        if ($pos === false) return $url;
+        $dec = urldecode(substr($url, $pos + strlen('catalog/image?src=')));
+        return preg_match('#^https?://#i', $dec) ? $dec : $url;
     }
 
     /**
@@ -288,7 +874,12 @@ class CatalogController extends Controller
 
         $isComic = ($kind === 'comic' || $kind === 'comics');
         $isFigure = ($kind === 'figura' || $kind === 'figuras' || $kind === 'figure');
-        $catLabel = $isComic ? 'COMIC' : ($kind === 'tcg' ? 'TCG' : ($isFigure ? 'FIGURA' : 'GEEKPOINT'));
+        $isManga = ($kind === 'manga' || $kind === 'mangas');
+        $catLabel = $isComic ? 'COMIC' : ($kind === 'tcg' ? 'TCG'
+                  : ($isFigure ? 'FIGURA' : ($isManga ? 'MANGA' : 'GEEKPOINT')));
+        // style=plain  -> portada sobria SIN la banda de acento con texto
+        // (la "caja flotante azul" que se quitó del front).
+        $plain = strtolower((string) $this->query('style', '')) === 'plain';
         $enc = function ($s) { return htmlspecialchars($s, ENT_QUOTES, 'UTF-8'); };
 
         // ---- Render multi-ángulo para FIGURAS (caja de coleccionista + maniquí) ----
@@ -379,20 +970,31 @@ class CatalogController extends Controller
             . '</g>'
         ) : '';
 
+        // Cabecera: banda de acento (normal) o solo una regla fina (plain).
+        if ($plain) {
+            $header = '<rect x="46" y="86" width="120" height="8" fill="' . $accent . '"/>'
+                . '<text x="46" y="72" font-family="JetBrains Mono, monospace" font-size="22" font-weight="700" '
+                . 'letter-spacing="7" fill="#8b8b96">' . $enc($badge) . '</text>';
+        } else {
+            $header = '<polygon points="0,0 600,0 600,120 0,300" fill="' . $accent . '" opacity="0.92"/>'
+                . '<polygon points="0,0 600,0 600,120 0,300" fill="none" stroke="#0c0c0e" stroke-width="6"/>'
+                . '<text x="46" y="96" font-family="JetBrains Mono, monospace" font-size="24" font-weight="700" '
+                . 'letter-spacing="7" fill="#0c0c0e">' . $enc($badge) . '</text>';
+        }
+        // En plain el título va en tono claro (ya no sobre la banda de color).
+        $tsp = $plain ? str_replace('fill="#f3efe4"', 'fill="#e8e8ee"', $tspans) : $tspans;
+
         $svg = '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800" viewBox="0 0 600 800">'
             . '<defs><pattern id="ht" width="14" height="14" patternUnits="userSpaceOnUse">'
             . '<circle cx="3" cy="3" r="2.1" fill="rgba(255,255,255,.06)"/></pattern></defs>'
             . '<rect width="600" height="800" fill="#111014"/>'
             . '<rect width="600" height="800" fill="url(#ht)"/>'
-            . '<polygon points="0,0 600,0 600,120 0,300" fill="' . $accent . '" opacity="0.92"/>'
-            . '<polygon points="0,0 600,0 600,120 0,300" fill="none" stroke="#0c0c0e" stroke-width="6"/>'
-            . '<g stroke="#0c0c0e" stroke-width="3" opacity=".4">'
-            . '<line x1="600" y1="800" x2="360" y2="470"/><line x1="600" y1="700" x2="320" y2="470"/>'
-            . '<line x1="520" y1="800" x2="300" y2="500"/></g>'
-            . '<rect x="18" y="18" width="564" height="764" fill="none" stroke="#0c0c0e" stroke-width="12"/>'
-            . '<text x="46" y="96" font-family="JetBrains Mono, monospace" font-size="24" font-weight="700" '
-            . 'letter-spacing="7" fill="#0c0c0e">' . $enc($badge) . '</text>'
-            . $tspans
+            . ($plain ? '' : '<g stroke="#0c0c0e" stroke-width="3" opacity=".4">'
+                . '<line x1="600" y1="800" x2="360" y2="470"/><line x1="600" y1="700" x2="320" y2="470"/>'
+                . '<line x1="520" y1="800" x2="300" y2="500"/></g>')
+            . '<rect x="18" y="18" width="564" height="764" fill="none" stroke="' . ($plain ? $accent : '#0c0c0e') . '" stroke-width="' . ($plain ? 6 : 12) . '"' . ($plain ? ' opacity="0.7"' : '') . '/>'
+            . $header
+            . $tsp
             . $numBadge
             . '<rect x="46" y="712" width="210" height="46" fill="#0c0c0e"/>'
             . '<text x="151" y="743" text-anchor="middle" font-family="Bangers, Anton, sans-serif" '
@@ -407,45 +1009,68 @@ class CatalogController extends Controller
     }
 
     /**
-     * GET /catalog/image?src=<url cdn.myanimelist.net>
-     * Proxy de imágenes para que las portadas sean del mismo origen (texturas WebGL sin CORS).
+     * GET /catalog/image?src=<url CDN>
+     * Proxy de imágenes: la portada se sirve DESDE NUESTRO ORIGEN, así vale
+     * como textura WebGL (hero 3D / visor) aunque el CDN de origen no mande
+     * cabecera CORS (p. ej. AniList). El <img> normal de la grilla NO lo
+     * necesita — solo las texturas.
      */
     public function image()
     {
-        $src = (string) $this->query('src', '');
-        $host = strtolower((string) parse_url($src, PHP_URL_HOST));
+        $src  = (string) $this->query('src', '');
+        $host = rtrim(strtolower((string) parse_url($src, PHP_URL_HOST)), '.');
         $allowed = [
             'cdn.myanimelist.net', 'api-cdn.myanimelist.net',
             's4.anilist.co', 's3.anilist.co', 's2.anilist.co', 's1.anilist.co',
             'uploads.mangadex.org', 'mangadex.org',
+            'upload.wikimedia.org', 'commons.wikimedia.org', 'en.wikipedia.org',
+            'api.scryfall.com', 'cards.scryfall.io', 'c1.scryfall.com',
+            'images.pokemontcg.io', 'img.pokemontcg.io',
         ];
-        if (!$src || !in_array(rtrim($host, '.'), $allowed, true)) {
-            http_response_code(400);
-            exit;
-        }
+        $ok = $src && (in_array($host, $allowed, true)
+            || preg_match('/\.(wikimedia|wikipedia)\.org$/', $host));
+        if (!$ok) { http_response_code(400); exit; }
 
-        $key = dirname(__DIR__) . '/cache/img_' . md5($src);
+        // Prefijo de caché nuevo: ignora ficheros img_* viejos que en Hostinger
+        // quedaron con basura (\r\n de un include) al principio.
+        $key = dirname(__DIR__) . '/cache/imgc_' . md5($src);
         $bin = null; $type = 'image/jpeg';
 
         if (is_file($key) && (time() - filemtime($key) < 2592000)) {
-            $bin = file_get_contents($key);
+            $bin  = file_get_contents($key);
             $meta = @file_get_contents($key . '.type');
             if ($meta) $type = $meta;
-        } else {
+        }
+        if ($bin === null || $bin === false || strlen($bin) < 100) {
             list($bin, $type) = $this->httpGet($src, 12, true);
-            if ($bin !== null && strlen($bin) > 200) {
+            // Solo cachear si de verdad parece imagen (no una página de error).
+            $looksImg = is_string($bin) && strlen($bin) > 200 && (
+                strncmp($bin, "\xFF\xD8\xFF", 3) === 0 ||      // JPEG
+                strncmp($bin, "\x89PNG", 4) === 0 ||           // PNG
+                strncmp($bin, "GIF8", 4) === 0 ||              // GIF
+                strncmp($bin, "RIFF", 4) === 0 ||              // WEBP
+                stripos((string) $type, 'image/') === 0
+            );
+            if ($looksImg) {
                 @mkdir(dirname($key), 0775, true);
                 @file_put_contents($key, $bin);
                 @file_put_contents($key . '.type', $type);
             }
         }
 
-        if ($bin === null) { http_response_code(502); exit; }
+        if ($bin === null || $bin === false || $bin === '') { http_response_code(502); exit; }
 
-        header('Content-Type: ' . $type);
-        header('Cache-Control: public, max-age=2592000, immutable');
-        header('Access-Control-Allow-Origin: *');
-        header('Content-Length: ' . strlen($bin));
+        // CLAVE: descartar cualquier salida ya bufferada (BOM / whitespace / \r\n
+        // de un include como config.php) que corrompería los bytes binarios.
+        while (ob_get_level() > 0) { ob_end_clean(); }
+        if (!headers_sent()) {
+            header_remove();
+            header('Content-Type: ' . ($type ?: 'image/jpeg'));
+            header('Access-Control-Allow-Origin: *');
+            header('Cache-Control: public, max-age=2592000, immutable');
+            header('X-Content-Type-Options: nosniff');
+            header('Content-Length: ' . strlen($bin));
+        }
         echo $bin;
         exit;
     }
@@ -553,6 +1178,90 @@ class CatalogController extends Controller
 
     // ---------------------------------------------------------------
 
+    /**
+     * Sinopsis en ESPAÑOL.  AniList/Jikan solo traen inglés: si el texto está
+     * en inglés se traduce (MyMemory como fuente principal — JSON estable y
+     * gratis; Google gtx como respaldo) y se cachea 30 días en
+     * `cache/tr_<md5>.txt`.  CUALQUIER fallo -> devuelve el texto original
+     * (nunca rompe el catálogo ni muestra un error).  Presupuesto de tiempo
+     * TR_BUDGET s por reconstrucción: agotado, el resto queda en inglés y se
+     * traduce en la siguiente pasada (la caché se va llenando sola).
+     */
+    private function translateEs($text)
+    {
+        $text = trim((string) $text);
+        if ($text === '' || mb_strlen($text) < 12) return $text;
+
+        // ¿ya está en español?  (acentos/ñ/¿¡, o stopwords ES sin stopwords EN)
+        if (preg_match('/[áéíóúñ¿¡]/u', $text)
+            || (preg_match('/\b(el|la|los|las|un|una|que|con|para|del|por|su)\b/iu', $text)
+                && !preg_match('/\b(the|and|of|his|her|with|from|when|which)\b/i', $text))) {
+            return $text;
+        }
+        // ¿parece inglés?  Si no hay señales claras, no lo toques.
+        if (!preg_match('/\b(the|and|of|to|is|his|her|with|for|from|that|he|she|they|who|when|as|by|but|his)\b/i', $text)) {
+            return $text;
+        }
+
+        $key = dirname(__DIR__) . '/cache/tr_' . md5($text) . '.txt';
+        if (is_file($key) && (time() - filemtime($key) < self::TR_TTL)) {
+            $hit = file_get_contents($key);
+            return ($hit !== false && trim($hit) !== '') ? $hit : $text;
+        }
+        if ($this->trSpent >= self::TR_BUDGET) return $text;   // presupuesto agotado
+
+        $src = mb_substr($text, 0, 480);   // MyMemory: 500 chars/consulta
+        $t0 = microtime(true);
+        $es = $this->trMyMemory($src);
+        if ($es === '') $es = $this->trGoogle($src);
+        $this->trSpent += microtime(true) - $t0;
+
+        if ($es !== '' && mb_strlen($es) > 4 && strcasecmp($es, $src) !== 0) {
+            // Conserva la "cola" que no cupo en 480 chars sin traducir (rara vez pasa).
+            if (mb_strlen($text) > 480) $es .= ' ' . mb_substr($text, 480);
+            @mkdir(dirname($key), 0775, true);
+            @file_put_contents($key, $es);
+            return $es;
+        }
+        return $text;
+    }
+
+    /** MyMemory (JSON estable, gratis, ~5k chars/día por IP). '' si falla. */
+    private function trMyMemory($text)
+    {
+        list($body, ) = $this->httpGet(
+            'https://api.mymemory.translated.net/get?langpair=en%7Ces&q=' . rawurlencode($text),
+            6
+        );
+        if (!$body) return '';
+        $j = json_decode($body, true);
+        if (!is_array($j)) return '';
+        if (($j['responseStatus'] ?? 0) != 200) return '';
+        if (!empty($j['quotaFinished'])) return '';
+        $es = trim((string) ($j['responseData']['translatedText'] ?? ''));
+        // MyMemory a veces devuelve avisos en MAYÚSCULAS cuando algo va mal.
+        if ($es === '' || stripos($es, 'MYMEMORY WARNING') !== false
+            || stripos($es, 'QUOTA EXCEEDED') !== false) return '';
+        return $es;
+    }
+
+    /** Respaldo: endpoint gratuito de Google Translate (puede dar CAPTCHA). '' si falla. */
+    private function trGoogle($text)
+    {
+        list($body, ) = $this->httpGet(
+            self::GTRANSLATE . '?client=gtx&sl=en&tl=es&dt=t&q=' . rawurlencode($text),
+            5
+        );
+        if (!$body || $body[0] !== '[') return '';
+        $j = json_decode($body, true);
+        if (!is_array($j) || !isset($j[0]) || !is_array($j[0])) return '';
+        $es = '';
+        foreach ($j[0] as $seg) {
+            if (isset($seg[0])) $es .= $seg[0];
+        }
+        return trim($es);
+    }
+
     /** Catálogo desde AniList (GraphQL) — una sola petición con alias. */
     private function buildFromAniList()
     {
@@ -593,6 +1302,7 @@ class CatalogController extends Controller
 
             $syn = trim(html_entity_decode(strip_tags((string) ($m['description'] ?? '')), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
             $syn = preg_replace('/\s+/', ' ', $syn);
+            $syn = $this->translateEs($syn);                               // sinopsis al español
             if (mb_strlen($syn) > 320) $syn = mb_substr($syn, 0, 317) . '…';
 
             $score = isset($m['averageScore']) && $m['averageScore'] ? round($m['averageScore'] / 10, 1) : null;
@@ -678,6 +1388,7 @@ class CatalogController extends Controller
                 $author = $manga['studios'][0]['name'];
             }
             $synopsis = trim((string) ($manga['synopsis'] ?? ''));
+            $synopsis = $this->translateEs($synopsis);                    // sinopsis al español
             if (mb_strlen($synopsis) > 320) $synopsis = mb_substr($synopsis, 0, 317) . '…';
 
             // disponibilidad sintética por sucursal (determinista por id)

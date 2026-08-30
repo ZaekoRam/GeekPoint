@@ -188,6 +188,8 @@
       "form.prodadm.editorial": "Editorial / Marca",
       "form.prodadm.maker": "Marca / Fabricante",
       "form.prodadm.scale": "Escala / Línea (opcional)",
+      "form.prodadm.synopsis": "Sinopsis / descripción (español)",
+      "prodadm.synopsisPh": "Sinopsis en español para la ficha de la tienda…",
       "form.prodadm.figurePng": "Figura / personaje sin fondo (PNG transparente)",
       "form.prodadm.image": "Imágenes de galería (fotos del producto, separadas por coma)",
       "prodadm.orUpload": "o subir un archivo del equipo",
@@ -393,6 +395,8 @@
       "form.prodadm.editorial": "Publisher / Brand",
       "form.prodadm.maker": "Brand / Manufacturer",
       "form.prodadm.scale": "Scale / Line (optional)",
+      "form.prodadm.synopsis": "Synopsis / description (Spanish)",
+      "prodadm.synopsisPh": "Spanish synopsis for the storefront…",
       "form.prodadm.figurePng": "Figure / character cutout (transparent PNG)",
       "form.prodadm.image": "Gallery images (product photos, comma-separated)",
       "prodadm.orUpload": "or upload a file from your computer",
@@ -449,10 +453,13 @@
 
   function set(next) {
     if (next !== "es" && next !== "en") return;
+    if (next === lang) return;   // ya está en ese idioma: no re-renderizar ni disparar el evento
     lang = next;
     try { localStorage.setItem("gp_lang", lang); } catch (e) {}
     document.documentElement.setAttribute("lang", lang);
     apply(document);
+    // Los listeners (store.js) son responsables de CONSERVAR su propio estado
+    // (categoría activa, etc.) al re-renderizar por este evento.
     window.dispatchEvent(new CustomEvent("i18n:change", { detail: { lang: lang } }));
   }
 

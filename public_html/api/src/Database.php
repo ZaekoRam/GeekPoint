@@ -46,10 +46,17 @@ class Database
      * Úsalo en endpoints que deben responder aunque MySQL esté caído
      * (p. ej. /health o el catálogo público, que tiene APIs externas).
      */
+    /** Recuerda un ping fallido durante ESTA petición: evita reintentar la
+        conexión (y comerse otro timeout de 3 s) varias veces por request. */
+    private static $pingFailed = false;
+
     public static function ping()
     {
         if (self::$pdo instanceof PDO) {
             return true;
+        }
+        if (self::$pingFailed) {
+            return false;
         }
         try {
             $cfg = App::config('db');
@@ -68,6 +75,7 @@ class Database
             ]);
             return true;
         } catch (\Throwable $e) {
+            self::$pingFailed = true;
             return false;
         }
     }

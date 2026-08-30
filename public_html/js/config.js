@@ -4,45 +4,42 @@
 (function () {
   "use strict";
 
-  function isDevHost() {
-    return /^(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|.+\.local)$/i.test(location.hostname || "");
-  }
-  function isSameOrigin(url) {
-    try { return new URL(url, location.href).origin === location.origin; }
-    catch (e) { return false; }
-  }
-
+  /**
+   * Detección DINÁMICA de la base de la API — sin rutas fijas persistidas.
+   *
+   *   file://                     -> null (no hay backend)
+   *   localhost / 127.0.0.1       -> http://localhost:8766/api   (dev-server.php)
+   *                                  (o origin+/api si la página YA está en :8766)
+   *   cualquier otro host (prod)  -> window.location.origin + "/api"
+   *
+   * Nunca se lee `localStorage.gp_api_base` (una ruta de localhost guardada en
+   * un navegador de desarrollo reventaba el sitio en Hostinger → banner amarillo
+   * de "servidor caído"). El valor viejo se borra de forma proactiva.
+   */
   function deriveApiBase() {
-    // file:// → no hay backend posible
     if (location.protocol === "file:") return null;
 
-    // Base RELATIVA a la carpeta del index.html. fetch() la resuelve contra el
-    // documento, así que funciona igual en local y en Hostinger, en la raíz del
-    // dominio o en una subcarpeta, y sin riesgo de contenido mixto (http/https):
-    //   "/"                     -> "/api"
-    //   "/index.html"           -> "/api"
-    //   "/geekpoint/"           -> "/geekpoint/api"
-    //   "/geekpoint/index.html" -> "/geekpoint/api"
-    var dir = location.pathname.replace(/[^/]*$/, "");   // quita el nombre del archivo
-    var relative = (dir + "api").replace(/\/{2,}/g, "/");
+    // Limpia cualquier base fija heredada (dev) para que no contamine prod.
+    try { localStorage.removeItem("gp_api_base"); } catch (e) {}
 
-    // Override manual (?api=... o localStorage) SOLO en desarrollo o si apunta al
-    // mismo origen. Evita que un "gp_api_base = http://localhost:8766/api"
-    // guardado en un navegador de desarrollo rompa el sitio en producción.
-    try {
-      var dev = isDevHost();
-      var q = new URLSearchParams(location.search).get("api");
-      if (q && (dev || isSameOrigin(q))) {
-        localStorage.setItem("gp_api_base", q);
-      }
-      var saved = localStorage.getItem("gp_api_base");
-      if (saved) {
-        if (dev || isSameOrigin(saved)) return saved.replace(/\/+$/, "");
-        localStorage.removeItem("gp_api_base");   // valor de otro origen en prod → se descarta
-      }
-    } catch (e) {}
+    var host = (location.hostname || "").toLowerCase();
+    var isLocal = host === "localhost" || host === "127.0.0.1" ||
+                  host === "::1" || host === "[::1]";
 
-    return relative;
+    if (isLocal) {
+      // Override efímero para depurar (?api=...), NO se guarda.
+      try {
+        var q = new URLSearchParams(location.search).get("api");
+        if (q) return q.replace(/\/+$/, "");
+      } catch (e) {}
+      // El PHP embebido sirve front + API en el mismo puerto; si la página se
+      // abre en :8766 (o :80) origin+/api ya es correcto, si no, apunta al :8766.
+      if (!location.port || location.port === "8766") return location.origin + "/api";
+      return "http://localhost:8766/api";
+    }
+
+    // Producción (Hostinger, dominio raíz): ruta relativa al mismo origen.
+    return location.origin + "/api";
   }
 
   window.__CONFIG__ = {

@@ -30,6 +30,12 @@
     { slug: "preventa", i18n: "cat.preventa" }
   ];
 
+  /* --- ESTADO GLOBAL de la tienda: categoría activa. Sobrevive a los
+     re-render por cambio de idioma (langHandler la lee, NO los `params`
+     capturados en mount, que quedan obsoletos al navegar). --- */
+  var activeSlug = "all";
+  var gridRAF = 0;
+
   function currentCat(params) {
     var c = params && params.cat ? params.cat : "all";
     return CATS.some(function (x) { return x.slug === c; }) ? c : "all";
@@ -40,9 +46,30 @@
     if (!host) return;
     host.innerHTML = CATS.map(function (c) {
       return '<a class="catbar__btn' + (c.slug === active ? " is-active" : "") + '" href="' +
-        (c.slug === "all" ? "#/" : "#/cat/" + c.slug) + '" data-link>' + esc(I18N.t(c.i18n)) + '</a>';
+        (c.slug === "all" ? "#/" : "#/cat/" + c.slug) + '" data-link data-cat="' + c.slug + '">' + esc(I18N.t(c.i18n)) + '</a>';
     }).join("") +
       '<span class="mono" data-catalog-source style="flex-basis:100%;font-size:.68rem;color:var(--muted);letter-spacing:.08em;margin-top:.4rem"></span>';
+  }
+
+  /* Actualización OPTIMISTA e instantánea del botón activo (solo alterna la
+     clase, sin reconstruir la barra ni tocar el DOM del grid). */
+  function setCatbarActive(root, slug) {
+    var host = $("[data-catbar]", root);
+    if (!host) return;
+    $$(".catbar__btn", host).forEach(function (a) {
+      a.classList.toggle("is-active", a.getAttribute("data-cat") === slug);
+    });
+  }
+
+  /* Pinta la grilla en el SIGUIENTE frame: el clic de categoría vuelve al
+     instante (botón ya resaltado), el render no bloquea la interacción y
+     los clics rápidos entre categorías solo pintan el último. */
+  function scheduleGrid(root, slug) {
+    if (gridRAF) cancelAnimationFrame(gridRAF);
+    gridRAF = requestAnimationFrame(function () {
+      gridRAF = 0;
+      drawGrid(root, slug);
+    });
   }
 
   var searchQ = "";
@@ -59,23 +86,35 @@
   function drawGrid(root, active) {
     var host = $("[data-pgrid]", root);
     if (!host) return;
+    // Aún cargando el catálogo: deja el "cargando", nunca el "categoría vacía".
+    if (!Catalog.ready) {
+      host.innerHTML = Views._loading ? Views._loading() : "…";
+      return;
+    }
     var base = Catalog.byCategory(active);
     var list = applySearch(base);
     if (!list.length) {
       var msg = (searchQ.trim() && base.length)
         ? esc(I18N.t("shop.noresults", { q: searchQ.trim() }))
         : esc(I18N.t("shop.empty"));
-      host.innerHTML = '<div class="state"><div class="state__icon">📭</div><p>' + msg + '</p></div>';
+      // Estado vacío elegante — sin emojis (glifo vectorial de la marca).
+      host.innerHTML = '<div class="state">' +
+        '<svg class="state__icon" viewBox="0 0 48 48" width="46" height="46" fill="none" ' +
+          'stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+          '<path d="M6 16 24 6l18 10-18 10z"/><path d="M6 16v16l18 10 18-10V16"/><path d="M24 26v16"/>' +
+        '</svg>' +
+        '<p>' + msg + '</p></div>';
       return;
     }
     host.innerHTML = list.map(cardHTML).join("");
     $$(".pcard", host).forEach(bindCard);
   }
 
-  /* Categoría activa (robusta ante cambios de ruta sin re-montar). */
+  /* Categoría activa = el estado global de la tienda (sincronizado en
+     mount/update). Se prefiere sobre Router.current() para que un re-render
+     por idioma o por "catalog:changed" NUNCA reinicie el filtro. */
   function activeCat() {
-    try { return currentCat((window.Router && Router.current().params) || null); }
-    catch (e) { return "all"; }
+    return activeSlug;
   }
 
   /* ---------- Búsqueda animada (lupita expand-width) ---------- */
@@ -95,13 +134,13 @@
     }
     function runFilter() {
       searchQ = input.value || "";
-      drawGrid(root, activeCat());
+      scheduleGrid(root, activeCat());   // rAF-coalesced: no bloquea al teclear
     }
 
     toggle.addEventListener("click", function () {
       if (box.classList.contains("is-open")) {
         input.value = "";
-        if (searchQ) { searchQ = ""; drawGrid(root, activeCat()); }
+        if (searchQ) { searchQ = ""; scheduleGrid(root, activeCat()); }
         setOpen(false);
       } else {
         setOpen(true);
@@ -117,7 +156,7 @@
     input.addEventListener("blur", collapseIfEmpty);
     input.addEventListener("input", runFilter);
     input.addEventListener("keydown", function (e) {
-      if (e.key === "Escape") { input.value = ""; searchQ = ""; drawGrid(root, activeCat()); setOpen(false); toggle.focus(); }
+      if (e.key === "Escape") { input.value = ""; searchQ = ""; scheduleGrid(root, activeCat()); setOpen(false); toggle.focus(); }
     });
 
     if (searchQ) { input.value = searchQ; setOpen(true); }
@@ -274,14 +313,14 @@
   }
 
   function volOptionsHTML(covers) {
-    // OJO: sin data-id/data-price aquí — colisionaban con el selector
-    // [data-price] del precio y refresh() sobrescribía la etiqueta del <option>.
-    // La compra/stock leen el objeto covers[idx], no los atributos del DOM.
+    // Etiqueta LIMPIA "Vol. X" — sin precio por tomo. El precio (el del tomo
+    // elegido, o el de la serie) lo muestra y actualiza el <span
+    // .preview3d__price[data-price]> vía refresh(); repetirlo en cada <option>
+    // sobra y quedaba inconsistente cuando un tomo suelto traía otro precio.
+    // Sin data-id/data-price aquí: colisionaban con ese mismo selector.
     return covers.map(function (c, i) {
-      var buyable = !!c.id;
       return '<option value="' + i + '" data-v="' + esc(c.v) + '">' +
-        esc(I18N.t("prod.volume")) + ' ' + esc(c.v) +
-        (buyable && c.price ? ' · ' + UI.money(c.price) : "") + '</option>';
+        esc(I18N.t("prod.volume")) + ' ' + esc(c.v) + '</option>';
     }).join("");
   }
 
@@ -622,9 +661,9 @@
     var kind = p.category === "tcg" ? [1.6, 2.24, 0.05] : [1.55, 2.2, 0.34];
     var geo = new THREE.BoxGeometry(kind[0], kind[1], kind[2]);
     var accent = new THREE.Color(p.accent || "#ffd400");
-    // Front a color pleno (sin tinte gris): el material queda blanco y la
-    // textura de la portada real manda el color.
-    var front = new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: .5 });
+    // Base OSCURA hasta que carga la textura (evita el "bloque blanco" si la
+    // portada tarda/falla); al aplicar la textura se pone a #fff en applyCover.
+    var front = new THREE.MeshStandardMaterial({ color: "#20202a", roughness: .5 });
 
     function edgeMat(repV) {
       if (!isTome || !window.HERO3D || !HERO3D.pageTexture) {
@@ -661,18 +700,22 @@
     var reqId = 0;
     function applyCover(url, isRetry) {
       if (!url) return;
+      // texURL(): data:/mismo origen o CDN con CORS -> tal cual; AniList u otro
+      // CDN sin CORS -> "" (no sirve de textura) -> portada de marca del catálogo.
+      var loadUrl = (Catalog.texURL ? Catalog.texURL(url) : url);
+      if (!loadUrl) loadUrl = (Catalog.placeholderCover ? Catalog.placeholderCover(p) : url);
       var mine = ++reqId;
-      loader.load(url, function (t) {
+      loader.load(loadUrl, function (t) {
         if (mine !== reqId) { t.dispose(); return; }   // llegó una selección más nueva
         if ("colorSpace" in t && THREE.SRGBColorSpace) t.colorSpace = THREE.SRGBColorSpace;
         t.anisotropy = 4;
         if (front.map) front.map.dispose();
         front.map = t; front.color.set("#fff"); front.needsUpdate = true;
       }, undefined, function () {
-        // 404 / CORS -> portada de reemplazo genérica.
+        // 404 / imagen inválida -> portada estándar del catálogo (data-URI).
         if (isRetry || mine !== reqId) return;
         var fb = Catalog.placeholderCover && Catalog.placeholderCover(p);
-        if (fb && fb !== url) applyCover(fb, true);
+        if (fb && fb !== loadUrl) applyCover(fb, true);
       });
     }
     applyCover(opts.initialUrl || Catalog.coverURL(p));
@@ -756,9 +799,9 @@
   var heroPickHandler = null;
 
   function mount(root, params) {
-    var active = currentCat(params);
+    activeSlug = currentCat(params);          // sincroniza el estado global
     I18N.apply(root);
-    drawCatbar(root, active);
+    drawCatbar(root, activeSlug);
     bindSearch(root);
     drawBranches(root, true);
 
@@ -784,7 +827,9 @@
     }
 
     Catalog.load().then(function () {
-      drawGrid(root, active);
+      // Al resolver, pinta la categoría ACTUAL (el usuario pudo navegar durante
+      // la carga) — no la capturada al montar.
+      drawGrid(root, activeSlug);
       setSourceNote(root);
       var canvas = $("[data-hero3d]", root);
       if (canvas && window.HERO3D) UI.safe(function () { HERO3D.start(canvas); });
@@ -796,12 +841,16 @@
     window.addEventListener("hero:pick", heroPickHandler);
 
     var langHandler = function () {
-      // Cada paso aislado: si uno falla, los demás igual re-renderizan.
+      // Conserva la categoría activa a través del re-render por idioma:
+      // se lee el ESTADO GLOBAL, no los `params` capturados al montar.
+      var keep = activeSlug;
+      if (gridRAF) { cancelAnimationFrame(gridRAF); gridRAF = 0; }   // evita doble render
       UI.safe(function () { I18N.apply(root); }, "i18n.apply");
-      UI.safe(function () { drawCatbar(root, currentCat(params)); }, "drawCatbar");
-      UI.safe(function () { drawGrid(root, currentCat(params)); }, "drawGrid");
+      UI.safe(function () { drawCatbar(root, keep); }, "drawCatbar");
+      UI.safe(function () { drawGrid(root, keep); }, "drawGrid");
       UI.safe(function () { drawBranches(root, false); }, "drawBranches");
       UI.safe(function () { setSourceNote(root); }, "setSourceNote");
+      activeSlug = keep;   // restablece por si algún paso lo tocara
     };
     window.addEventListener("i18n:change", langHandler);
 
@@ -810,6 +859,7 @@
     window.addEventListener("catalog:changed", catalogHandler);
 
     root.__cleanup = function () {
+      if (gridRAF) { cancelAnimationFrame(gridRAF); gridRAF = 0; }
       window.removeEventListener("hero:pick", heroPickHandler);
       window.removeEventListener("i18n:change", langHandler);
       window.removeEventListener("catalog:changed", catalogHandler);
@@ -817,13 +867,28 @@
     };
   }
 
-  /** Cambio de categoría SIN reconstruir el hero 3D. */
+  /**
+   * Cambio de categoría SIN reconstruir el hero 3D.
+   * Navegación fluida: el botón activo se marca AL INSTANTE (optimista) y la
+   * grilla se re-pinta en el siguiente frame, sin congelar el clic.
+   */
   function update(root, params) {
     var active = currentCat(params);
-    drawCatbar(root, active);
-    drawGrid(root, active);
+    var changed = active !== activeSlug;
+    activeSlug = active;
+
+    setCatbarActive(root, active);        // 1) UI instantánea
+    scheduleGrid(root, active);           // 2) datos/render en segundo plano
+
+    // 3) scroll al catálogo solo si de verdad hace falta (no re-dispara el
+    //    smooth-scroll cuando ya estás en la sección).
     var target = document.getElementById("catalogo");
-    if (target) window.scrollTo({ top: target.getBoundingClientRect().top + scrollY - 80, behavior: UI.reduced ? "auto" : "smooth" });
+    if (target && changed) {
+      var y = target.getBoundingClientRect().top + scrollY - 80;
+      if (Math.abs(scrollY - y) > 8) {
+        window.scrollTo({ top: y, behavior: UI.reduced ? "auto" : "smooth" });
+      }
+    }
   }
 
   function openCartDrawer() {

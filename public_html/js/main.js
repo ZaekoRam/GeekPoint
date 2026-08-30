@@ -283,9 +283,10 @@
       retry.disabled = true;
       API.health().then(function (up) {
         setBanner(!up); retry.disabled = false;
-        if (up && window.Catalog) Catalog.load(true).then(function () {
+        // Refresco DURO: el server reconstruye el catálogo desde las APIs externas.
+        if (up && window.Catalog) (Catalog.refresh ? Catalog.refresh() : Catalog.load(true)).then(function () {
           if (window.Router) Router.go(location.hash || "#/");
-        });
+        }).catch(function () {});
       });
     });
 

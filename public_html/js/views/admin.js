@@ -391,6 +391,8 @@
           '<datalist id="prodadm-makers">' + EDITORIALS.map(function (e) { return '<option value="' + esc(e) + '">'; }).join("") + '</datalist>') +
         row("prodadm.scale", '<input class="input" name="scale" maxlength="60" placeholder="1/7, Nendoroid, POP UP PARADE…">') +
       '</div>' +
+      row("prodadm.synopsis", '<textarea class="input" name="description" rows="3" maxlength="500" ' +
+        'placeholder="' + esc(I18N.t("prodadm.synopsisPh")) + '"></textarea>') +
       imageField("figure_png_url", "prodadm.figurePng",
         "https://….png  —  o sube un PNG recortado del equipo", false) +
       imageField("image_url", "prodadm.image",
@@ -424,6 +426,7 @@
       var skuSlug = payload.name.toUpperCase().replace(/[^A-Z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 22);
       var maker = (payload.manufacturer || "").trim();
       var scale = (payload.scale || "").trim();
+      var synopsis = (payload.description || "").trim();   // sinopsis en español, editable
       var typedGallery = (payload.image_url || "").split(",").map(function (s) { return s.trim(); }).filter(Boolean);
       var typedFigure  = (payload.figure_png_url || "").trim();
 
@@ -453,7 +456,10 @@
           figure_png_url: figurePng,            // figura recortada (PNG transparente) para la vista 3D
           manufacturer: maker,
           scale: scale,
-          description: [maker, scale, "Alta manual"].filter(Boolean).join(" · "),
+          // Sinopsis en español (si se escribió) + ficha técnica; el back guarda
+          // esto en products.description y la tienda lo muestra como sinopsis.
+          description: [maker, scale].filter(Boolean).concat(synopsis ? [synopsis] : []).join(" · ")
+                       || synopsis || "Alta manual",
           stock_by_branch: stock
         };
         return API.post("products/import", draft);

@@ -146,7 +146,6 @@
   border-bottom: 3px solid var(--ink); background: var(--paper-3);
 }
 .pcard__media img { width: 100%; height: 100%; object-fit: cover; }
-.pcard__media .ink-cover { width: 100%; height: 100%; }
 
 /* =============================================================
    FIGURAS — tarjeta "expositor": CAJA 3D DE EXHIBICIÓN VACÍA + PNG.

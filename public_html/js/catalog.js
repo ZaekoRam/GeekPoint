@@ -1,6 +1,10 @@
 /* =============================================================
    Catálogo de la tienda.  window.Catalog
-   Fuente: /api/catalog (Jikan / MyAnimeList) con respaldo local.
+   Fuente ÚNICA: nuestro API PHP local  GET /api/catalog  (que lee de
+   MySQL `products` + caché local + fallback PHP).  El navegador NUNCA
+   consulta AniList / Jikan / MangaDex directamente — no hay CORS ni
+   dependencia de APIs externas al navegar. Si el API no responde, se
+   usa el respaldo estático de lib/manifest.js (window.__BRAND__).
    ============================================================= */
 (function () {
   "use strict";
@@ -8,6 +12,7 @@
   var items = [];
   var source = "pending";
   var loaded = null;
+  var ready = false;   // true en cuanto load() resuelve (aunque sea al fallback)
 
   function hash(str) {
     var h = 0;
@@ -43,64 +48,17 @@
     return out;
   }
 
-  var CAT_LABEL = { manga: "MANGA", figuras: "FIGURA", tcg: "TCG", comics: "CÓMIC", preventa: "PREVENTA" };
-
   function xml(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
     });
   }
 
-  /** Portada "manga ink" generada como data-URI SVG. */
-  function inkCover(p) {
-    var accent = p.accent || "#ffd400";
-    var title = (p.title || "GeekPoint").toUpperCase();
-    var words = title.split(/\s+/);
-    var lines = [], cur = "";
-    words.forEach(function (w) {
-      if ((cur + " " + w).trim().length > 12 && cur) { lines.push(cur); cur = w; }
-      else cur = (cur + " " + w).trim();
-    });
-    if (cur) lines.push(cur);
-    lines = lines.slice(0, 4);
-    var startY = 300 - (lines.length - 1) * 34;
-    var tspans = lines.map(function (l, i) {
-      return '<text x="40" y="' + (startY + i * 62) + '" font-family="Anton, Arial Black, sans-serif" ' +
-        'font-size="' + (l.length > 9 ? 40 : 52) + '" fill="#0c0c0e">' + xml(l) + '</text>';
-    }).join("");
-
-    var cat = CAT_LABEL[p.category] || "GEEK";
-    var svg =
-      '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800" viewBox="0 0 600 800">' +
-        '<defs>' +
-          '<pattern id="ht" width="12" height="12" patternUnits="userSpaceOnUse">' +
-            '<circle cx="3" cy="3" r="2" fill="rgba(12,12,14,.18)"/></pattern>' +
-        '</defs>' +
-        '<rect width="600" height="800" fill="#f3efe4"/>' +
-        '<rect width="600" height="800" fill="url(#ht)"/>' +
-        '<polygon points="0,0 600,0 600,150 0,320" fill="' + accent + '"/>' +
-        '<polygon points="0,0 600,0 600,150 0,320" fill="none" stroke="#0c0c0e" stroke-width="6"/>' +
-        // speed lines
-        '<g stroke="#0c0c0e" stroke-width="3" opacity=".55">' +
-          '<line x1="600" y1="800" x2="380" y2="470"/><line x1="600" y1="720" x2="330" y2="470"/>' +
-          '<line x1="540" y1="800" x2="300" y2="500"/><line x1="600" y1="620" x2="360" y2="450"/>' +
-        '</g>' +
-        '<rect x="16" y="16" width="568" height="768" fill="none" stroke="#0c0c0e" stroke-width="10"/>' +
-        '<text x="40" y="90" font-family="JetBrains Mono, monospace" font-size="22" font-weight="700" ' +
-          'letter-spacing="6" fill="#0c0c0e">' + xml(cat) + '</text>' +
-        tspans +
-        '<text x="40" y="' + (startY + lines.length * 62 + 6) + '" font-family="Inter, sans-serif" ' +
-          'font-size="20" fill="#45454d">' + xml(p.author || "GeekPoint") + '</text>' +
-        '<rect x="40" y="700" width="180" height="44" fill="#0c0c0e"/>' +
-        '<text x="130" y="729" text-anchor="middle" font-family="Bangers, Anton, sans-serif" ' +
-          'font-size="26" fill="#ffd400" letter-spacing="2">GEEKPOINT</text>' +
-      '</svg>';
-    return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
-  }
-
   function absUrl(u, apiBase) {
     if (!u) return "";
-    if (/^https?:/i.test(u)) return u;
+    // URLs absolutas y data:/blob: se devuelven TAL CUAL (no se les antepone
+    // la base del API — antes un data-URI quedaba como ".../api/data:image/…").
+    if (/^(https?:|data:|blob:)/i.test(u)) return u;
     return apiBase ? (apiBase.replace(/\/+$/, "") + "/" + u.replace(/^\/+/, "")) : u;
   }
 
@@ -142,7 +100,7 @@
         search_title: p.search_title || p.series || p.title || "",  // título para MangaDex (romaji)
         volume_covers: volCovers,          // [{v, url}] portadas oficiales por tomo
         branches: branches,
-        _ink: null
+        _ph: null
       };
     });
   }
@@ -183,7 +141,11 @@
       var g = groups[key];
       if (!g) { g = groups[key] = { base: null, series: "", vols: {} }; order.push(key); }
 
-      var isVol = p.source === "local" || VOL_RE.test(p.title || "");
+      // Es un TOMO si el título lleva marcador de volumen ("Vol. 41", "#12",
+      // "Tomo 3"). Un producto local SIN ese marcador (fila de serie MNG-S-*)
+      // es la FICHA de serie, igual que una ficha externa — así conserva su
+      // sinopsis, autor y nº de tomos.
+      var isVol = VOL_RE.test(p.title || "");
       if (isVol) {
         var v = volNumber(p.title) || "1";
         var prev = g.vols[v];
@@ -247,7 +209,7 @@
         search_title: g.series || "Manga",
         volume_covers: vols,
         branches: lead.branches || [],
-        _ink: null
+        _ph: null
       });
     });
 
@@ -257,19 +219,26 @@
   function buildItems(raw, fromApi) { return shuffle(groupManga(normalize(raw, fromApi))); }
 
   function coverURL(p) {
+    // La API SIEMPRE manda `cover`/`image_url` (real, /uploads o generado en
+    // PHP). El placeholder solo es una red de seguridad si algo llegara vacío
+    // — SIN la caja de acento con texto ("manga ink") que se eliminó.
     if (p.cover) return p.cover;
-    if ((p.category === "tcg" || p.category === "comics") && !p._ph) { p._ph = placeholderCover(p); return p._ph; }
-    if (!p._ink) p._ink = inkCover(p);
-    return p._ink;
+    if (!p._ph) p._ph = placeholderCover(p);
+    return p._ph;
   }
 
-  /** Portada de reemplazo (data-URI SVG) para cuando la imagen falla o no existe. */
-  var PH_ICON = { tcg: "🃏", comics: "💥", figuras: "🗿", manga: "📚", preventa: "🎫", coleccionables: "🎁" };
+  /** Portada de reemplazo (data-URI SVG) para cuando la imagen falla o no existe.
+      Glifo vectorial de "imagen" (NUNCA un emoji ni un cuadro roto). */
   function placeholderCover(x) {
     var kind = typeof x === "string" ? x : ((x && x.category) || "item");
     var title = (x && typeof x === "object" && x.title) ? String(x.title).toUpperCase() : "";
     var accent = (x && typeof x === "object" && x.accent) || (kind === "tcg" ? "#00e5ff" : (kind === "comics" ? "#e4002b" : "#8b5bff"));
-    var icon = PH_ICON[kind] || "📦";
+    var icon =
+      '<g transform="translate(300,300)" fill="none" stroke="' + accent + '" stroke-width="9" stroke-linejoin="round">' +
+        '<rect x="-120" y="-96" width="240" height="192" rx="12"/>' +
+        '<circle cx="-58" cy="-34" r="24"/>' +
+        '<path d="M-120 64 L-34 -18 L26 42 L64 12 L120 72 L120 96 L-120 96 Z" fill="' + accent + '" fill-opacity=".18"/>' +
+      '</g>';
     var lines = [], cur = "";
     title.split(/\s+/).forEach(function (w) {
       if ((cur + " " + w).trim().length > 13 && cur) { lines.push(cur); cur = w; }
@@ -287,7 +256,7 @@
           '<circle cx="3" cy="3" r="2" fill="rgba(255,255,255,.05)"/></pattern></defs>' +
         '<rect width="600" height="800" fill="#111014"/><rect width="600" height="800" fill="url(#p)"/>' +
         '<rect x="18" y="18" width="564" height="764" fill="none" stroke="' + accent + '" stroke-width="10"/>' +
-        '<text x="300" y="360" text-anchor="middle" font-size="200">' + icon + '</text>' +
+        icon +
         tspans +
         '<rect x="40" y="712" width="200" height="44" fill="' + accent + '"/>' +
         '<text x="140" y="742" text-anchor="middle" font-family="Bangers, Anton, sans-serif" font-size="24" fill="#0c0c0e" letter-spacing="2">GEEKPOINT</text>' +
@@ -326,29 +295,50 @@
     return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
   }
 
-  function load(force) {
+  /**
+   * @param force  ignora la promesa en memoria y vuelve a pedir /catalog
+   *               (el server ya mezcla los productos locales al instante).
+   * @param hard   además pide ?refresh=1 → el server reconstruye desde las
+   *               APIs externas. Solo para el botón "Reintentar" / un refresco
+   *               manual; NO se usa tras un alta/edición de producto.
+   */
+  function load(force, hard) {
     if (loaded && !force) return loaded;
     var fallback = ((window.__BRAND__ || {}).fallbackCatalog) || [];
 
     if (!window.API || !API.base) {
       items = buildItems(fallback, false);
       source = "fallback";
+      ready = true;
       loaded = Promise.resolve(items);
       return loaded;
     }
 
-    loaded = API.get("catalog", { noAuthRedirect: true }).then(function (d) {
-      if (d && d.products && d.products.length) {
-        items = buildItems(d.products, true);
-        source = d.source || "jikan";
+    loaded = API.get(hard ? "catalog?refresh=1" : "catalog", { noAuthRedirect: true, timeout: hard ? 25000 : 12000 }).then(function (d) {
+      var raw = (d && d.products && d.products.length) ? d.products.slice() : null;
+      if (raw) {
+        // Defensa: si el API respondió pero SIN mangas, completa con el
+        // respaldo estático (títulos no repetidos). Así la tienda nunca se
+        // queda sin catálogo de mangas.
+        if (!raw.some(function (p) { return p && p.category === "manga"; })) {
+          var have = {};
+          raw.forEach(function (p) { have[String(p.title || "").toLowerCase()] = 1; });
+          fallback.forEach(function (p) {
+            if (!have[String(p.title || "").toLowerCase()]) raw.push(p);
+          });
+        }
+        items = buildItems(raw, true);
+        source = d.source || "local";
       } else {
         items = buildItems(fallback, false);
         source = "fallback";
       }
+      ready = true;
       return items;
     }).catch(function () {
       items = buildItems(fallback, false);
       source = "fallback";
+      ready = true;
       return items;
     });
     return loaded;
@@ -356,7 +346,11 @@
 
   window.Catalog = {
     load: load,
+    /** Refresco DURO: fuerza al server a reconstruir desde las APIs externas. */
+    refresh: function () { loaded = null; return load(true, true); },
     all: function () { return items.slice(); },
+    /** true en cuanto hay datos (reales o de respaldo) para pintar la grilla. */
+    get ready() { return ready; },
     get source() { return source; },
     get: function (id) { return items.filter(function (p) { return p.id === String(id); })[0] || null; },
     byCategory: function (slug) {
@@ -369,8 +363,38 @@
       return items.filter(function (p) { return p.category === slug; });
     },
     coverURL: coverURL,
-    inkCover: inkCover,
     placeholderCover: placeholderCover,
+    /**
+     * URL utilizable como TEXTURA WebGL (hero 3D / visor del modal).
+     *
+     * Una textura con crossOrigin="anonymous" necesita que el servidor de la
+     * imagen mande `Access-Control-Allow-Origin`. Reglas (verificado 2026-08-30):
+     *   · data: / blob: / mismo origen (/uploads, /api, /assets)  -> tal cual
+     *   · Wikimedia / Wikipedia / Scryfall / pokemontcg.io        -> tal cual
+     *     (mandan `Access-Control-Allow-Origin: *`, una petición menos)
+     *   · s4.anilist.co, MangaDex, MAL (SIN CORS)                 -> vía proxy
+     *     propio `/api/catalog/image?src=` (mismo origen + CORS *).  El proxy
+     *     purga cualquier basura de buffer y NO reutiliza la caché vieja
+     *     corrupta de Hostinger (prefijo `imgc_`).
+     *   · sin apiBase (file://)                                   -> "" (no hay
+     *     forma de servirla; quien llama usa `placeholderCover`).
+     *
+     * El <img> de la GRILLA nunca pasa por aquí: carga el CDN directo (no
+     * necesita CORS).
+     */
+    texURL: function (url) {
+      url = String(url || "");
+      if (!url) return "";
+      if (/^(data:|blob:)/i.test(url)) return url;
+      try { if (new URL(url, location.href).origin === location.origin) return url; } catch (e) {}
+      if (/^https?:\/\/([a-z0-9-]+\.)*(wikimedia\.org|wikipedia\.org|scryfall\.com|scryfall\.io|pokemontcg\.io)\//i.test(url)) {
+        return url;                                   // CDN con CORS -> directo
+      }
+      if (url.indexOf("catalog/image?src=") !== -1) return url;   // ya proxied
+      var apiBase = (window.__CONFIG__ || {}).apiBase;
+      if (!apiBase) return "";
+      return apiBase.replace(/\/+$/, "") + "/catalog/image?src=" + encodeURIComponent(url);
+    },
     /** URL del PNG RECORTADO del personaje (fondo transparente) que se aloja
         DENTRO de la caja 3D de exhibición. Es la columna products.figure_png_url;
         si el producto no la trae devuelve "" y la caja se muestra VACÍA

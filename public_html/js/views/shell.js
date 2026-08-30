@@ -74,10 +74,18 @@
    * @param cols [{key,label,render?,cls?}]
    * @param rows array
    */
+  /* Glifos vectoriales para los estados (sin emojis / cuadros rotos). */
+  var ICON = {
+    empty: '<svg class="state__icon" viewBox="0 0 48 48" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="12" width="34" height="28" rx="3"/><path d="M7 20h34M17 12V8h14v4"/></svg>',
+    loading: '<svg class="state__icon" viewBox="0 0 48 48" width="44" height="44" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" aria-hidden="true"><circle cx="24" cy="24" r="17" opacity=".2"/><path d="M24 7a17 17 0 0 1 17 17"><animateTransform attributeName="transform" type="rotate" from="0 24 24" to="360 24 24" dur="0.9s" repeatCount="indefinite"/></path></svg>',
+    error: '<svg class="state__icon" viewBox="0 0 48 48" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M24 6 44 40H4z"/><path d="M24 18v10"/><circle cx="24" cy="34" r="1.6" fill="currentColor" stroke="none"/></svg>'
+  };
+  Views._icon = ICON;
+
   function table(cols, rows, opts) {
     opts = opts || {};
     if (!rows || !rows.length) {
-      return '<div class="state"><div class="state__icon">🗂️</div><p>' + esc(opts.empty || I18N.t("empty.none")) + '</p></div>';
+      return '<div class="state">' + ICON.empty + '<p>' + esc(opts.empty || I18N.t("empty.none")) + '</p></div>';
     }
     var head = cols.map(function (c) { return '<th class="' + (c.cls || "") + '">' + esc(c.label) + '</th>'; }).join("");
     var body = rows.map(function (row) {
@@ -97,12 +105,12 @@
   }
 
   function loading() {
-    return '<div class="state"><div class="state__icon">⏳</div><p>' + esc(I18N.t("misc.loading")) + '</p></div>';
+    return '<div class="state">' + ICON.loading + '<p>' + esc(I18N.t("misc.loading")) + '</p></div>';
   }
 
   function errorState(err) {
     var msg = (err && err.status === 0) ? I18N.t("login.noapi") : (err && err.message) || I18N.t("toast.error");
-    return '<div class="state"><div class="state__icon">⚠️</div><p>' + esc(msg) + '</p>' +
+    return '<div class="state">' + ICON.error + '<p>' + esc(msg) + '</p>' +
       '<p class="mt"><button class="btn btn--ghost" data-reload>' + esc(I18N.t("btn.retry")) + '</button></p></div>';
   }
 
