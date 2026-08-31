@@ -84,7 +84,10 @@
         category: p.category || "manga",
         price: Number(p.price) || 0,
         tags: p.tags || [],
-        rarity: p.rarity || "",            // cartas TCG importadas
+        // Rareza SOLO para cartas TCG y solo si es una etiqueta corta ("Rare",
+        // "Ultra Rare"…). Evita que una sinopsis mal parseada en el backend
+        // (p. ej. One Piece: "…tesoro legendario…") salga como cartel en la card.
+        rarity: (p.category === "tcg" && p.rarity && String(p.rarity).length <= 30) ? String(p.rarity) : "",
         manufacturer: p.manufacturer || "", // figuras: marca / fabricante
         scale: p.scale || "",               // figuras: escala o línea (1/7, Nendoroid…)
         source: p.source || "",            // "local" = producto real del POS
@@ -119,11 +122,63 @@
      ============================================================= */
   var VOL_RE = /\s*[-–—:·]?\s*(?:vol\.?|volumen|tomo|t\.|#|n[°º]\.?|no\.?)\s*(\d+(?:\.\d+)?)\s*$/i;
 
+  /* Una misma serie llega con varios nombres (romaji / inglés / con subtítulo).
+     Se colapsan a UNA sola clave -> UNA sola tarjeta (evita "Demon Slayer" +
+     "Kimetsu no Yaiba" + "Demon Slayer: Kimetsu no Yaiba" por separado). */
+  var SERIES_ALIAS = {
+    "kimetsu no yaiba": "demon slayer",
+    "demon slayer kimetsu no yaiba": "demon slayer",
+    "shingeki no kyojin": "attack on titan",
+    "boku no hero academia": "my hero academia",
+    "hagane no renkinjutsushi": "fullmetal alchemist",
+    "sousou no frieren": "frieren beyond journey s end",
+    "jojo no kimyou na bouken": "jojo s bizarre adventure"
+  };
+
+  /* Nombre con el que MangaDex encuentra TODOS los tomos (su título inglés a
+     veces sólo trae 1 portada). key = título de la tarjeta en minúsculas. */
+  var MANGADEX_Q = {
+    "attack on titan": "Shingeki no Kyojin",
+    "my hero academia": "Boku no Hero Academia",
+    "demon slayer": "Kimetsu no Yaiba"
+  };
+  function mangadexQuery(title) {
+    return MANGADEX_Q[String(title || "").toLowerCase().trim()] || String(title || "");
+  }
+
+  /* Sinopsis en INGLÉS por serie. La ES ya viene del API (`p.synopsis`) y le
+     gusta al usuario; esto es solo el texto que se muestra con el idioma EN.
+     key = clave canónica de serie (seriesKey). */
+  var SYN_EN = {
+    "attack on titan": "Humanity lives behind enormous walls to hide from man-eating Titans. When a Colossal Titan smashes the outer wall, Eren Yeager swears to wipe every Titan from the earth.",
+    "berserk": "Guts, the Black Swordsman, roams a brutal dark-fantasy world with a sword bigger than himself, hunting the demonic God Hand and the friend who betrayed him.",
+    "bleach": "Ichigo Kurosaki gains the powers of a Soul Reaper and must defend the living from corrupt spirits while guiding the dead to the afterlife.",
+    "blue lock": "Three hundred strikers are locked in a facility for a ruthless program built to forge Japan's most lethal egoist and its next World Cup star.",
+    "chainsaw man": "Broke devil hunter Denji fuses with his pet devil Pochita to become Chainsaw Man, and is caught between factions who all want to use his power.",
+    "dandadan": "Momo believes in ghosts, Okarun in aliens. Both turn out to be right, so the two team up against the paranormal while slowly falling for each other.",
+    "death note": "Genius student Light Yagami finds a notebook that kills anyone whose name is written in it, and sets out to become the god of a new world.",
+    "demon slayer": "After a demon slaughters his family and turns his sister into one, Tanjiro Kamado joins the Demon Slayer Corps to change her back and take revenge.",
+    "frieren beyond journey s end": "Elf mage Frieren outlives her hero party by decades and sets out on a new journey to finally understand the people she never made time to know.",
+    "fullmetal alchemist": "Brothers Edward and Alphonse Elric break alchemy's laws trying to revive their mother, and now chase the Philosopher's Stone to restore their bodies.",
+    "haikyu": "Short but explosive, Shoyo Hinata joins Karasuno High's volleyball club and, with prodigy setter Kageyama, fights to reach the national stage.",
+    "hunter x hunter": "Gon Freecss sets out to become a Hunter and find the father who left him, meeting fierce friends and deadly dangers across a vast world.",
+    "jujutsu kaisen": "Yuji Itadori swallows a cursed finger and shares his body with the fearsome curse Ryomen Sukuna, joining sorcerers who fight to protect humanity.",
+    "kaguya sama love is war": "Two student-council prodigies are in love but too proud to admit it, so each schemes to make the other confess first — courtship as all-out war.",
+    "my hero academia": "In a world where almost everyone has a superpower, Quirkless Izuku Midoriya inherits the strength of the greatest hero and enrolls at U.A. High.",
+    "naruto": "Naruto Uzumaki, a young ninja with a nine-tailed fox sealed inside him, chases recognition and his dream of leading his village as Hokage.",
+    "one piece": "Monkey D. Luffy sets sail with his crew to find the legendary treasure One Piece and become the King of the Pirates.",
+    "oshi no ko": "A doctor is reborn as the child of his favorite idol and grows up navigating the dark side of show business, fame and revenge.",
+    "spy x family": "A master spy, a skilled assassin and a telepathic girl pose as a family, each hiding the truth from the others to keep a fragile peace.",
+    "tokyo ghoul": "College student Ken Kaneki survives a ghoul attack and wakes up a half-ghoul, forced to live between two worlds that both want him dead.",
+    "vinland saga": "Raised among Viking raiders, Thorfinn lives only to avenge his father — until slavery and loss set him searching for a life beyond violence."
+  };
+
   function seriesTitle(name) {
     return String(name || "").replace(VOL_RE, "").replace(/[\s:–—·-]+$/, "").trim();
   }
   function seriesKey(name) {
-    return seriesTitle(name).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    var k = seriesTitle(name).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    return SERIES_ALIAS[k] || k;
   }
   function volNumber(name) {
     var m = String(name || "").match(VOL_RE);
@@ -180,6 +235,8 @@
       if (g.base) {
         if (vols.length) g.base.volume_covers = vols;
         g.base.series = g.base.series || g.series || g.base.title;
+        // Consulta MangaDex con el nombre que trae TODOS los tomos.
+        g.base.search_title = mangadexQuery(g.base.series || g.base.title);
         out.push(g.base);
         return;
       }
@@ -206,7 +263,7 @@
         accent: accentFor({ id: key }),
         cover: lead.url || "",
         series: g.series || "Manga",
-        search_title: g.series || "Manga",
+        search_title: mangadexQuery(g.series || "Manga"),
         volume_covers: vols,
         branches: lead.branches || [],
         _ph: null
@@ -363,6 +420,16 @@
       return items.filter(function (p) { return p.category === slug; });
     },
     coverURL: coverURL,
+    /** Sinopsis según idioma: EN usa el mapa SYN_EN (si existe la serie),
+        el resto (ES incl.) usa la del API. Cae a la del API si no hay match. */
+    synopsis: function (p, lang) {
+      if (!p) return "";
+      if (String(lang || "").slice(0, 2).toLowerCase() === "en") {
+        var k = seriesKey(p.series || p.title || "");
+        if (SYN_EN[k]) return SYN_EN[k];
+      }
+      return p.synopsis || "";
+    },
     placeholderCover: placeholderCover,
     /**
      * URL utilizable como TEXTURA WebGL (hero 3D / visor del modal).

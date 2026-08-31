@@ -7,17 +7,22 @@
   window.Views = window.Views || {};
   var $ = UI.$, $$ = UI.$$, esc = UI.escHTML;
 
+  // Plantilla estática de la tienda ([data-static-store] dentro de [data-app]).
+  // Se captura AHORA, al cargar el script (defer, DOM ya parseado): si la
+  // primera ruta es interna (#/pos, #/acceso…) el router hace
+  // appEl.innerHTML="" y BORRA la plantilla antes del DOMContentLoaded — por
+  // eso al volver a la tienda desde el POS salía en blanco.
   var cachedHTML = null;
-  document.addEventListener("DOMContentLoaded", function () {
+  function grabTemplate() {
+    if (cachedHTML) return;
     var b = $("[data-static-store]");
-    if (b && !cachedHTML) cachedHTML = b.outerHTML;
-  });
+    if (b) cachedHTML = b.outerHTML;
+  }
+  grabTemplate();
+  document.addEventListener("DOMContentLoaded", grabTemplate);
 
   function render() {
-    if (!cachedHTML) {
-      var b = $("[data-static-store]");
-      if (b) cachedHTML = b.outerHTML;
-    }
+    grabTemplate();
     return cachedHTML || '<section class="section"><h1>GeekPoint</h1></section>';
   }
 
@@ -411,7 +416,7 @@
           '<p class="vol-stock__h">' + esc(I18N.t("prod.stockByBranch")) + '</p>' +
           stockRowsHTML(p, covers[0].v, covers[0]) +
         '</div>' +
-        (p.synopsis ? '<p class="preview3d__syn">' + esc(p.synopsis) + '</p>' : "") +
+        (p.synopsis ? '<p class="preview3d__syn">' + esc(Catalog.synopsis(p, I18N.lang)) + '</p>' : "") +
         '<div class="preview3d__buy">' +
           '<span class="preview3d__price" data-price>' + UI.money(startPrice) + '</span>' +
           '<button class="btn btn--panini" data-buy>' + esc(I18N.t("prod.buy")) + '</button>' +
@@ -422,6 +427,14 @@
       var volSel = wrap.querySelector("[data-vol]");
       var stockBox = wrap.querySelector("[data-vol-stock]");
       var priceEl = wrap.querySelector(".preview3d__price[data-price]");
+
+      // Sinopsis: cambia con el idioma aunque el modal siga abierto.
+      var synEl = wrap.querySelector(".preview3d__syn");
+      var synHandler = function () {
+        if (!wrap.isConnected) { window.removeEventListener("i18n:change", synHandler); return; }
+        if (synEl) synEl.textContent = Catalog.synopsis(p, I18N.lang);
+      };
+      window.addEventListener("i18n:change", synHandler);
       // Figuras: spinStage construye una CAJA 3D de exhibición VACÍA y aloja el
       // PNG del personaje dentro (figurePngUrl). initialUrl solo es el respaldo
       // SVG de "caja vacía" para el caso sin WebGL. El resto: portada real.
@@ -501,8 +514,12 @@
           var byV = {};
           covers.forEach(function (c) { byV[c.v] = c; });
           list.forEach(function (vc) {
-            if (byV[vc.v]) { if (!byV[vc.v].url) byV[vc.v].url = vc.url; }
-            else byV[vc.v] = { v: String(vc.v), url: vc.url, source: "" };
+            var cur = byV[vc.v];
+            if (!cur) { byV[vc.v] = { v: String(vc.v), url: vc.url, source: "" }; return; }
+            // Rellena si está vacía, o si sólo hereda la portada de SERIE
+            // (los tomos sueltos del POS copian p.cover) — la de MangaDex es
+            // la portada REAL de ese tomo. No pisa una foto local subida.
+            if (!cur.url || cur.url === p.cover || cur.url === Catalog.coverURL(p)) cur.url = vc.url;
           });
           covers = Object.keys(byV).map(function (k) { return byV[k]; })
             .sort(function (a, b) { return parseFloat(a.v) - parseFloat(b.v); });

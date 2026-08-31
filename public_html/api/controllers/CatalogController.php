@@ -147,7 +147,21 @@ class CatalogController extends Controller
 
     private function volCacheFile($name)
     {
-        return dirname(__DIR__) . '/cache/vol_' . md5(mb_strtolower(trim($name))) . '.json';
+        // Prefijo `volb_`: invalida la caché `vol_` vieja (traía cruces como
+        // "Berserk" -> "Berserk of Gluttony").
+        return dirname(__DIR__) . '/cache/volb_' . md5(mb_strtolower(trim($name))) . '.json';
+    }
+
+    /**
+     * ID de MangaDex FIJO para series que la búsqueda por título confunde con
+     * spin-offs (Berserk vs "Berserk of Gluttony") o que quedan fuera por el
+     * filtro de contentRating.  key = nombre normalizado (sólo alfanumérico).
+     */
+    private function mangadexIdMap()
+    {
+        return [
+            'berserk' => '801513ba-a712-498c-8f57-cae55b38cc92',
+        ];
     }
 
     /** Añade `volume_covers` a los productos de manga/cómic. */
@@ -478,11 +492,18 @@ class CatalogController extends Controller
 
             $segs = array_map('trim', explode('·', (string) $r['description']));
 
+            // Rareza SOLO para cartas TCG y SOLO de un segmento CORTO. Una rareza
+            // real es "Rare" / "Ultra Rare" / "Special Illustration Rare"… nunca
+            // una sinopsis: el patrón `\blegend\w*` cazaba "legendario" en la
+            // descripción de One Piece y la volcaba entera como rareza.
             $rarity = '';
-            foreach ($segs as $dp) {
-                if ($dp !== '' && preg_match('/\b(rare|common|uncommon|promo|holo|illustration|ultra|secret|amazing|radiant|legend)\w*/i', $dp)) {
-                    $rarity = $dp;
-                    break;
+            if ($category === 'tcg') {
+                foreach ($segs as $dp) {
+                    if ($dp !== '' && mb_strlen($dp) <= 28
+                        && preg_match('/\b(rare|common|uncommon|promo|holo|illustration|ultra|secret|amazing|radiant|legend)\w*/i', $dp)) {
+                        $rarity = $dp;
+                        break;
+                    }
                 }
             }
 
@@ -1103,40 +1124,52 @@ class CatalogController extends Controller
         }
         if (!$fetchIfMissing) return [];
 
+        $norm = function ($s) { return preg_replace('/[^a-z0-9]+/', '', mb_strtolower(trim((string) $s))); };
+        $want = $norm($name);
+
+        // 0) Override fijo para series problemáticas.
+        $mid = $this->mangadexIdMap()[$want] ?? null;
+
         // 1) id de la serie — se piden varios resultados y se prefiere la
         //    coincidencia EXACTA de título, descartando spinoffs / precuelas
-        //    (p. ej. "Jujutsu Kaisen 0", colorings, fanbooks…).
-        list($body, ) = $this->httpGet(
-            self::MANGADEX . '/manga?limit=10&contentRating%5B%5D=safe&contentRating%5B%5D=suggestive&title=' . rawurlencode($name),
-            8
-        );
-        $mid = null;
-        if ($body) {
-            $j = json_decode($body, true);
-            $rows = $j['data'] ?? [];
-            $norm = function ($s) { return preg_replace('/[^a-z0-9]+/', '', mb_strtolower(trim((string) $s))); };
-            $want = $norm($name);
-            $near = null;   // coincidencia "contiene" (mismo universo, no un spin-off ajeno)
-            foreach ($rows as $row) {
-                $id = $row['id'] ?? null;
-                if (!$id) continue;
+        //    (p. ej. "Jujutsu Kaisen 0", colorings, fanbooks…). Se incluye
+        //    `erotica` para no dejar fuera títulos maduros (Berserk, etc.).
+        if (!$mid) {
+            list($body, ) = $this->httpGet(
+                self::MANGADEX . '/manga?limit=10'
+                . '&contentRating%5B%5D=safe&contentRating%5B%5D=suggestive&contentRating%5B%5D=erotica'
+                . '&title=' . rawurlencode($name),
+                8
+            );
+            if ($body) {
+                $j = json_decode($body, true);
+                $rows = $j['data'] ?? [];
+                $near = null;   // coincidencia "contiene" (mismo universo, no un spin-off)
+                foreach ($rows as $row) {
+                    $id = $row['id'] ?? null;
+                    if (!$id) continue;
 
-                $titles = [];
-                foreach (($row['attributes']['title'] ?? []) as $tv) $titles[] = $tv;
-                foreach (($row['attributes']['altTitles'] ?? []) as $alt) {
-                    foreach ($alt as $tv) $titles[] = $tv;
-                }
-                foreach ($titles as $tv) {
-                    $nt = $norm($tv);
-                    if ($nt === $want) { $mid = $id; break 2; }
-                    if ($near === null && $nt !== '' && ($nt === $want || strpos($nt, $want) === 0 || strpos($want, $nt) === 0)) {
-                        $near = $id;
+                    $titles = [];
+                    foreach (($row['attributes']['title'] ?? []) as $tv) $titles[] = $tv;
+                    foreach (($row['attributes']['altTitles'] ?? []) as $alt) {
+                        foreach ($alt as $tv) $titles[] = $tv;
+                    }
+                    foreach ($titles as $tv) {
+                        $nt = $norm($tv);
+                        if ($nt === '') continue;
+                        if ($nt === $want) { $mid = $id; break 2; }
+                        // Prefijo SOLO si las longitudes son cercanas: "berserk" NO
+                        // debe casar con "berserkofgluttony" (dif. 10).
+                        if ($near === null && abs(strlen($nt) - strlen($want)) <= 4
+                            && (strpos($nt, $want) === 0 || strpos($want, $nt) === 0)) {
+                            $near = $id;
+                        }
                     }
                 }
+                // Sin match exacto ni de prefijo cercano: NO se usa el primer
+                // resultado a ciegas (evita "Berserk" -> "Berserk of Gluttony").
+                if (!$mid) $mid = $near;
             }
-            // Sin match exacto ni de prefijo: NO se usa el primer resultado a ciegas
-            // (evita portadas cruzadas p. ej. "Berserk" -> "Berserk of Gluttony").
-            if (!$mid) $mid = $near;
         }
         if (!$mid) { @file_put_contents($file, '[]'); return []; }
 
