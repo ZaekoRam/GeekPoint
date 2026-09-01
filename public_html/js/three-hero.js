@@ -4,7 +4,7 @@
    Hover "Pop-Out Book": el tomo se abre suave (~123°) y las caras
    internas muestran ILUSTRACIÓN REAL dentro de paneles — tinta B&N
    para manga, color pleno para cómic. Se revierte suave al quitar
-   el cursor.  window.HERO3D
+   el cursor. window.HERO3D 
    ============================================================= */
 (function () {
   "use strict";
