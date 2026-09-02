@@ -150,7 +150,11 @@
       var c = STORE.shopCart;
       if (!c.length) { UI.toast(I18N.t("cart.empty"), "warn"); return; }
 
-      var branches = ((window.__BRAND__ || {}).branches) || [];
+      // Sucursales ACTIVAS de la BD (tabla `branches`); respaldo estático si el
+      // API aún no respondió.  La opción "Cualquier sucursal" se conserva fija.
+      var branches = (window.Catalog && Catalog.branches)
+        ? Catalog.branches().filter(function (b) { return String(b.status || "active") !== "inactive"; })
+        : (((window.__BRAND__ || {}).branches) || []);
       var rows = c.map(function (l) {
         return '<tr><td>' + UI.escHTML(l.title) + '</td><td class="num qcol-qty">' + l.qty +
           '</td><td class="num qcol-total">' + UI.money(l.price * l.qty) + '</td></tr>';

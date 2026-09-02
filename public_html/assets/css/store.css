@@ -405,10 +405,34 @@ body:not(.in-app) .btn--panini.is-pop { animation: ctaPop .4s var(--ease-bounce)
 .vol-stock__h { font-family: var(--mono); font-size: .62rem; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); margin-bottom: .5rem; }
 .vs-row { display: flex; justify-content: space-between; align-items: center; font-size: .86rem; padding: .28rem 0; border-top: 1px solid var(--line-soft); }
 .vs-row:first-of-type { border-top: 0; }
+.vs-row[hidden] { display: none; }
 .vs-n { font-family: var(--mono); font-weight: 700; padding: .05rem .4rem; border: 2px solid var(--ink); }
 .vs-n.vs-ok { background: var(--panini); color: var(--ink); }
 .vs-n.vs-low { background: var(--neon-cyan); color: var(--ink); }
 .vs-n.vs-out { background: var(--ink); color: var(--paper-2); }
+
+/* Barra del panel de stock: título + buscador de sucursal (mismo b/n) */
+.vol-stock__bar { display: flex; align-items: center; justify-content: space-between; gap: .5rem .7rem; flex-wrap: wrap; margin-bottom: .5rem; }
+.vol-stock__bar .vol-stock__h { margin-bottom: 0; }
+.vs-search { display: inline-flex; align-items: center; gap: .3rem; flex: 1 1 9rem; max-width: 12.5rem;
+  border: 1px solid var(--ink); background: var(--paper-2); padding: .12rem .45rem; }
+.vs-search__icon { width: 13px; height: 13px; flex: none; color: var(--ink); }
+.vs-search__input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent;
+  font-family: var(--mono); font-size: .72rem; color: var(--ink); padding: .15rem 0; }
+.vs-search__input::placeholder { color: var(--muted); }
+.vs-search__input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
+
+/* Contenedor con scroll: alto para exactamente 3 filas (lo fija el JS) */
+.vs-scroll { overflow-y: auto; overscroll-behavior: contain; }
+.vs-scroll .vs-row:first-of-type { border-top: 0; }
+
+/* Fila "Continuar" fija al pie del área con scroll */
+.vs-more { position: sticky; bottom: 0; display: flex; align-items: center; justify-content: center; gap: .35rem;
+  width: 100%; padding: .32rem 0 .28rem; border: 0; border-top: 1px solid var(--line-soft);
+  background: var(--paper-2); cursor: pointer;
+  font-family: var(--mono); font-size: .58rem; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+.vs-more:hover { color: var(--ink); }
+.vs-more[hidden] { display: none; }
 
 /* ---------- Sucursales ---------- */
 .branches { display: grid; gap: 1.1rem; grid-template-columns: 1fr; }

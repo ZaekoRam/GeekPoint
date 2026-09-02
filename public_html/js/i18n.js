@@ -91,6 +91,7 @@
       "branches.title": "Nuestras sucursales en México",
       "branches.sub": "Recoge tu pedido o visítanos. Cada sede tiene su propio inventario.",
       "branches.hours": "Horario", "branches.phone": "Tel", "branches.addr": "Dirección",
+      "branches.search": "Buscar sucursal...", "branches.more": "Continuar",
 
       "cart.title": "Tu carrito", "cart.total": "Total",
       "cart.quote": "Apartar productos", "cart.empty": "Tu carrito está vacío.",
@@ -298,6 +299,7 @@
       "branches.title": "Our branches in Mexico",
       "branches.sub": "Pick up your order or visit us. Each branch has its own inventory.",
       "branches.hours": "Hours", "branches.phone": "Phone", "branches.addr": "Address",
+      "branches.search": "Search branch...", "branches.more": "Continue",
 
       "cart.title": "Your cart", "cart.total": "Total",
       "cart.quote": "Reserve items", "cart.empty": "Your cart is empty.",

@@ -48,6 +48,98 @@
     return out;
   }
 
+  /* =============================================================
+     Sucursales dinámicas — leídas de la tabla `branches` vía
+     GET /api/catalog/branches. Fuente ÚNICA para las 3 zonas de la
+     tienda que antes usaban un arreglo fijo de 3 sedes:
+       · tarjetas "Nuestras sucursales en México"
+       · filas "Stock por sucursal" del modal de producto
+       · <select> "Sucursal para recoger" del apartado
+     Si el API no responde se usa el respaldo estático de
+     lib/manifest.js (window.__BRAND__.branches).
+     ============================================================= */
+  var DEFAULT_HOURS = "Lun–Dom 11:00–21:00";
+  var branchItems = null;      // último listado resuelto (array) o null
+  var branchesPromise = null;  // promesa en curso / resuelta
+
+  /** Respaldo estático normalizado al mismo shape que la BD. */
+  function brandBranches() {
+    return (((window.__BRAND__ || {}).branches) || []).map(function (b) {
+      return {
+        id: b.id != null ? b.id : null,
+        code: b.code || "",
+        name: b.name || "",
+        city: b.city || "",
+        state: b.state || "",
+        address: b.address || "",
+        phone: b.phone || "",
+        hours: b.hours || "",
+        status: b.status || "active"
+      };
+    });
+  }
+
+  /** `hours` no existe como columna en `branches`: se completa desde el
+      respaldo estático (por `code`) o con un horario por defecto. */
+  function withHours(list) {
+    var brand = brandBranches();
+    return list.map(function (b) {
+      if (b.hours) return b;
+      var m = brand.filter(function (x) { return x.code === b.code; })[0];
+      var copy = {};
+      for (var k in b) if (Object.prototype.hasOwnProperty.call(b, k)) copy[k] = b[k];
+      copy.hours = (m && m.hours) || DEFAULT_HOURS;
+      return copy;
+    });
+  }
+
+  function normalizeBranchRow(r) {
+    return {
+      id: r.id != null ? Number(r.id) : null,
+      code: r.code || "",
+      name: r.name || "",
+      city: r.city || "",
+      state: r.state || "",
+      address: r.address || "",
+      phone: r.phone || "",
+      hours: r.hours || "",
+      status: r.status || "active"
+    };
+  }
+
+  /**
+   * Carga (una sola vez) el listado de sucursales activas desde la BD.
+   * @param force  vuelve a pedirlo aunque ya haya una respuesta en memoria.
+   * @return Promise<Array>
+   */
+  function loadBranches(force) {
+    if (branchesPromise && !force) return branchesPromise;
+
+    if (!window.API || !API.base) {
+      branchItems = withHours(brandBranches());
+      branchesPromise = Promise.resolve(branchItems);
+      return branchesPromise;
+    }
+
+    branchesPromise = API.get("catalog/branches", { noAuthRedirect: true })
+      .then(function (d) {
+        var rows = (d && d.branches && d.branches.length) ? d.branches : null;
+        branchItems = withHours(rows ? rows.map(normalizeBranchRow) : brandBranches());
+        window.dispatchEvent(new CustomEvent("branches:changed"));
+        return branchItems;
+      })
+      .catch(function () {
+        branchItems = withHours(brandBranches());
+        return branchItems;
+      });
+    return branchesPromise;
+  }
+
+  /** Listado SÍNCRONO: el ya resuelto de la BD o, si aún no llega, el respaldo. */
+  function branchList() {
+    return (branchItems && branchItems.length) ? branchItems.slice() : withHours(brandBranches());
+  }
+
   function xml(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
@@ -361,6 +453,7 @@
    */
   function load(force, hard) {
     if (loaded && !force) return loaded;
+    loadBranches(force);   // calienta el listado de sucursales en paralelo
     var fallback = ((window.__BRAND__ || {}).fallbackCatalog) || [];
 
     if (!window.API || !API.base) {
@@ -405,6 +498,10 @@
     load: load,
     /** Refresco DURO: fuerza al server a reconstruir desde las APIs externas. */
     refresh: function () { loaded = null; return load(true, true); },
+    /** Carga (memoizada) del listado de sucursales activas desde la BD. */
+    loadBranches: loadBranches,
+    /** Listado SÍNCRONO de sucursales activas (BD o respaldo estático). */
+    branches: branchList,
     all: function () { return items.slice(); },
     /** true en cuanto hay datos (reales o de respaldo) para pintar la grilla. */
     get ready() { return ready; },

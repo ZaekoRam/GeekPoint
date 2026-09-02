@@ -266,6 +266,45 @@ class CatalogController extends Controller
         ]);
     }
 
+    /**
+     * GET /catalog/branches — sucursales ACTIVAS para la tienda pública (sin auth).
+     *
+     * Lee directamente la tabla `branches`. Es la fuente que consumen las 3
+     * zonas dinámicas del front (tarjetas "Nuestras sucursales", filas de
+     * "Stock por sucursal" del modal y el <select> "Sucursal para recoger").
+     * Si MySQL no responde devuelve una lista vacía y el navegador usa su
+     * respaldo estático (lib/manifest.js -> window.__BRAND__.branches).
+     */
+    public function branches()
+    {
+        $out = [];
+        if (Database::ping()) {
+            try {
+                $rows = Database::all(
+                    "SELECT id, code, name, city, state, address, phone, status
+                       FROM branches
+                      WHERE status = 'active'
+                      ORDER BY id"
+                );
+                foreach (($rows ?: []) as $r) {
+                    $out[] = [
+                        'id'      => (int) $r['id'],
+                        'code'    => (string) $r['code'],
+                        'name'    => (string) $r['name'],
+                        'city'    => (string) $r['city'],
+                        'state'   => (string) $r['state'],
+                        'address' => (string) $r['address'],
+                        'phone'   => (string) $r['phone'],
+                        'status'  => (string) $r['status'],
+                    ];
+                }
+            } catch (\Throwable $e) {
+                $out = [];
+            }
+        }
+        Response::ok(['branches' => $out, 'ts' => time()]);
+    }
+
     /** ?cat=<slug> saneado ('' si no se pidió o no es válido). */
     private function catParam()
     {
@@ -460,7 +499,7 @@ class CatalogController extends Controller
                         MAX(UNIX_TIMESTAMP(p.updated_at)) AS updated_ts,
                         ROUND(AVG(p.price), 2) AS price,
                         SUM(p.stock)         AS stock,
-                        GROUP_CONCAT(CONCAT(b.code, '|', b.name, '|', p.stock) SEPARATOR ';;') AS branchmap
+                        GROUP_CONCAT(CONCAT(b.id, '|', b.code, '|', b.name, '|', p.stock) SEPARATOR ';;') AS branchmap
                  FROM products p
                  JOIN categories c ON c.id = p.category_id
                  LEFT JOIN branches b ON b.id = p.branch_id
@@ -485,8 +524,13 @@ class CatalogController extends Controller
             $branches = [];
             foreach (explode(';;', (string) $r['branchmap']) as $chunk) {
                 $parts = explode('|', $chunk);
-                if (count($parts) === 3) {
-                    $branches[] = ['code' => $parts[0], 'name' => $parts[1], 'stock' => (int) $parts[2]];
+                if (count($parts) === 4) {
+                    $branches[] = [
+                        'id'    => (int) $parts[0],
+                        'code'  => $parts[1],
+                        'name'  => $parts[2],
+                        'stock' => (int) $parts[3],
+                    ];
                 }
             }
 

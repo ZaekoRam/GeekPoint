@@ -281,11 +281,20 @@
   }
 
   /* ---------------- Modal Vista Previa 3D ---------------- */
+  // Respaldo si el listado de sucursales aún no llegó de la BD.
   var STAGE_BRANCHES = [
     { code: "GKP-CDMX", name: "Reforma" },
     { code: "GKP-GDL", name: "Chapultepec" },
     { code: "GKP-MTY", name: "Valle" }
   ];
+
+  /** Sucursales ACTIVAS de la base de datos (tabla `branches`).  Sirven tanto
+     para las filas del modal como para las tarjetas de la sección. */
+  function activeBranches() {
+    var list = (window.Catalog && Catalog.branches) ? Catalog.branches() : [];
+    list = list.filter(function (b) { return String(b.status || "active") !== "inactive"; });
+    return list.length ? list : STAGE_BRANCHES;
+  }
 
   function hashInt(s) {
     var h = 0;
@@ -303,18 +312,54 @@
     var realBranches =
       (volObj && volObj.branches && volObj.branches.length) ? volObj.branches :
       ((p.source === "local" && p.branches && p.branches.length) ? p.branches : null);
-    return STAGE_BRANCHES.map(function (b) {
+    return activeBranches().map(function (b) {
       var n;
       if (realBranches) {
-        var m = realBranches.filter(function (x) { return x.code === b.code; })[0];
+        // Cruce por branch_id (el que trae el producto) y, como respaldo, por code.
+        var m = realBranches.filter(function (x) {
+          return (b.id != null && String(x.id) === String(b.id)) || (!!x.code && x.code === b.code);
+        })[0];
         n = m ? (m.stock || 0) : 0;
       } else {
         n = volStock(p.id, vol, b.code);
       }
       var cls = n === 0 ? "vs-out" : (n <= 3 ? "vs-low" : "vs-ok");
       var label = n === 0 ? esc(I18N.t("prod.soldout")) : (n + " u");
-      return '<div class="vs-row"><span>' + esc(b.name) + '</span><span class="vs-n ' + cls + '">' + label + '</span></div>';
+      // En el modal se muestra el nombre corto (sin el prefijo de marca), como
+      // en la referencia: "GeekPoint Reforma" -> "Reforma".
+      var shortName = String(b.name || "").replace(/^\s*GeekPoint\s+/i, "");
+      return '<div class="vs-row" data-name="' + esc(shortName) + '">' +
+        '<span>' + esc(shortName) + '</span>' +
+        '<span class="vs-n ' + cls + '">' + label + '</span></div>';
     }).join("");
+  }
+
+  /* Panel completo de "Stock por sucursal": barra (título + buscador) +
+     contenedor con scroll de 3 filas + fila "Continuar". El listado de filas
+     lo sigue generando stockRowsHTML() a partir de la BD (sin cambios de
+     lógica de datos). */
+  function stockPanelHTML(p, vol, volObj) {
+    return '' +
+      '<div class="vol-stock__bar">' +
+        '<p class="vol-stock__h">' + esc(I18N.t("prod.stockByBranch")) + '</p>' +
+        '<span class="vs-search">' +
+          '<svg class="vs-search__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+            'stroke-width="2.4" stroke-linecap="round" aria-hidden="true">' +
+            '<circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>' +
+          '<input type="search" class="vs-search__input" data-vs-search autocomplete="off" ' +
+            'placeholder="' + esc(I18N.t("branches.search")) + '" ' +
+            'aria-label="' + esc(I18N.t("branches.search")) + '">' +
+        '</span>' +
+      '</div>' +
+      '<div class="vs-scroll" data-vs-scroll>' +
+        stockRowsHTML(p, vol, volObj) +
+        '<button type="button" class="vs-more" data-vs-more hidden>' +
+          '<span>' + esc(I18N.t("branches.more")) + '</span>' +
+          '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" ' +
+            'stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+            '<path d="M6 9l6 6 6-6"/></svg>' +
+        '</button>' +
+      '</div>';
   }
 
   function volOptionsHTML(covers) {
@@ -413,8 +458,7 @@
             '<select class="select" data-vol>' + volOptionsHTML(covers) + '</select></label>'
           : "") +
         '<div class="vol-stock" data-vol-stock>' +
-          '<p class="vol-stock__h">' + esc(I18N.t("prod.stockByBranch")) + '</p>' +
-          stockRowsHTML(p, covers[0].v, covers[0]) +
+          stockPanelHTML(p, covers[0].v, covers[0]) +
         '</div>' +
         (p.synopsis ? '<p class="preview3d__syn">' + esc(Catalog.synopsis(p, I18N.lang)) + '</p>' : "") +
         '<div class="preview3d__buy">' +
@@ -427,6 +471,7 @@
       var volSel = wrap.querySelector("[data-vol]");
       var stockBox = wrap.querySelector("[data-vol-stock]");
       var priceEl = wrap.querySelector(".preview3d__price[data-price]");
+      var stockQuery = "";   // texto del buscador de sucursales (se conserva entre refresh)
 
       // Sinopsis: cambia con el idioma aunque el modal siga abierto.
       var synEl = wrap.querySelector(".preview3d__syn");
@@ -496,14 +541,79 @@
         return Catalog.coverURL(p);
       }
 
+      /* Buscador + scroll (3 filas) + "Continuar" del panel de sucursales.
+         Se re-liga cada vez que refresh() reconstruye el panel. */
+      function bindStockPanel() {
+        var scrollEl = stockBox.querySelector("[data-vs-scroll]");
+        var input = stockBox.querySelector("[data-vs-search]");
+        var moreBtn = stockBox.querySelector("[data-vs-more]");
+        if (!scrollEl) return;
+        var rows = [].slice.call(scrollEl.querySelectorAll(".vs-row"));
+
+        function fold(s) {
+          s = String(s || "").toLowerCase();
+          return s.normalize ? s.normalize("NFD").replace(/[̀-ͯ]/g, "") : s;
+        }
+        function visible() { return rows.filter(function (r) { return !r.hidden; }); }
+
+        function fit() {
+          var vis = visible();
+          if (vis.length <= 3) { scrollEl.style.maxHeight = ""; return; }
+          // Altura = 3 filas completas + la barra "Continuar" fija al pie
+          // (se mide destapándola un instante; syncMore() la re-evalúa después).
+          var wasHidden = moreBtn && moreBtn.hidden;
+          if (moreBtn) moreBtn.hidden = false;
+          var top = vis[0].offsetTop, third = vis[2];
+          var moreH = moreBtn ? moreBtn.offsetHeight : 0;
+          scrollEl.style.maxHeight = Math.ceil(third.offsetTop + third.offsetHeight - top + moreH) + "px";
+          if (moreBtn && wasHidden) moreBtn.hidden = true;
+        }
+        function syncMore() {
+          // "Continuar" visible siempre que la lista desborde (más de 3 filas).
+          if (moreBtn) moreBtn.hidden = !(scrollEl.scrollHeight - scrollEl.clientHeight > 2);
+        }
+        function applyFilter() {
+          var q = fold(input ? input.value.trim() : "");
+          rows.forEach(function (r) {
+            r.hidden = !!q && fold(r.getAttribute("data-name")).indexOf(q) === -1;
+          });
+          scrollEl.scrollTop = 0;
+          fit(); syncMore();
+        }
+
+        if (input) {
+          input.value = stockQuery;
+          input.addEventListener("input", function () { stockQuery = input.value; applyFilter(); });
+        }
+        if (moreBtn) {
+          moreBtn.addEventListener("click", function () {
+            var atBottom = scrollEl.scrollTop + scrollEl.clientHeight >= scrollEl.scrollHeight - 2;
+            scrollEl.scrollTo({
+              top: atBottom ? 0 : scrollEl.scrollTop + scrollEl.clientHeight,
+              behavior: UI.reduced ? "auto" : "smooth"
+            });
+          });
+        }
+        applyFilter();   // ajusta altura + "Continuar" (y reaplica la búsqueda previa)
+      }
+
       function refresh() {
         var c = currentVol();
         if (stage && stage.setCover) stage.setCover(coverFor(c));
         if (priceEl) priceEl.textContent = UI.money((c.id && c.price) || p.price);
-        stockBox.innerHTML = '<p class="vol-stock__h">' + esc(I18N.t("prod.stockByBranch")) + '</p>' +
-          stockRowsHTML(p, c.v, c);
+        stockBox.innerHTML = stockPanelHTML(p, c.v, c);
+        bindStockPanel();
       }
       if (volSel) volSel.addEventListener("change", refresh);
+      bindStockPanel();   // liga el panel inicial (refresh() lo re-liga tras cada cambio)
+
+      // Si el listado de sucursales llega de la BD con el modal ya abierto,
+      // repinta las filas de "Stock por sucursal".
+      var brHandler = function () {
+        if (!wrap.isConnected) { window.removeEventListener("branches:changed", brHandler); return; }
+        refresh();
+      };
+      window.addEventListener("branches:changed", brHandler);
 
       // Portadas oficiales por tomo desde MangaDex: SOLO manga y sólo si hay
       // pocas portadas reales de catálogo (los tomos locales ya traen la suya).
@@ -768,26 +878,107 @@
   }
 
   /* ---------------- Sucursales ---------------- */
+  /* Carrusel: se muestran como MÁXIMO 3 tarjetas a la vez. Con más de 3
+     sucursales aparecen dos botones circulares (‹ ›) que recorren la lista de
+     una en una; con 3 o menos, los botones quedan ocultos. El listado sale de
+     la tabla `branches` (Catalog.branches()). */
+  var BRANCH_WINDOW = 3;
+  var branchPage = 0;
+  var branchSig = null;   // firma del último render (evita repintar de más)
+
   /* animate=true → aparecen con la animación reveal (primer montaje).
-     animate=false → se pintan ya visibles (re-render por cambio de idioma). */
+     animate=false → se pintan ya visibles (re-render por idioma / carga BD). */
   function drawBranches(root, animate) {
     var host = $("[data-branches]", root);
     if (!host) return;
-    var list = ((window.__BRAND__ || {}).branches) || [];
+    var list = activeBranches().filter(function (b) { return b && (b.code || b.name); });
     if (!list.length) return;                       // nunca dejes la sección vacía
-    var cls = "branch reveal" + (animate ? "" : " is-visible");
-    host.innerHTML = list.map(function (b) {
-      return (
-        '<article class="' + cls + '">' +
-          '<span class="branch__code">' + esc(b.code) + '</span>' +
-          '<h3>' + esc(b.name) + '</h3>' +
-          '<div class="branch__row"><b>' + esc(I18N.t("branches.addr")) + '</b><span>' + esc(b.address) + ', ' + esc(b.city) + '</span></div>' +
-          '<div class="branch__row"><b>' + esc(I18N.t("branches.hours")) + '</b><span>' + esc(b.hours) + '</span></div>' +
-          '<div class="branch__row"><b>' + esc(I18N.t("branches.phone")) + '</b><span>' + esc(b.phone) + '</span></div>' +
-          '<div class="branch__status"><span class="badge badge--ok">' + esc(I18N.t("status.active")) + '</span></div>' +
-        '</article>'
-      );
-    }).join("");
+
+    var many = list.length > BRANCH_WINDOW;
+    var maxPage = Math.max(0, list.length - BRANCH_WINDOW);
+    if (branchPage > maxPage) branchPage = maxPage;
+    if (branchPage < 0) branchPage = 0;
+
+    ensureBranchNav(host, root);
+    var slice = many ? list.slice(branchPage, branchPage + BRANCH_WINDOW) : list;
+
+    // Si las sucursales visibles no cambiaron (p.ej. la BD devolvió las mismas
+    // 3 sedes del respaldo), NO se repinta: así la animación reveal del primer
+    // montaje no se pierde. La firma va por `code` (único por sucursal); los
+    // cambios de idioma fuerzan el repintado poniendo branchSig = null.
+    var sig = branchPage + "@" + slice.map(function (b) { return b.code || b.name; }).join(",");
+    if (sig !== branchSig || !host.children.length) {
+      branchSig = sig;
+      var cls = "branch reveal" + (animate ? "" : " is-visible");
+      host.innerHTML = slice.map(function (b) {
+        var place = esc(b.city) + (b.state ? ", " + esc(b.state) : "");
+        return (
+          '<article class="' + cls + '">' +
+            '<span class="branch__code">' + esc(b.code) + '</span>' +
+            '<h3>' + esc(b.name) + '</h3>' +
+            '<div class="branch__row"><b>' + esc(I18N.t("branches.addr")) + '</b><span>' + esc(b.address) + ', ' + place + '</span></div>' +
+            '<div class="branch__row"><b>' + esc(I18N.t("branches.hours")) + '</b><span>' + esc(b.hours) + '</span></div>' +
+            '<div class="branch__row"><b>' + esc(I18N.t("branches.phone")) + '</b><span>' + esc(b.phone) + '</span></div>' +
+            '<div class="branch__status"><span class="badge badge--ok">' + esc(I18N.t("status.active")) + '</span></div>' +
+          '</article>'
+        );
+      }).join("");
+    }
+
+    updateBranchNav(host, list.length, maxPage, many);
+  }
+
+  /* Envuelve [data-branches] en un contenedor relativo y le añade —una sola
+     vez— los dos botones de navegación. NO altera el CSS ni las clases
+     existentes: el <div class="branches"> conserva su grid tal cual; los
+     botones son elementos nuevos con estilo en línea y variables del tema. */
+  function ensureBranchNav(host, root) {
+    var wrap = host.parentNode;
+    if (!wrap || !wrap.hasAttribute || !wrap.hasAttribute("data-branches-carousel")) {
+      wrap = document.createElement("div");
+      wrap.setAttribute("data-branches-carousel", "");
+      wrap.style.position = "relative";
+      host.parentNode.insertBefore(wrap, host);
+      wrap.appendChild(host);
+    }
+    if (wrap.querySelector("[data-branch-nav]")) return;
+
+    ["prev", "next"].forEach(function (dir) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.setAttribute("data-branch-nav", dir);
+      var en = String(I18N.lang || "es").slice(0, 2).toLowerCase() === "en";
+      btn.setAttribute("aria-label", dir === "prev"
+        ? (en ? "Previous branches" : "Sucursales anteriores")
+        : (en ? "Next branches" : "Sucursales siguientes"));
+      btn.innerHTML = dir === "prev"
+        ? '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5 8 12l7 7"/></svg>'
+        : '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>';
+      btn.style.cssText = "position:absolute;top:50%;" +
+        (dir === "prev" ? "left:-18px;" : "right:-18px;") +
+        "transform:translateY(-50%);width:44px;height:44px;padding:0;border-radius:50%;" +
+        "display:none;place-items:center;cursor:pointer;z-index:3;" +
+        "background:var(--paper-2);color:var(--ink);border:3px solid var(--ink);" +
+        "box-shadow:4px 4px 0 var(--ink);";
+      btn.addEventListener("click", function () {
+        branchPage += (dir === "prev" ? -1 : 1);
+        drawBranches(root, false);
+      });
+      wrap.appendChild(btn);
+    });
+  }
+
+  function updateBranchNav(host, total, maxPage, many) {
+    var wrap = host.parentNode;
+    if (!wrap) return;
+    $$("[data-branch-nav]", wrap).forEach(function (btn) {
+      var dir = btn.getAttribute("data-branch-nav");
+      btn.style.display = many ? "grid" : "none";           // ≤3 sucursales → sin botones
+      var atEnd = dir === "prev" ? branchPage <= 0 : branchPage >= maxPage;
+      btn.disabled = atEnd;
+      btn.style.opacity = atEnd ? "0.35" : "1";
+      btn.style.pointerEvents = atEnd ? "none" : "auto";
+    });
   }
 
   function reveals(root) {
@@ -817,10 +1008,17 @@
 
   function mount(root, params) {
     activeSlug = currentCat(params);          // sincroniza el estado global
+    branchPage = 0;                           // el carrusel arranca en la 1ª sucursal
+    branchSig = null;                         // fuerza el primer render de sucursales
     I18N.apply(root);
     drawCatbar(root, activeSlug);
     bindSearch(root);
     drawBranches(root, true);
+    // El listado real de sucursales llega de la BD; al resolver, se repinta
+    // (ya visible, sin animación) para activar el carrusel si hay más de 3.
+    if (window.Catalog && Catalog.loadBranches) {
+      Catalog.loadBranches().then(function () { drawBranches(root, false); });
+    }
 
     var grid = $("[data-pgrid]", root);
     if (grid) {
@@ -865,6 +1063,7 @@
       UI.safe(function () { I18N.apply(root); }, "i18n.apply");
       UI.safe(function () { drawCatbar(root, keep); }, "drawCatbar");
       UI.safe(function () { drawGrid(root, keep); }, "drawGrid");
+      branchSig = null;   // las etiquetas cambian de idioma -> re-render forzado
       UI.safe(function () { drawBranches(root, false); }, "drawBranches");
       UI.safe(function () { setSourceNote(root); }, "setSourceNote");
       activeSlug = keep;   // restablece por si algún paso lo tocara
@@ -875,11 +1074,16 @@
     var catalogHandler = function () { UI.safe(function () { drawGrid(root, activeCat()); }, "drawGrid.catChange"); };
     window.addEventListener("catalog:changed", catalogHandler);
 
+    // Las sucursales cambiaron (llegó la respuesta de la BD) -> repinta tarjetas.
+    var branchesHandler = function () { UI.safe(function () { drawBranches(root, false); }, "drawBranches.change"); };
+    window.addEventListener("branches:changed", branchesHandler);
+
     root.__cleanup = function () {
       if (gridRAF) { cancelAnimationFrame(gridRAF); gridRAF = 0; }
       window.removeEventListener("hero:pick", heroPickHandler);
       window.removeEventListener("i18n:change", langHandler);
       window.removeEventListener("catalog:changed", catalogHandler);
+      window.removeEventListener("branches:changed", branchesHandler);
       if (window.HERO3D) HERO3D.destroy();
     };
   }
