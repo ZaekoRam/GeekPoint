@@ -437,6 +437,27 @@ body:not(.in-app) .btn--panini.is-pop { animation: ctaPop .4s var(--ease-bounce)
 /* ---------- Sucursales ---------- */
 .branches { display: grid; gap: 1.1rem; grid-template-columns: 1fr; }
 @media (min-width: 760px) { .branches { grid-template-columns: repeat(3, 1fr); } }
+
+/* Carrusel de deslizamiento horizontal PURO (sin opacidad):
+   el visor recorta y el riel (.branches--track) es un flex con TODAS las
+   tarjetas que se mueve con translateX. Las tarjetas conservan borde, sombra,
+   tipografía y badge intactos. Sólo aplica cuando el JS pone .is-carousel. */
+[data-branches-carousel].is-carousel [data-branches-viewport] {
+  overflow: hidden;
+  padding: 0 6px 10px;                        /* aire para la sombra 6px 6px 0 */
+}
+.branches--track {
+  display: flex;
+  flex-wrap: nowrap;
+  transition: transform .35s ease-in-out;
+  will-change: transform;
+}
+.branches--track > .branch {
+  flex: 0 0 calc((100% - 2 * 1.1rem) / 3);    /* 3 visibles, mismo gap 1.1rem */
+}
+@media (prefers-reduced-motion: reduce) {
+  .branches--track { transition: none; }
+}
 .branch {
   border: 3px solid var(--ink); background: var(--paper-2); padding: 1.3rem;
   box-shadow: 6px 6px 0 var(--ink);

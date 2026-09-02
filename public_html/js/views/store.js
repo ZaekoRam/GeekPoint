@@ -878,13 +878,36 @@
   }
 
   /* ---------------- Sucursales ---------------- */
-  /* Carrusel: se muestran como MÁXIMO 3 tarjetas a la vez. Con más de 3
-     sucursales aparecen dos botones circulares (‹ ›) que recorren la lista de
-     una en una; con 3 o menos, los botones quedan ocultos. El listado sale de
-     la tabla `branches` (Catalog.branches()). */
+  /* Carrusel de DESLIZAMIENTO HORIZONTAL: se ven 3 tarjetas a la vez dentro de
+     un visor con overflow:hidden; el riel (.branches--track) es un flex con
+     TODAS las tarjetas y se mueve con translateX (sin opacidad). Con >3
+     sucursales aparecen las flechas ‹ › que avanzan/retroceden una tarjeta;
+     con ≤3, el grid normal y sin flechas. Datos: Catalog.branches(). */
   var BRANCH_WINDOW = 3;
   var branchPage = 0;
-  var branchSig = null;   // firma del último render (evita repintar de más)
+  var branchSig = null;     // firma del último render del riel (evita repintar de más)
+  var branchResizeRAF = 0;  // rAF pendiente del recálculo de translateX al redimensionar
+
+  /* Mueve el riel a la página actual. instant=true fija la posición sin
+     transición (tras un repintado o un resize); si no, la anima la regla CSS
+     `.branches--track { transition: transform .35s ease-in-out }`. */
+  function applyBranchTransform(host, instant) {
+    var first = host.firstElementChild;
+    if (!first) return;
+    var cs = getComputedStyle(host);
+    var gap = parseFloat(cs.columnGap || cs.gap) || 0;
+    var step = first.getBoundingClientRect().width + gap;
+    var x = "translateX(" + (-branchPage * step) + "px)";
+    if (instant) {
+      var prev = host.style.transition;
+      host.style.transition = "none";
+      host.style.transform = x;
+      void host.offsetWidth;             // fija la posición sin animar
+      host.style.transition = prev;      // "" -> vuelve a la transición de la hoja
+    } else {
+      host.style.transform = x;
+    }
+  }
 
   /* animate=true → aparecen con la animación reveal (primer montaje).
      animate=false → se pintan ya visibles (re-render por idioma / carga BD). */
@@ -900,17 +923,22 @@
     if (branchPage < 0) branchPage = 0;
 
     ensureBranchNav(host, root);
-    var slice = many ? list.slice(branchPage, branchPage + BRANCH_WINDOW) : list;
 
-    // Si las sucursales visibles no cambiaron (p.ej. la BD devolvió las mismas
-    // 3 sedes del respaldo), NO se repinta: así la animación reveal del primer
-    // montaje no se pierde. La firma va por `code` (único por sucursal); los
-    // cambios de idioma fuerzan el repintado poniendo branchSig = null.
-    var sig = branchPage + "@" + slice.map(function (b) { return b.code || b.name; }).join(",");
+    // Modo riel (carrusel) vs. grid normal.
+    var wrap = host.closest("[data-branches-carousel]");
+    if (wrap) wrap.classList.toggle("is-carousel", many);
+    host.classList.toggle("branches--track", many);
+
+    // Riel: se pintan TODAS las tarjetas y el translateX decide cuáles se ven.
+    // Grid normal (≤3): sólo esas 3, con su reveal-on-scroll.
+    var cards = many ? list : list.slice(0, BRANCH_WINDOW);
+    var sig = (many ? "track" : "grid") + "@" + cards.map(function (b) { return b.code || b.name; }).join(",");
     if (sig !== branchSig || !host.children.length) {
       branchSig = sig;
-      var cls = "branch reveal" + (animate ? "" : " is-visible");
-      host.innerHTML = slice.map(function (b) {
+      // En el riel las tarjetas van SIEMPRE visibles (nada de fade); en grid se
+      // conserva la animación reveal del primer montaje.
+      var cls = "branch reveal" + (many || !animate ? " is-visible" : "");
+      host.innerHTML = cards.map(function (b) {
         var place = esc(b.city) + (b.state ? ", " + esc(b.state) : "");
         return (
           '<article class="' + cls + '">' +
@@ -925,21 +953,29 @@
       }).join("");
     }
 
+    if (many) applyBranchTransform(host, true);   // fija la página sin animar
+    else host.style.transform = "";               // grid normal: sin desplazamiento
+
     updateBranchNav(host, list.length, maxPage, many);
   }
 
-  /* Envuelve [data-branches] en un contenedor relativo y le añade —una sola
-     vez— los dos botones de navegación. NO altera el CSS ni las clases
-     existentes: el <div class="branches"> conserva su grid tal cual; los
-     botones son elementos nuevos con estilo en línea y variables del tema. */
+  /* Estructura del carrusel (una sola vez):
+       [data-branches-carousel]        position:relative, NO recorta -> flechas visibles
+         └ [data-branches-viewport]    overflow:hidden cuando .is-carousel (el visor)
+             └ .branches               el riel flex (.branches--track)
+       + 2 botones ‹ › como hijos directos del wrapper.
+     NO se tocan las clases ni el CSS de .branch. */
   function ensureBranchNav(host, root) {
-    var wrap = host.parentNode;
-    if (!wrap || !wrap.hasAttribute || !wrap.hasAttribute("data-branches-carousel")) {
+    var wrap = host.closest("[data-branches-carousel]");
+    if (!wrap) {
       wrap = document.createElement("div");
       wrap.setAttribute("data-branches-carousel", "");
       wrap.style.position = "relative";
       host.parentNode.insertBefore(wrap, host);
-      wrap.appendChild(host);
+      var vp = document.createElement("div");
+      vp.setAttribute("data-branches-viewport", "");
+      wrap.appendChild(vp);
+      vp.appendChild(host);
     }
     if (wrap.querySelector("[data-branch-nav]")) return;
 
@@ -961,15 +997,29 @@
         "background:var(--paper-2);color:var(--ink);border:3px solid var(--ink);" +
         "box-shadow:4px 4px 0 var(--ink);";
       btn.addEventListener("click", function () {
-        branchPage += (dir === "prev" ? -1 : 1);
-        drawBranches(root, false);
+        slideBranches(root, dir);
       });
       wrap.appendChild(btn);
     });
   }
 
+  /* Slide horizontal PURO: sólo cambia la página y anima el translateX del riel
+     (la curva la da el CSS). Sin opacidad y sin repintar el DOM -> el
+     movimiento es continuo; la tarjeta que sale empuja a la que entra. */
+  function slideBranches(root, dir) {
+    var host = $("[data-branches]", root);
+    if (!host) return;
+    var total = activeBranches().filter(function (b) { return b && (b.code || b.name); }).length;
+    var maxPage = Math.max(0, total - BRANCH_WINDOW);
+    var next = branchPage + (dir === "prev" ? -1 : 1);
+    if (next < 0 || next > maxPage) return;          // ya está en el extremo
+    branchPage = next;
+    applyBranchTransform(host, false);               // translateX animado (.35s ease-in-out)
+    updateBranchNav(host, total, maxPage, total > BRANCH_WINDOW);
+  }
+
   function updateBranchNav(host, total, maxPage, many) {
-    var wrap = host.parentNode;
+    var wrap = host.closest("[data-branches-carousel]");
     if (!wrap) return;
     $$("[data-branch-nav]", wrap).forEach(function (btn) {
       var dir = btn.getAttribute("data-branch-nav");
@@ -1078,12 +1128,25 @@
     var branchesHandler = function () { UI.safe(function () { drawBranches(root, false); }, "drawBranches.change"); };
     window.addEventListener("branches:changed", branchesHandler);
 
+    // Al redimensionar cambia el ancho de tarjeta -> recalcula el translateX del riel.
+    var resizeHandler = function () {
+      if (branchResizeRAF) return;
+      branchResizeRAF = requestAnimationFrame(function () {
+        branchResizeRAF = 0;
+        var h = $("[data-branches]", root);
+        if (h && h.classList.contains("branches--track")) applyBranchTransform(h, true);
+      });
+    };
+    window.addEventListener("resize", resizeHandler);
+
     root.__cleanup = function () {
       if (gridRAF) { cancelAnimationFrame(gridRAF); gridRAF = 0; }
+      if (branchResizeRAF) { cancelAnimationFrame(branchResizeRAF); branchResizeRAF = 0; }
       window.removeEventListener("hero:pick", heroPickHandler);
       window.removeEventListener("i18n:change", langHandler);
       window.removeEventListener("catalog:changed", catalogHandler);
       window.removeEventListener("branches:changed", branchesHandler);
+      window.removeEventListener("resize", resizeHandler);
       if (window.HERO3D) HERO3D.destroy();
     };
   }
