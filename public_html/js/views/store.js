@@ -878,15 +878,20 @@
   }
 
   /* ---------------- Sucursales ---------------- */
-  /* Carrusel de DESLIZAMIENTO HORIZONTAL: se ven 3 tarjetas a la vez dentro de
-     un visor con overflow:hidden; el riel (.branches--track) es un flex con
-     TODAS las tarjetas y se mueve con translateX (sin opacidad). Con >3
-     sucursales aparecen las flechas ‹ › que avanzan/retroceden una tarjeta;
-     con ≤3, el grid normal y sin flechas. Datos: Catalog.branches(). */
-  var BRANCH_WINDOW = 3;
+  /* Carrusel de DESLIZAMIENTO HORIZONTAL (mismo mecanismo en PC y móvil):
+     un visor con overflow:hidden y un riel (.branches--track) flex con TODAS
+     las tarjetas que se mueve con translateX (sin opacidad, sin apilado
+     vertical). Tarjetas por vista: 3 en ≥769px, 1 en ≤768px — el ancho de
+     tarjeta lo fija el CSS y el translateX lo calcula el JS midiéndolo.
+     Datos: Catalog.branches(). */
   var branchPage = 0;
   var branchSig = null;     // firma del último render del riel (evita repintar de más)
   var branchResizeRAF = 0;  // rAF pendiente del recálculo de translateX al redimensionar
+
+  /* Tarjetas visibles a la vez: 3 en escritorio, 1 en móvil (≤768px). */
+  function branchesPerView() {
+    return (!window.matchMedia || window.matchMedia("(min-width: 769px)").matches) ? 3 : 1;
+  }
 
   /* Mueve el riel a la página actual. instant=true fija la posición sin
      transición (tras un repintado o un resize); si no, la anima la regla CSS
@@ -917,21 +922,24 @@
     var list = activeBranches().filter(function (b) { return b && (b.code || b.name); });
     if (!list.length) return;                       // nunca dejes la sección vacía
 
-    var many = list.length > BRANCH_WINDOW;
-    var maxPage = Math.max(0, list.length - BRANCH_WINDOW);
+    // Carrusel cuando hay más sedes que tarjetas por vista (3 en PC, 1 en móvil).
+    var perView = branchesPerView();
+    var many = list.length > perView;
+    var maxPage = Math.max(0, list.length - perView);
     if (branchPage > maxPage) branchPage = maxPage;
     if (branchPage < 0) branchPage = 0;
 
     ensureBranchNav(host, root);
+    bindBranchSwipe(host, root);   // gestos táctiles (móvil); se liga una sola vez
 
     // Modo riel (carrusel) vs. grid normal.
     var wrap = host.closest("[data-branches-carousel]");
     if (wrap) wrap.classList.toggle("is-carousel", many);
     host.classList.toggle("branches--track", many);
 
-    // Riel: se pintan TODAS las tarjetas y el translateX decide cuáles se ven.
-    // Grid normal (≤3): sólo esas 3, con su reveal-on-scroll.
-    var cards = many ? list : list.slice(0, BRANCH_WINDOW);
+    // Se pintan SIEMPRE todas las tarjetas: en modo riel el translateX decide
+    // cuáles se ven; en grid (≤3 sedes, o móvil) se apilan/reparten todas.
+    var cards = list;
     var sig = (many ? "track" : "grid") + "@" + cards.map(function (b) { return b.code || b.name; }).join(",");
     if (sig !== branchSig || !host.children.length) {
       branchSig = sig;
@@ -990,8 +998,8 @@
       btn.innerHTML = dir === "prev"
         ? '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5 8 12l7 7"/></svg>'
         : '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>';
+      // Sin left/right aquí: los pone el CSS (responsive: -18px en PC, -4px en móvil).
       btn.style.cssText = "position:absolute;top:50%;" +
-        (dir === "prev" ? "left:-18px;" : "right:-18px;") +
         "transform:translateY(-50%);width:44px;height:44px;padding:0;border-radius:50%;" +
         "display:none;place-items:center;cursor:pointer;z-index:3;" +
         "background:var(--paper-2);color:var(--ink);border:3px solid var(--ink);" +
@@ -1009,13 +1017,95 @@
   function slideBranches(root, dir) {
     var host = $("[data-branches]", root);
     if (!host) return;
+    var perView = branchesPerView();
     var total = activeBranches().filter(function (b) { return b && (b.code || b.name); }).length;
-    var maxPage = Math.max(0, total - BRANCH_WINDOW);
+    var maxPage = Math.max(0, total - perView);
     var next = branchPage + (dir === "prev" ? -1 : 1);
     if (next < 0 || next > maxPage) return;          // ya está en el extremo
     branchPage = next;
     applyBranchTransform(host, false);               // translateX animado (.35s ease-in-out)
-    updateBranchNav(host, total, maxPage, total > BRANCH_WINDOW);
+    updateBranchNav(host, total, maxPage, total > perView);
+  }
+
+  /* Gestos táctiles del carrusel — SÓLO móvil (1 tarjeta por vista).
+     · Pointer Events (unifican touch/mouse/pen) sobre el visor.
+     · Se distingue swipe horizontal de scroll vertical comparando |dx| vs |dy|:
+       si el gesto es más vertical, se suelta y la página hace scroll normal.
+     · Arrastre en vivo (translateX sigue al dedo, con "goma" en los extremos);
+       al soltar, si |dx| ≥ 50px cambia de sucursal (izq = siguiente, der =
+       anterior) reutilizando slideBranches() -> el índice queda sincronizado
+       con el de las flechas. Por debajo del umbral, vuelve a su sitio animado.
+     · En escritorio (≥769px) el handler sale de inmediato: cero cambios. */
+  function bindBranchSwipe(host, root) {
+    var vp = host.closest("[data-branches-viewport]");
+    if (!vp || vp.__swipeBound) return;
+    vp.__swipeBound = true;
+
+    var THRESHOLD = 50;   // px de arrastre para confirmar cambio de tarjeta
+    var LOCK = 8;         // px para decidir si el gesto es horizontal o vertical
+    var startX = 0, startY = 0, dx = 0, dy = 0;
+    var active = false, dragging = false, baseX = 0, pid = null;
+
+    function stepPx() {
+      var first = host.firstElementChild;
+      if (!first) return 0;
+      var cs = getComputedStyle(host);
+      var gap = parseFloat(cs.columnGap || cs.gap) || 0;
+      return first.getBoundingClientRect().width + gap;
+    }
+    function total() {
+      return activeBranches().filter(function (b) { return b && (b.code || b.name); }).length;
+    }
+    function swipeable() {
+      return branchesPerView() === 1 && host.classList.contains("branches--track");
+    }
+
+    vp.addEventListener("pointerdown", function (e) {
+      if (!swipeable()) return;
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      active = true; dragging = false;
+      startX = e.clientX; startY = e.clientY; dx = 0; dy = 0;
+      pid = e.pointerId;
+      var m = /translateX\(\s*(-?[0-9.]+)px/.exec(host.style.transform || "");
+      baseX = m ? parseFloat(m[1]) : 0;
+    });
+
+    vp.addEventListener("pointermove", function (e) {
+      if (!active || e.pointerId !== pid) return;
+      dx = e.clientX - startX;
+      dy = e.clientY - startY;
+
+      if (!dragging) {
+        if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > LOCK) { active = false; return; }  // es scroll vertical
+        if (Math.abs(dx) <= LOCK) return;
+        dragging = true;
+        host.classList.add("is-dragging");                 // quita la transición: sigue al dedo
+        try { vp.setPointerCapture(pid); } catch (err) {}
+      }
+
+      var max = 0, min = -Math.max(0, total() - 1) * stepPx();
+      var x = baseX + dx;
+      if (x > max) x = max + (x - max) * 0.35;             // goma en los extremos
+      else if (x < min) x = min + (x - min) * 0.35;
+      host.style.transform = "translateX(" + x + "px)";
+      if (e.cancelable) e.preventDefault();
+    });
+
+    function endGesture(e) {
+      if (!active || (e && e.pointerId !== pid)) return;
+      active = false;
+      try { vp.releasePointerCapture(pid); } catch (err) {}
+      if (!dragging) return;
+      dragging = false;
+      host.classList.remove("is-dragging");               // vuelve la transición .35s
+
+      var before = branchPage;
+      if (dx <= -THRESHOLD) slideBranches(root, "next");
+      else if (dx >= THRESHOLD) slideBranches(root, "prev");
+      if (branchPage === before) applyBranchTransform(host, false);   // subumbral o extremo -> regresa animado
+    }
+    vp.addEventListener("pointerup", endGesture);
+    vp.addEventListener("pointercancel", endGesture);
   }
 
   function updateBranchNav(host, total, maxPage, many) {
@@ -1128,13 +1218,14 @@
     var branchesHandler = function () { UI.safe(function () { drawBranches(root, false); }, "drawBranches.change"); };
     window.addEventListener("branches:changed", branchesHandler);
 
-    // Al redimensionar cambia el ancho de tarjeta -> recalcula el translateX del riel.
+    // Al redimensionar cambia el ancho de tarjeta y puede cruzarse el corte de
+    // 768/769px (1 <-> 3 por vista): se recalcula todo (drawBranches está
+    // protegido por firma, así que sólo repinta si de verdad cambió).
     var resizeHandler = function () {
       if (branchResizeRAF) return;
       branchResizeRAF = requestAnimationFrame(function () {
         branchResizeRAF = 0;
-        var h = $("[data-branches]", root);
-        if (h && h.classList.contains("branches--track")) applyBranchTransform(h, true);
+        UI.safe(function () { drawBranches(root, false); }, "drawBranches.resize");
       });
     };
     window.addEventListener("resize", resizeHandler);

@@ -7,6 +7,21 @@
       "runtimeArgs": ["-S", "localhost:8766", "-t", "public_html", "dev-server.php"],
       "port": 8766,
       "autoPort": true
+    },
+    {
+      "name": "geekpoint-preview",
+      "runtimeExecutable": "powershell.exe",
+      "runtimeArgs": [
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        ".claude/dev-static.ps1",
+        "-Port",
+        "8766"
+      ],
+      "port": 8766
     }
   ]
 }

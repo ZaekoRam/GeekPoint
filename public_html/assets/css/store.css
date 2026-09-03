@@ -438,25 +438,41 @@ body:not(.in-app) .btn--panini.is-pop { animation: ctaPop .4s var(--ease-bounce)
 .branches { display: grid; gap: 1.1rem; grid-template-columns: 1fr; }
 @media (min-width: 760px) { .branches { grid-template-columns: repeat(3, 1fr); } }
 
-/* Carrusel de deslizamiento horizontal PURO (sin opacidad):
-   el visor recorta y el riel (.branches--track) es un flex con TODAS las
-   tarjetas que se mueve con translateX. Las tarjetas conservan borde, sombra,
-   tipografía y badge intactos. Sólo aplica cuando el JS pone .is-carousel. */
+/* Carrusel de deslizamiento horizontal PURO (sin opacidad, sin apilado):
+   el visor recorta y el riel (.branches--track) es un flex EN FILA con TODAS
+   las tarjetas que se mueve con translateX. Las tarjetas conservan borde,
+   sombra, tipografía y badge intactos. Sólo aplica con .is-carousel (JS). */
 [data-branches-carousel].is-carousel [data-branches-viewport] {
   overflow: hidden;
   padding: 0 6px 10px;                        /* aire para la sombra 6px 6px 0 */
 }
 .branches--track {
   display: flex;
+  flex-direction: row;
   flex-wrap: nowrap;
   transition: transform .35s ease-in-out;
   will-change: transform;
 }
 .branches--track > .branch {
-  flex: 0 0 calc((100% - 2 * 1.1rem) / 3);    /* 3 visibles, mismo gap 1.1rem */
+  flex: 0 0 calc((100% - 2 * 1.1rem) / 3);    /* PC: 3 por vista, mismo gap 1.1rem */
 }
+/* Flechas: sólo la posición izq/der va aquí (el resto del estilo es inline en JS). */
+[data-branch-nav] { left: -18px; }
+[data-branch-nav="next"] { left: auto; right: -18px; }
 @media (prefers-reduced-motion: reduce) {
   .branches--track { transition: none; }
+}
+
+/* Móvil: MISMO carrusel horizontal, 1 tarjeta por vista (NO lista vertical). */
+@media (max-width: 768px) {
+  [data-branches-carousel].is-carousel [data-branches-viewport] {
+    padding: 0 24px 10px;
+    touch-action: pan-y;             /* scroll vertical nativo; el swipe horizontal lo maneja el JS */
+  }
+  .branches--track > .branch { flex-basis: 100%; }   /* 1 tarjeta = 100% del visor */
+  .branches--track.is-dragging { transition: none; user-select: none; }  /* sigue al dedo, sin animar */
+  [data-branch-nav] { left: -4px; }
+  [data-branch-nav="next"] { left: auto; right: -4px; }
 }
 .branch {
   border: 3px solid var(--ink); background: var(--paper-2); padding: 1.3rem;
