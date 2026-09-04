@@ -86,6 +86,42 @@
   }
 
   /* ---------------- Products CRUD + stock ---------------- */
+
+  /* Portada del producto para la tarjeta (helper compartido en shell.js). */
+  function invCover(p) { return V._productCover ? V._productCover(p) : ""; }
+
+  /* Tarjeta de inventario (estilo tienda) — al hacer clic AJUSTA el stock
+     (no "comprar"). Botón principal "± Ajustar stock" + editar / eliminar. */
+  function invCardHTML(p) {
+    var stockCls = p.stock === 0 ? "badge--danger" : (p.low_stock ? "badge--warn" : "badge--ok");
+    var cat = esc(I18N.pick({ es: p.category_es, en: p.category_en }) || p.category_slug || "—");
+    return '' +
+      '<article class="invcard' + (p.status !== "active" ? " is-inactive" : "") + '">' +
+        '<div class="invcard__main" data-adjust="' + p.id + '" title="' + esc(I18N.t("btn.adjust")) + '">' +
+          '<div class="invcard__media">' +
+            '<img src="' + esc(invCover(p)) + '" alt="" loading="lazy" decoding="async" ' +
+              'onerror="this.style.visibility=\'hidden\'">' +
+            '<span class="invcard__stock badge ' + stockCls + '">' + p.stock + '</span>' +
+            (p.status !== "active" ? '<span class="invcard__off">' + esc(I18N.t("status.inactive")) + '</span>' : "") +
+          '</div>' +
+          '<div class="invcard__body">' +
+            '<span class="invcard__cat">' + cat + '</span>' +
+            '<h3 class="invcard__name">' + esc(p.name) + '</h3>' +
+            '<span class="invcard__sku mono">' + esc(p.sku) + '</span>' +
+            '<div class="invcard__foot">' +
+              '<span class="invcard__price mono">' + UI.money(p.price, true) + '</span>' +
+              '<span class="invcard__min mono">' + esc(I18N.t("col.min").toLowerCase()) + ' ' + p.min_stock + '</span>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="invcard__acts">' +
+          '<button class="btn btn--neon btn--sm invcard__adjust" data-adjust="' + p.id + '">± ' + esc(I18N.t("btn.adjust")) + '</button>' +
+          '<button class="iconbtn" data-edit="' + p.id + '" title="' + esc(I18N.t("btn.edit")) + '">✎</button>' +
+          V._delButton({ attr: "data-del", value: p.id, name: p.name }) +
+        '</div>' +
+      '</article>';
+  }
+
   function products(panel, root) {
     panel.innerHTML = V._loading();
     Promise.all([API.get("products?status=all&limit=200"), categories(), API.get("branches")]).then(function (res) {
@@ -101,7 +137,8 @@
         '<select class="select" data-cat><option value="">' + esc(I18N.t("pos.all")) + '</option>' +
         cats.map(function (c) { return '<option value="' + c.id + '">' + esc(I18N.pick({ es: c.name_es, en: c.name_en })) + '</option>'; }).join("") + '</select>' +
         '<label class="chip"><input type="checkbox" data-low style="margin-right:.3rem">' + esc(I18N.t("col.lowstock")) + '</label>' +
-        '</div><div data-tbl></div>';
+        '<span class="mono muted" data-prod-count style="font-size:.72rem;margin-left:auto"></span>' +
+        '</div><div class="invgrid" data-grid></div>';
       panel.innerHTML = toolbar;
 
       function draw() {
@@ -114,23 +151,20 @@
           if (q && (p.name + " " + p.sku).toLowerCase().indexOf(q) === -1) return false;
           return true;
         });
-        $("[data-tbl]", panel).innerHTML = V._table([
-          { key: "name", label: I18N.t("col.product"), render: function (r) { return '<b>' + esc(r.name) + '</b><br><span class="mono muted" style="font-size:.7rem">' + esc(r.sku) + '</span>'; } },
-          { key: "category_es", label: I18N.t("col.category"), render: function (r) { return esc(I18N.pick({ es: r.category_es, en: r.category_en }) || "—"); } },
-          { key: "price", label: I18N.t("col.price"), cls: "num right", render: function (r) { return UI.money(r.price); } },
-          { key: "stock", label: I18N.t("col.stock"), cls: "num", render: function (r) { return '<span class="badge ' + (r.stock === 0 ? "badge--danger" : (r.low_stock ? "badge--warn" : "badge--ok")) + '">' + r.stock + '</span>'; } },
-          { key: "min_stock", label: I18N.t("col.min"), cls: "num" },
-          { key: "status", label: I18N.t("col.status"), render: function (r) { return V._statusBadge(r.status); } },
-          { key: "id", label: I18N.t("col.actions"), render: function (r) {
-            return '<div class="rowacts">' +
-              '<button class="iconbtn" data-adjust="' + r.id + '" title="' + esc(I18N.t("btn.adjust")) + '">±</button>' +
-              '<button class="iconbtn" data-edit="' + r.id + '" title="' + esc(I18N.t("btn.edit")) + '">✎</button>' +
-              V._delButton({ attr: "data-del", value: r.id, name: r.name }) +
-            '</div>';
-          } }
-        ], rows);
+        var host = $("[data-grid]", panel);
+        host.innerHTML = rows.length
+          ? rows.map(invCardHTML).join("")
+          : '<div class="state">' + (V._icon ? V._icon.empty : "") + '<p>' + esc(I18N.t("empty.none")) + '</p></div>';
+        var cnt = $("[data-prod-count]", panel);
+        if (cnt) cnt.textContent = rows.length + " " + I18N.t("nav.products").toLowerCase();
       }
       draw();
+
+      // Portadas reales desde el catálogo de la tienda: si aún no cargó, repinta
+      // al resolver para que aparezcan las carátulas (mangas/cómics sin imagen).
+      if (window.Catalog && Catalog.load && !Catalog.ready) {
+        Catalog.load().then(function () { if ($("[data-grid]", panel)) draw(); }).catch(function () {});
+      }
 
       ["[data-q]", "[data-cat]", "[data-low]"].forEach(function (sel) {
         $(sel, panel).addEventListener("input", draw);
@@ -237,8 +271,11 @@
       };
       var nb = root.querySelector("[data-new-register]");
       if (nb) nb.onclick = function () {
+        // Sugerencia de nombre consecutivo: "Caja 1", "Caja 2", …
+        var nextNum = (d.registers ? d.registers.length : 0) + 1;
         var f = document.createElement("form");
-        f.innerHTML = V._formRow(I18N.t("col.name"), '<input class="input" name="name" required>') + V._formButtons();
+        f.innerHTML = V._formRow(I18N.t("col.name"),
+          '<input class="input" name="name" required value="Caja ' + nextNum + '">') + V._formButtons();
         UI.modal({ title: I18N.t("btn.newRegister"), content: f });
         V._bindForm(f, function (payload) {
           return API.post("registers", payload).then(function () { UI.toast(I18N.t("toast.created"), "ok"); UI.closeModal(); registers(panel, root); });

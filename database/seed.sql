@@ -24,10 +24,10 @@ SET FOREIGN_KEY_CHECKS = 1;
 -- ---------------------------------------------------------------------
 --  Sucursales
 -- ---------------------------------------------------------------------
-INSERT INTO `branches` (`id`,`code`,`name`,`city`,`state`,`address`,`phone`,`status`) VALUES
-  (1,'GKP-CDMX','GeekPoint Reforma','Ciudad de México','CDMX','Av. Paseo de la Reforma 222, Local 14','55 5512 8890','active'),
-  (2,'GKP-GDL','GeekPoint Chapultepec','Guadalajara','Jalisco','Av. Chapultepec Sur 480','33 3615 4021','active'),
-  (3,'GKP-MTY','GeekPoint Valle','Monterrey','Nuevo León','Av. San Pedro 1000, Plaza Fiesta','81 8342 7715','active');
+INSERT INTO `branches` (`id`,`code`,`name`,`city`,`state`,`address`,`phone`,`hours`,`status`) VALUES
+  (1,'GKP-CDMX','GeekPoint Reforma','Ciudad de México','CDMX','Av. Paseo de la Reforma 222, Local 14','55 5512 8890','Lun–Dom 11:00–21:00','active'),
+  (2,'GKP-GDL','GeekPoint Chapultepec','Guadalajara','Jalisco','Av. Chapultepec Sur 480','33 3615 4021','Lun–Sáb 11:00–21:00 · Dom 12:00–19:00','active'),
+  (3,'GKP-MTY','GeekPoint Valle','Monterrey','Nuevo León','Av. San Pedro 1000, Plaza Fiesta','81 8342 7715','Lun–Dom 11:00–21:00','active');
 
 -- ---------------------------------------------------------------------
 --  Usuarios   (password = "password")

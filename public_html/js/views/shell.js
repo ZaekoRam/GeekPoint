@@ -48,26 +48,102 @@
 
   function kpi(list) {
     return '<div class="kpis">' + list.map(function (k) {
-      return '<div class="kpi ' + (k.mod || "") + '">' +
+      var inner =
         '<div class="kpi__label">' + esc(k.label) + '</div>' +
         '<div class="kpi__value ' + (k.mono ? "num" : "") + '">' + esc(k.value) + '</div>' +
-        (k.foot ? '<div class="kpi__foot">' + esc(k.foot) + '</div>' : "") +
-      '</div>';
+        (k.foot ? '<div class="kpi__foot">' + esc(k.foot) + '</div>' : "");
+      // KPI con `href` -> tarjeta navegable (lleva a su sección del panel).
+      if (k.href) {
+        return '<a class="kpi kpi--link ' + (k.mod || "") + '" href="' + esc(k.href) + '" data-link>' +
+          inner + '<span class="kpi__go" aria-hidden="true">→</span></a>';
+      }
+      return '<div class="kpi ' + (k.mod || "") + '">' + inner + '</div>';
     }).join("") + '</div>';
   }
 
-  /** series: [{day,total}] */
+  /** series: [{day,n,total}] */
   function bars(series, opts) {
     opts = opts || {};
     if (!series || !series.length) return '<p class="muted">' + esc(I18N.t("empty.none")) + '</p>';
     var max = Math.max.apply(null, series.map(function (s) { return Number(s.total) || 0; })) || 1;
+    var ticketWord = I18N.t("col.tickets").toLowerCase();
     return '<div class="barchart">' + series.map(function (s) {
       var h = Math.max(4, Math.round((Number(s.total) || 0) / max * 100));
       var label = String(s.day || "").slice(5);
-      return '<div class="bar" style="height:' + h + '%" title="' + esc(label + ' · ' + UI.money(s.total)) + '">' +
-        (opts.labels ? '<span>' + esc(label) + '</span>' : "") + '</div>';
+      var n = (s.n != null ? s.n : (s.count != null ? s.count : null));
+      // Sin `title=` nativo (retardo de ~1 s): los datos van en data-* y un
+      // tooltip propio los muestra al instante (ver bindBarTip()).
+      return '<div class="bar" style="height:' + h + '%"' +
+        ' data-day="' + esc(label) + '"' +
+        ' data-amount="' + esc(UI.money(s.total)) + '"' +
+        (n != null ? ' data-count="' + esc(n + " " + ticketWord) + '"' : '') +
+        '>' + (opts.labels ? '<span>' + esc(label) + '</span>' : "") + '</div>';
     }).join("") + '</div>';
   }
+
+  /* Tooltip propio para las barras de bars():
+     · Aparece al INSTANTE al pasar el puntero (el title nativo tarda ~1 s).
+     · UI personalizada (día · importe · nº de tickets), no la del navegador.
+     · Un único nodo compartido, position:fixed -> nunca lo recorta la tarjeta.
+     Se liga una sola vez a nivel documento; solo reacciona sobre `.barchart .bar`. */
+  (function bindBarTip() {
+    if (typeof document === "undefined") return;
+    var tip = null;
+
+    function ensure() {
+      if (tip) return tip;
+      tip = document.createElement("div");
+      tip.className = "barchart-tip";
+      tip.setAttribute("role", "tooltip");
+      (document.body || document.documentElement).appendChild(tip);
+      return tip;
+    }
+    /* Ancla el tooltip CENTRADO sobre el borde superior de la barra (no sobre
+       el cursor): siempre queda limpio encima, sin tapar la barra. */
+    function place(bar) {
+      if (!tip || !bar) return;
+      var r = bar.getBoundingClientRect();
+      var pad = 10, w = tip.offsetWidth, h = tip.offsetHeight;
+      var left = Math.min(Math.max(pad, r.left + r.width / 2 - w / 2), window.innerWidth - w - pad);
+      var top = r.top - h - 10;
+      if (top < pad) top = Math.min(r.top + 8, window.innerHeight - h - pad);  // sin sitio arriba -> dentro
+      tip.style.left = Math.round(left) + "px";
+      tip.style.top = Math.round(top) + "px";
+    }
+    function show(bar) {
+      var t = ensure();
+      t.innerHTML =
+        '<b>' + esc(bar.getAttribute("data-day") || "") + '</b>' +
+        '<span>' + esc(bar.getAttribute("data-amount") || "") + '</span>' +
+        (bar.getAttribute("data-count")
+          ? '<em>' + esc(bar.getAttribute("data-count")) + '</em>' : "");
+      t.classList.add("is-visible");
+      place(bar);                              // mide con el tip ya visible
+    }
+    function hide() { if (tip) tip.classList.remove("is-visible"); }
+
+    function barAt(e) {
+      var el = e.target;
+      return (el && el.closest) ? el.closest(".barchart .bar") : null;
+    }
+    var current = null;
+    document.addEventListener("pointerover", function (e) {
+      var bar = barAt(e);
+      if (bar && bar !== current) { current = bar; show(bar); }
+    });
+    document.addEventListener("pointermove", function (e) {
+      if (!tip || !tip.classList.contains("is-visible")) return;
+      var bar = barAt(e);
+      if (!bar) { current = null; hide(); }
+      else if (bar !== current) { current = bar; show(bar); }
+    });
+    document.addEventListener("pointerout", function (e) {
+      if (barAt(e)) { current = null; hide(); }
+    });
+    document.addEventListener("pointerdown", function () { current = null; hide(); });
+    window.addEventListener("scroll", function () { current = null; hide(); }, true);
+    window.addEventListener("hashchange", function () { current = null; hide(); });
+  })();
 
   /**
    * Tabla de datos.
@@ -164,6 +240,68 @@
       '</button></span>';
   }
 
+  /* Portada de un producto para las tarjetas de inventario (admin / gerente).
+     Orden de preferencia:
+       1) su propia image_url (galería separada por comas; relativa -> se ancla
+          a la base del API)
+       2) portada REAL del catálogo de la tienda casando por serie / título
+          (mangas y cómics que no traen imagen propia en `products`)
+       3) portada de MARCA generada por el API  /catalog/cover  (igual que usa
+          la tienda cuando AniList no responde) — banda de categoría + título
+       4) placeholder vectorial en el cliente (sin API / offline)
+     Fuente ÚNICA para no duplicar la lógica en cada vista. */
+  var VOL_TAIL = /\s*(?:vol\.?|volumen|tomo|t\.|#|n[°º]\.?|no\.?)\s*(\d+(?:\.\d+)?)\s*$/i;
+  function norm(s) { return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim(); }
+
+  /** Portada real desde el catálogo de la tienda (Catalog.all), o "" si no hay match. */
+  function catalogCoverFor(p) {
+    if (!window.Catalog || !Catalog.all) return "";
+    var items = Catalog.all();
+    if (!items || !items.length) return "";
+    var full = String((p && p.name) || "");
+    var m = full.match(VOL_TAIL);
+    var vol = m ? m[1] : null;
+    var series = norm(full.replace(VOL_TAIL, ""));
+    var whole = norm(full);
+    if (!series && !whole) return "";
+    var hit = null;
+    for (var i = 0; i < items.length; i++) {
+      var t = norm(items[i].title), s = norm(items[i].series);
+      if (t === whole || s === whole || t === series || s === series ||
+          (series && (t === series || s === series))) { hit = items[i]; break; }
+    }
+    if (!hit) return "";
+    // Solo portadas REALES (http). Un data:/blob: del catálogo (p. ej. la caja
+    // vectorial de una figura) no aporta nada frente a /catalog/cover.
+    var isReal = function (u) { return u && /^https?:/i.test(u); };
+    if (vol && hit.volume_covers && hit.volume_covers.length) {
+      for (var v = 0; v < hit.volume_covers.length; v++) {
+        if (String(hit.volume_covers[v].v) === String(vol) && isReal(hit.volume_covers[v].url)) {
+          return hit.volume_covers[v].url;
+        }
+      }
+    }
+    return isReal(hit.cover) ? hit.cover : "";
+  }
+
+  function productCover(p) {
+    var base = ((window.__CONFIG__ || {}).apiBase || "").replace(/\/+$/, "");
+    var raw = String((p && p.image_url) || "").split(",")[0].trim();
+    if (raw) {
+      if (/^(https?:|data:|blob:)/i.test(raw)) return raw;
+      return base ? base + "/" + raw.replace(/^\/+/, "") : raw;
+    }
+    var real = catalogCoverFor(p);
+    if (real) return real;
+    if (base) {
+      return base + "/catalog/cover?kind=" + encodeURIComponent((p && p.category_slug) || "item") +
+        "&t=" + encodeURIComponent((p && p.name) || "GeekPoint");
+    }
+    return (window.Catalog && Catalog.placeholderCover)
+      ? Catalog.placeholderCover({ category: (p && p.category_slug) || "item", title: (p && p.name) || "" })
+      : "";
+  }
+
   /* Tras crear/editar/borrar un producto: invalida el catálogo de la tienda
      para que el alta se refleje AL INSTANTE (sin importar el filtro activo). */
   function catalogChanged() {
@@ -176,6 +314,7 @@
 
   Views._shell = shell;
   Views._delButton = delButton;
+  Views._productCover = productCover;
   Views._catalogChanged = catalogChanged;
   Views._kpi = kpi;
   Views._bars = bars;

@@ -940,7 +940,13 @@
     // Se pintan SIEMPRE todas las tarjetas: en modo riel el translateX decide
     // cuáles se ven; en grid (≤3 sedes, o móvil) se apilan/reparten todas.
     var cards = list;
-    var sig = (many ? "track" : "grid") + "@" + cards.map(function (b) { return b.code || b.name; }).join(",");
+    // La firma incluye TODOS los campos visibles de la tarjeta (no solo code):
+    // así, cuando el listado real de la BD llega con dirección/horario/teléfono
+    // distintos al respaldo estático, el riel se repinta en lugar de quedarse
+    // con los datos de lib/manifest.js.
+    var sig = (many ? "track" : "grid") + "@" + cards.map(function (b) {
+      return [b.code, b.name, b.city, b.state, b.address, b.phone, b.hours].join("|");
+    }).join(",");
     if (sig !== branchSig || !host.children.length) {
       branchSig = sig;
       // En el riel las tarjetas van SIEMPRE visibles (nada de fade); en grid se

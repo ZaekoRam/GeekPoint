@@ -35,6 +35,18 @@ body.in-app [data-static-store] { display: none !important; }
   background: var(--surface); border-right: 1px solid var(--line-soft);
   padding: 1.2rem .9rem; display: flex; flex-direction: column; gap: .3rem;
 }
+/* Escritorio: la barra lateral queda FIJA bajo la topbar y solo desplaza el
+   contenido. Antes, con listas largas o al hacer scroll, "Inicio" y
+   "Cerrar sesión" (que van al pie) quedaban fuera de vista. */
+@media (min-width: 900px) {
+  .side {
+    position: sticky;
+    top: var(--topbar-h);
+    align-self: start;                       /* sin esto el grid la estira y sticky no aplica */
+    height: calc(100svh - var(--topbar-h));
+    overflow-y: auto;                        /* si el menú no cupiera, scrollea dentro de la barra */
+  }
+}
 .side__user { padding: .9rem; border-radius: var(--radius-sm); background: var(--surface-2); box-shadow: var(--nm-in-sm); margin-bottom: 1rem; }
 .side__user b { display: block; font-family: var(--display); }
 .side__user span { font-size: .76rem; color: var(--muted); }
@@ -68,11 +80,36 @@ body.in-app [data-static-store] { display: none !important; }
 .kpi--accent { border-bottom: 2px solid var(--neon-cyan); }
 .kpi--warn { border-bottom: 2px solid var(--warning); }
 
+/* KPI navegable: lleva a su sección del panel (Sucursales, Usuarios, Inventario). */
+a.kpi--link { display: block; position: relative; color: inherit; text-decoration: none; cursor: pointer; transition: transform .14s var(--ease-out), box-shadow .14s var(--ease-out); }
+a.kpi--link:hover { transform: translateY(-2px); box-shadow: var(--nm-out); }
+a.kpi--link:focus-visible { outline: 2px solid var(--neon-violet); outline-offset: 2px; }
+.kpi__go { position: absolute; top: .9rem; right: 1rem; font-family: var(--mono); font-size: .9rem; color: var(--faint); opacity: 0; transform: translateX(-4px); transition: opacity .14s var(--ease-out), transform .14s var(--ease-out); }
+a.kpi--link:hover .kpi__go { opacity: 1; transform: translateX(0); }
+
 /* ---------- Bar chart (CSS puro) ---------- */
 .barchart { display: flex; align-items: flex-end; gap: 6px; height: 140px; padding: .6rem 0; }
 .barchart .bar { flex: 1 1 0; min-width: 0; background: linear-gradient(180deg, var(--neon-cyan), var(--neon-violet)); border-radius: 5px 5px 2px 2px; position: relative; opacity: .85; transition: height .5s var(--ease-out); }
-.barchart .bar:hover { opacity: 1; }
+.barchart .bar:hover { opacity: 1; filter: brightness(1.12); }
+.barchart .bar { cursor: default; }
 .barchart .bar span { position: absolute; inset-inline: 0; top: -1.3rem; text-align: center; font-family: var(--mono); font-size: .6rem; color: var(--faint); }
+
+/* Tooltip propio de la gráfica de barras (lo posiciona shell.js -> bindBarTip). */
+.barchart-tip {
+  position: fixed; z-index: 9999; pointer-events: none;
+  display: flex; flex-direction: column; gap: .05rem;
+  min-width: 4.5rem;
+  background: var(--surface-3); color: var(--text);
+  border-radius: 9px; padding: .45rem .6rem;
+  box-shadow: var(--nm-out), 0 8px 22px rgba(0, 0, 0, .45);
+  font-family: var(--mono); line-height: 1.25;
+  opacity: 0; transform: translateY(4px);
+  transition: opacity .09s var(--ease-out), transform .09s var(--ease-out);
+}
+.barchart-tip.is-visible { opacity: 1; transform: translateY(0); }
+.barchart-tip b { font-size: .62rem; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--faint); }
+.barchart-tip span { font-size: .98rem; font-weight: 700; color: var(--neon-cyan); }
+.barchart-tip em { font-size: .66rem; font-style: normal; color: var(--muted); }
 
 /* ---------- Grid de 2 columnas ---------- */
 .grid-2 { display: grid; gap: 1.2rem; grid-template-columns: 1fr; }
@@ -213,6 +250,41 @@ body.in-app [data-static-store] { display: none !important; }
 .iconbtn:hover { color: var(--neon-cyan); }
 .iconbtn--danger:hover { color: var(--danger); }
 
+/* ---------- Inventario: grilla de tarjetas (panel del gerente) ---------- */
+/* Mismo formato visual que el catálogo de la tienda, pero cada tarjeta AJUSTA
+   el stock del producto (no lo agrega a un carrito). */
+.invgrid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+.invcard {
+  display: flex; flex-direction: column;
+  background: var(--surface-2); border-radius: var(--radius-sm);
+  box-shadow: var(--nm-out-sm); overflow: hidden;
+  transition: transform .14s var(--ease-out), box-shadow .14s var(--ease-out);
+}
+.invcard:hover { transform: translateY(-2px); box-shadow: var(--nm-out); }
+.invcard.is-inactive { opacity: .6; }
+.invcard__main { cursor: pointer; display: flex; flex-direction: column; flex: 1; }
+.invcard__media { position: relative; aspect-ratio: 3 / 4; background: #0b0c10; }
+.invcard__media img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.invcard__stock { position: absolute; top: .5rem; right: .5rem; font-family: var(--mono); font-weight: 700; }
+.invcard__off {
+  position: absolute; left: 0; bottom: 0; width: 100%; text-align: center;
+  font-family: var(--mono); font-size: .6rem; letter-spacing: .12em; text-transform: uppercase;
+  background: rgba(11, 12, 16, .82); color: var(--muted); padding: .25rem 0;
+}
+.invcard__body { padding: .6rem .7rem .35rem; display: flex; flex-direction: column; gap: .16rem; flex: 1; }
+.invcard__cat { font-family: var(--mono); font-size: .58rem; letter-spacing: .14em; text-transform: uppercase; color: var(--faint); }
+.invcard__name { font-family: var(--display); font-size: .92rem; line-height: 1.12; text-transform: uppercase; }
+.invcard__sku { font-size: .64rem; color: var(--muted); }
+.invcard__foot { margin-top: auto; padding-top: .35rem; display: flex; align-items: baseline; justify-content: space-between; gap: .4rem; }
+.invcard__price { font-weight: 700; font-size: .92rem; color: var(--neon-cyan); }
+.invcard__min { font-size: .6rem; color: var(--faint); text-transform: lowercase; }
+.invcard__acts { display: flex; align-items: center; gap: .4rem; padding: .55rem .7rem .7rem; }
+.invcard__adjust { flex: 1; white-space: nowrap; }
+@media (max-width: 480px) {
+  .invgrid { gap: .7rem; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+  .invcard__name { font-size: .82rem; }
+}
+
 /* ---------- Importar Pokémon TCG ---------- */
 .pkm-import { display: flex; flex-direction: column; gap: .9rem; }
 .pkm-search { display: flex; gap: .6rem; flex-wrap: wrap; }
@@ -268,4 +340,5 @@ body.in-app [data-static-store] { display: none !important; }
 .muted { color: var(--muted); }
 .mono { font-family: var(--mono); }
 .right { text-align: right; }
+.center { text-align: center; }
 .mt { margin-top: 1.2rem; }

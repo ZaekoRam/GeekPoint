@@ -239,12 +239,20 @@ table.data thead th {
   text-align: left; font-family: var(--mono); font-size: .66rem; letter-spacing: .12em; text-transform: uppercase;
   color: var(--faint); padding: .8rem 1rem; background: var(--surface-2);
   border-bottom: 2px solid var(--line);
+  white-space: nowrap;               /* encabezados en una sola línea */
 }
 body.in-app table.data thead th { border-bottom: 0; }
+/* El encabezado sigue la alineación de su columna (si no, el título queda a la
+   izquierda y el valor centrado/derecha -> se ven "descuadrados"). */
+table.data thead th.right { text-align: right; }
+table.data thead th.center { text-align: center; }
 table.data tbody td { padding: .8rem 1rem; border-top: 1px solid var(--line-soft); }
 table.data tbody tr { transition: background .12s var(--ease-out); }
 table.data tbody tr:hover { background: var(--surface-2); }
 .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+/* Las columnas numéricas (importes, contadores) nunca parten a 2 líneas:
+   así el valor y su encabezado quedan alineados. */
+table.data th.num, table.data td.num { white-space: nowrap; }
 
 /* Tabla de cotización dentro del modal: sin min-width, columnas ajustadas,
    los importes no se desbordan a la derecha. */

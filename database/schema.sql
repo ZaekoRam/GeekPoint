@@ -23,6 +23,7 @@ CREATE TABLE `branches` (
   `state`       VARCHAR(90)  NOT NULL DEFAULT '',
   `address`     VARCHAR(255) NOT NULL DEFAULT '',
   `phone`       VARCHAR(40)  NOT NULL DEFAULT '',
+  `hours`       VARCHAR(120) NOT NULL DEFAULT '',
   `status`      ENUM('active','inactive') NOT NULL DEFAULT 'active',
   `created_at`  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at`  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

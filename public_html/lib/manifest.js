@@ -29,7 +29,7 @@
       {
         code: "GKP-GDL", name: "GeekPoint Chapultepec", status: "active",
         city: "Guadalajara, Jalisco", address: "Av. Chapultepec Sur 480",
-        phone: "33 3615 4021", hours: "Lun–Sáb 11:00–20:00"
+        phone: "33 3615 4021", hours: "Lun–Sáb 11:00–21:00 · Dom 12:00–19:00"
       },
       {
         code: "GKP-MTY", name: "GeekPoint Valle", status: "active",

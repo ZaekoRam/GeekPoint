@@ -31,11 +31,12 @@
 
   /**
    * Formato de moneda ÚNICO para toda la tienda, idéntico en ES y EN:
-   *   "$3,800.00 MXN"
+   *   money(3800)        -> "$3,800.00 MXN"
+   *   money(3800, true)  -> "$3,800.00"   (sin sufijo — para celdas angostas)
    * No depende de I18N.lang (evita que "en" pinte "MX$3,800.00").
-   * Agrupación es-MX (coma millares, punto decimales) + símbolo "$" + " MXN".
+   * Agrupación es-MX (coma millares, punto decimales) + símbolo "$".
    */
-  function money(n) {
+  function money(n, bare) {
     var amount = Number(n);
     if (!isFinite(amount)) amount = 0;
     var neg = amount < 0;
@@ -47,7 +48,7 @@
     } catch (e) {
       digits = Math.abs(amount).toFixed(2);
     }
-    return (neg ? "-$" : "$") + digits + " MXN";
+    return (neg ? "-$" : "$") + digits + (bare ? "" : " MXN");
   }
 
   function num(n, digits) {

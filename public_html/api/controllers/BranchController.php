@@ -46,16 +46,24 @@ class BranchController extends Controller
         if ($exists) Response::error(409, 'duplicate', 'Ya existe una sucursal con esa clave.');
 
         Database::run(
-            'INSERT INTO branches (code, name, city, state, address, phone, status)
-             VALUES (?, ?, ?, ?, ?, ?, ?)',
+            'INSERT INTO branches (code, name, city, state, address, phone, hours, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
             [
                 trim($d['code']), trim($d['name']),
                 $d['city'] ?? '', $d['state'] ?? '',
                 $d['address'] ?? '', $d['phone'] ?? '',
+                trim((string) ($d['hours'] ?? '')),
                 $d['status'] ?? 'active',
             ]
         );
         $id = Database::lastId();
+
+        // Toda sucursal nace con al menos una "Caja 1" lista para el POS.
+        Database::run(
+            'INSERT INTO registers (branch_id, name, status) VALUES (?, ?, "active")',
+            [$id, 'Caja 1']
+        );
+
         Response::ok(['branch' => Database::one('SELECT * FROM branches WHERE id = ?', [$id])], 201);
     }
 
@@ -76,12 +84,13 @@ class BranchController extends Controller
         if ($dupe) Response::error(409, 'duplicate', 'Ya existe otra sucursal con esa clave.');
 
         Database::run(
-            'UPDATE branches SET code = ?, name = ?, city = ?, state = ?, address = ?, phone = ?, status = ?
+            'UPDATE branches SET code = ?, name = ?, city = ?, state = ?, address = ?, phone = ?, hours = ?, status = ?
              WHERE id = ?',
             [
                 trim($d['code']), trim($d['name']),
                 $d['city'] ?? $current['city'], $d['state'] ?? $current['state'],
                 $d['address'] ?? $current['address'], $d['phone'] ?? $current['phone'],
+                array_key_exists('hours', $d) ? trim((string) $d['hours']) : ($current['hours'] ?? ''),
                 $d['status'] ?? $current['status'],
                 $id,
             ]

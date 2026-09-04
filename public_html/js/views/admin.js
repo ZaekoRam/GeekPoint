@@ -11,12 +11,14 @@
     { href: "#/admin", i18n: "nav.overview", ico: "▦" },
     { href: "#/admin/branches", i18n: "nav.branches", ico: "🏬" },
     { href: "#/admin/users", i18n: "nav.users", ico: "👥" },
+    { href: "#/admin/registers", i18n: "nav.registers", ico: "🖥️" },
     { href: "#/admin/inventory", i18n: "nav.inventory", ico: "📦" }
   ];
 
   function activeHref(sub) {
     if (sub === "branches") return "#/admin/branches";
     if (sub === "users") return "#/admin/users";
+    if (sub === "registers") return "#/admin/registers";
     if (sub === "inventory") return "#/admin/inventory";
     return "#/admin";
   }
@@ -26,6 +28,7 @@
     var head = "";
     if (sub === "branches") head = '<button class="btn btn--neon btn--sm" data-new-branch>+ ' + esc(I18N.t("btn.newBranch")) + '</button>';
     if (sub === "users") head = '<button class="btn btn--neon btn--sm" data-new-user>+ ' + esc(I18N.t("btn.newUser")) + '</button>';
+    if (sub === "registers") head = '<button class="btn btn--neon btn--sm" data-new-register>+ ' + esc(I18N.t("btn.newRegister")) + '</button>';
     if (sub === "inventory") head =
       '<button class="btn btn--neon btn--sm" data-new-product>+ ' + esc(I18N.t("prodadm.new")) + '</button>' +
       '<button class="btn btn--ghost btn--sm" data-import-pkm>+ ' + esc(I18N.t("pkm.add")) + '</button>' +
@@ -43,7 +46,7 @@
     var sub = (params && params.sub) || "";
     var panel = $("[data-panel]", root);
 
-    var loaders = { "": overview, "branches": branches, "users": users, "inventory": inventory };
+    var loaders = { "": overview, "branches": branches, "users": users, "registers": registers, "inventory": inventory };
     var fn = loaders[sub] || overview;
     fn(panel, root);
 
@@ -61,10 +64,10 @@
         V._kpi([
           { label: I18N.t("kpi.salesToday"), value: UI.money(k.sales_today_total), foot: k.sales_today_count + " " + I18N.t("col.tickets").toLowerCase(), mod: "kpi--accent" },
           { label: I18N.t("kpi.salesMonth"), value: UI.money(k.sales_month_total), foot: k.sales_month_count + " " + I18N.t("col.tickets").toLowerCase() },
-          { label: I18N.t("kpi.branchesActive"), value: k.branches_active + " / " + k.branches_total, mono: true },
-          { label: I18N.t("kpi.users"), value: k.users_total, mono: true },
-          { label: I18N.t("kpi.products"), value: k.products_total, mono: true },
-          { label: I18N.t("kpi.lowStock"), value: k.low_stock_total, mono: true, mod: k.low_stock_total ? "kpi--warn" : "" }
+          { label: I18N.t("kpi.branchesActive"), value: k.branches_active + " / " + k.branches_total, mono: true, href: "#/admin/branches" },
+          { label: I18N.t("kpi.users"), value: k.users_total, mono: true, href: "#/admin/users" },
+          { label: I18N.t("kpi.products"), value: k.products_total, mono: true, href: "#/admin/inventory" },
+          { label: I18N.t("kpi.lowStock"), value: k.low_stock_total, mono: true, mod: k.low_stock_total ? "kpi--warn" : "", href: "#/admin/inventory" }
         ]) +
         '<div class="grid-2 mt">' +
           '<div class="card"><h2 class="mono" style="font-size:.9rem;color:var(--faint)">' + esc(I18N.t("misc.last14")) + '</h2>' +
@@ -80,10 +83,10 @@
           { key: "name", label: I18N.t("col.branch"), render: function (r) { return '<b>' + esc(r.name) + '</b><br><span class="muted mono" style="font-size:.7rem">' + esc(r.code) + '</span>'; } },
           { key: "city", label: I18N.t("col.city"), render: function (r) { return esc(r.city); } },
           { key: "status", label: I18N.t("col.status"), render: function (r) { return V._statusBadge(r.status); } },
-          { key: "today_total", label: I18N.t("col.today"), cls: "num right", render: function (r) { return UI.money(r.today_total); } },
-          { key: "month_total", label: I18N.t("col.month"), cls: "num right", render: function (r) { return UI.money(r.month_total); } },
-          { key: "month_count", label: I18N.t("col.tickets"), cls: "num right", render: function (r) { return r.month_count; } },
-          { key: "low_stock", label: I18N.t("col.lowstock"), cls: "num right", render: function (r) { return r.low_stock ? '<span class="badge badge--warn">' + r.low_stock + '</span>' : '0'; } }
+          { key: "today_total", label: I18N.t("col.today"), cls: "num center", render: function (r) { return UI.money(r.today_total, true); } },
+          { key: "month_total", label: I18N.t("col.month"), cls: "num center", render: function (r) { return UI.money(r.month_total, true); } },
+          { key: "month_count", label: I18N.t("col.tickets"), cls: "num center", render: function (r) { return r.month_count; } },
+          { key: "low_stock", label: I18N.t("col.lowstock"), cls: "num center", render: function (r) { return r.low_stock ? '<span class="badge badge--warn">' + r.low_stock + '</span>' : '0'; } }
         ], d.by_branch);
     }).catch(function (err) { panel.innerHTML = V._error(err); });
   }
@@ -144,11 +147,7 @@
       '</div>' +
       row("address", '<input class="input" name="address" value="' + esc(b.address || "") + '">') +
       row("phone", '<input class="input" name="phone" value="' + esc(b.phone || "") + '">') +
-      (b.id ? row("status",
-        '<select class="select" name="status">' +
-          '<option value="active"' + (b.status === "active" ? " selected" : "") + '>' + esc(I18N.t("status.active")) + '</option>' +
-          '<option value="inactive"' + (b.status === "inactive" ? " selected" : "") + '>' + esc(I18N.t("status.inactive")) + '</option>' +
-        '</select>') : "") +
+      row("hours", '<input class="input" name="hours" placeholder="Lun–Dom 11:00–21:00" value="' + esc(b.hours || "") + '">') +
       formButtons();
     var m = UI.modal({ title: I18N.t(b.id ? "btn.edit" : "btn.newBranch"), content: c });
     bindForm(c, m, function (payload) {
@@ -229,6 +228,67 @@
     });
   }
 
+  /* ---------------- Cajas (registers) de TODAS las sucursales ---------------- */
+  function registers(panel, root) {
+    panel.innerHTML = V._loading();
+    Promise.all([API.get("registers"), API.get("branches")]).then(function (res) {
+      var regs = res[0].registers || [];
+      var brs = res[1].branches || [];
+
+      panel.innerHTML = V._table([
+        { key: "name", label: I18N.t("col.register"), render: function (r) { return '<b>' + esc(r.name) + '</b>'; } },
+        { key: "branch_name", label: I18N.t("misc.branch"), render: function (r) { return esc(r.branch_name || "—"); } },
+        { key: "status", label: I18N.t("col.status"), render: function (r) { return V._statusBadge(r.status); } },
+        { key: "id", label: I18N.t("col.actions"), render: function (r) {
+          return V._delButton({ attr: "data-del", value: r.id, name: r.name });
+        } }
+      ], regs, { empty: I18N.t("empty.none") });
+
+      panel.onclick = function (e) {
+        var dl = e.target.closest("[data-del]");
+        if (!dl) return;
+        var reg = regs.find(function (x) { return x.id == dl.getAttribute("data-del"); });
+        UI.confirm(I18N.t("confirm.delete", { name: reg.name }), function () {
+          API.del("registers/" + reg.id).then(function (r) {
+            UI.toast(r && r.message ? r.message : I18N.t("toast.deleted"), "ok");
+            registers(panel, root);
+          }).catch(apiToast);
+        }, { danger: true });
+      };
+
+      var nb = root.querySelector("[data-new-register]");
+      if (nb) nb.onclick = function () { registerForm(brs, regs, function () { registers(panel, root); }); };
+    }).catch(function (err) { panel.innerHTML = V._error(err); });
+  }
+
+  function registerForm(branches, existing, done) {
+    if (!branches.length) { UI.toast(I18N.t("toast.error"), "error"); return; }
+    function nextName(bid) {
+      var n = (existing || []).filter(function (r) { return String(r.branch_id) === String(bid); }).length + 1;
+      return "Caja " + n;
+    }
+    var f = document.createElement("form");
+    f.innerHTML =
+      row("branch", '<select class="select" name="branch_id" required>' +
+        branches.map(function (b) { return '<option value="' + b.id + '">' + esc(b.name) + '</option>'; }).join("") +
+        '</select>', "misc.branch") +
+      row("name", '<input class="input" name="name" required value="' + esc(nextName(branches[0].id)) + '">', "col.name") +
+      formButtons();
+    var m = UI.modal({ title: I18N.t("btn.newRegister"), content: f });
+
+    // La sucursal re-sugiere "Caja N" mientras el nombre no se haya tocado a mano.
+    var sel = f.querySelector('[name="branch_id"]');
+    var nameInp = f.querySelector('[name="name"]');
+    var touched = false;
+    nameInp.addEventListener("input", function () { touched = true; });
+    sel.addEventListener("change", function () { if (!touched) nameInp.value = nextName(sel.value); });
+
+    bindForm(f, m, function (payload) {
+      return API.post("registers", { branch_id: payload.branch_id, name: (payload.name || "").trim() })
+        .then(function () { UI.toast(I18N.t("toast.created"), "ok"); UI.closeModal(); done(); });
+    });
+  }
+
   /* ---------------- Inventario + gestión manual de productos ---------------- */
   var PRV_LABEL = {
     manga: "MANGA", figuras: "FIGURA", comics: "CÓMIC", tcg: "TCG",
@@ -260,20 +320,34 @@
           '<span class="spacer"></span>' +
           '<span class="mono muted" style="font-size:.72rem" data-prod-count>' + prods.length + ' ' + esc(I18N.t("nav.products").toLowerCase()) + '</span>' +
         '</div>' +
-        '<div data-prod-table>' + productsTable(prods) + '</div>' +
+        '<div data-prod-table>' + productsTable(prods, brs) + '</div>' +
         '<h2 class="mono" style="font-size:.9rem;color:var(--faint);margin:1.6rem 0 .6rem">' + esc(I18N.t("misc.alerts")) + '</h2>' +
         '<div data-alerts>' + alertsTable(res[3].alerts) + '</div>';
 
       var tableBox = $("[data-prod-table]", panel);
 
-      $("[data-cat-filter]", panel).addEventListener("change", function () {
-        var slug = this.value;
+      function redrawTable() {
+        var slug = ($("[data-cat-filter]", panel) || {}).value || "";
         var list = slug ? prods.filter(function (p) { return p.category_slug === slug; }) : prods;
-        tableBox.innerHTML = productsTable(list);
-        $("[data-prod-count]", panel).textContent = list.length + " " + I18N.t("nav.products").toLowerCase();
-      });
+        tableBox.innerHTML = productsTable(list, brs);
+        var cnt = $("[data-prod-count]", panel);
+        if (cnt) cnt.textContent = list.length + " " + I18N.t("nav.products").toLowerCase();
+      }
+      $("[data-cat-filter]", panel).addEventListener("change", redrawTable);
+
+      // El catálogo de la tienda trae las portadas reales; si aún no cargó al
+      // pintar, se repinta cuando resuelve para que aparezcan las carátulas.
+      if (window.Catalog && Catalog.load && !Catalog.ready) {
+        Catalog.load().then(function () { if ($("[data-prod-table]", panel)) redrawTable(); }).catch(function () {});
+      }
 
       tableBox.addEventListener("click", function (e) {
+        var rst = e.target.closest("[data-restock]");
+        if (rst) {
+          var g = prods.find(function (p) { return p.sku === rst.getAttribute("data-restock"); });
+          if (g) restockModal(g, brs, function () { inventory(panel, root); });
+          return;
+        }
         var del = e.target.closest("[data-del-sku]");
         if (!del) return;
         var sku = del.getAttribute("data-del-sku");
@@ -304,10 +378,12 @@
       var g = map[r.sku] || (map[r.sku] = {
         sku: r.sku, name: r.name, price: r.price, image_url: r.image_url,
         category_slug: r.category_slug || "", status: r.status,
-        total: 0, byBranch: {}
+        total: 0, byBranch: {}, idByBranch: {}, sample: r
       });
       g.total += r.stock || 0;
       g.byBranch[r.branch_id] = (g.byBranch[r.branch_id] || 0) + (r.stock || 0);
+      g.idByBranch[r.branch_id] = r.id;          // id del producto en esa sucursal
+      if (r.category_slug && !g.category_slug) g.category_slug = r.category_slug;
       if (r.status === "active") g.status = "active";
     });
     return Object.keys(map).map(function (k) { return map[k]; })
@@ -318,25 +394,111 @@
     return V._delButton({ attr: "data-del-sku", value: sku, name: name });
   }
 
-  function productsTable(list) {
-    if (!list.length) return '<p class="muted">' + esc(I18N.t("empty.none")) + '</p>';
-    return V._table([
-      { key: "name", label: I18N.t("col.product"), render: function (r) {
-        return (r.image_url ? '<img src="' + esc(r.image_url) + '" alt="" style="width:34px;height:44px;object-fit:cover;border-radius:6px;vertical-align:middle;margin-right:.5rem" onerror="this.style.display=\'none\'">' : "") +
-          '<b>' + esc(r.name) + '</b><br><span class="mono muted" style="font-size:.7rem">' + esc(r.sku) + '</span>';
-      } },
-      { key: "category_slug", label: I18N.t("col.category"), render: function (r) {
-        return '<span class="badge">' + esc(PRV_LABEL[r.category_slug] || r.category_slug || "—") + '</span>';
-      } },
-      { key: "price", label: I18N.t("col.price"), cls: "num right", render: function (r) { return UI.money(r.price); } },
-      { key: "total", label: I18N.t("col.stock"), cls: "num right", render: function (r) {
-        var cls = r.total === 0 ? "badge--danger" : (r.total <= 6 ? "badge--warn" : "badge--ok");
-        return '<span class="badge ' + cls + '">' + r.total + '</span>';
-      } },
-      { key: "sku", label: I18N.t("col.actions"), render: function (r) {
-        return delButton(r.sku, r.name);
-      } }
-    ], list);
+  /* Inventario consolidado como GRILLA DE TARJETAS (mismo estilo que la tienda).
+     Cada tarjeta agrupa un SKU: portada, categoría, precio, stock TOTAL y el
+     desglose por sucursal. Al pulsarla (o "± Ajustar stock") abre el modal de
+     reabastecer por sucursal — nunca "comprar". */
+  function productsTable(list, branches) {
+    if (!list.length) {
+      return '<div class="state">' + (V._icon ? V._icon.empty : "") + '<p>' + esc(I18N.t("empty.none")) + '</p></div>';
+    }
+    branches = branches || [];
+    return '<div class="invgrid">' + list.map(function (g) {
+      var totalCls = g.total === 0 ? "badge--danger" : (g.total <= 6 ? "badge--warn" : "badge--ok");
+      var cat = esc(PRV_LABEL[g.category_slug] || g.category_slug || "—");
+      var perBranch = branches.map(function (b) {
+        return esc(String(b.code || "").replace(/^GKP-/, "")) + " " + (g.byBranch[b.id] || 0);
+      }).join(" · ");
+      return '' +
+        '<article class="invcard' + (g.status !== "active" ? " is-inactive" : "") + '">' +
+          '<div class="invcard__main" data-restock="' + esc(g.sku) + '" title="' + esc(I18N.t("prodadm.restock")) + '">' +
+            '<div class="invcard__media">' +
+              '<img src="' + esc(V._productCover(g)) + '" alt="" loading="lazy" decoding="async" onerror="this.style.visibility=\'hidden\'">' +
+              '<span class="invcard__stock badge ' + totalCls + '">' + g.total + '</span>' +
+              (g.status !== "active" ? '<span class="invcard__off">' + esc(I18N.t("status.inactive")) + '</span>' : "") +
+            '</div>' +
+            '<div class="invcard__body">' +
+              '<span class="invcard__cat">' + cat + '</span>' +
+              '<h3 class="invcard__name">' + esc(g.name) + '</h3>' +
+              '<span class="invcard__sku mono">' + esc(g.sku) + '</span>' +
+              '<div class="invcard__foot">' +
+                '<span class="invcard__price mono">' + UI.money(g.price, true) + '</span>' +
+                (perBranch ? '<span class="mono" style="font-size:.58rem;color:var(--muted)">' + perBranch + '</span>' : "") +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+          '<div class="invcard__acts">' +
+            '<button class="btn btn--neon btn--sm invcard__adjust" data-restock="' + esc(g.sku) + '">± ' + esc(I18N.t("btn.adjust")) + '</button>' +
+            delButton(g.sku, g.name) +
+          '</div>' +
+        '</article>';
+    }).join("") + '</div>';
+  }
+
+  /* Modal: añadir stock del MISMO SKU en varias sucursales de una vez.
+     · Sucursal donde el producto ya existe -> PATCH /stock (delta, +N, con
+       movimiento de reabastecimiento).
+     · Sucursal donde aún no existe          -> se crea vía /products/import
+       usando la ficha real de otra sucursal (no pisa nombre/precio/imágenes). */
+  function restockModal(group, branches, done) {
+    var c = document.createElement("form");
+    c.innerHTML =
+      '<p class="muted" style="margin-bottom:.6rem">' + esc(group.name) +
+        ' · <span class="mono">' + esc(group.sku) + '</span></p>' +
+      '<p class="field__label mono" style="font-size:.7rem;color:var(--faint);text-transform:uppercase;letter-spacing:.1em;margin:.2rem 0 .6rem">' +
+        esc(I18N.t("prodadm.restockHint")) + '</p>' +
+      '<div class="pkm-branches">' + branches.map(function (b) {
+        var has = group.idByBranch[b.id] != null;
+        var cur = group.byBranch[b.id] || 0;
+        var note = has ? (esc(I18N.t("col.stock")) + ': ' + cur) : esc(I18N.t("prodadm.notInBranch"));
+        return '<label class="pkm-branch"><span>' + esc(b.name) +
+          '<br><small class="muted mono" style="font-size:.62rem">' + note + '</small></span>' +
+          '<input class="input" type="number" min="0" step="1" value="0" data-branch="' + b.id + '"></label>';
+      }).join("") + '</div>' +
+      formButtons();
+
+    var m = UI.modal({ title: I18N.t("prodadm.restockTitle", { name: group.name }), content: c, wide: true });
+
+    bindForm(c, m, function () {
+      var deltas = [], creates = {};
+      c.querySelectorAll("[data-branch]").forEach(function (inp) {
+        var qty = Math.max(0, parseInt(inp.value, 10) || 0);
+        if (qty <= 0) return;
+        var bid = inp.getAttribute("data-branch");
+        if (group.idByBranch[bid] != null) deltas.push({ id: group.idByBranch[bid], qty: qty });
+        else creates[bid] = qty;
+      });
+      if (!deltas.length && !Object.keys(creates).length) {
+        return Promise.reject(new Error(I18N.t("prodadm.needStock")));
+      }
+
+      var jobs = deltas.map(function (d) {
+        return API.patch("products/" + d.id + "/stock", { mode: "delta", value: d.qty, note: "Reabastecimiento" });
+      });
+      if (Object.keys(creates).length) {
+        var s = group.sample || {};
+        jobs.push(API.post("products/import", {
+          source: "restock",
+          sku: group.sku,
+          name: s.name || group.name,
+          category_slug: group.category_slug || s.category_slug || "",
+          price: s.price != null ? s.price : group.price,
+          image_url: s.image_url != null ? s.image_url : (group.image_url || ""),
+          figure_png_url: s.figure_png_url || "",
+          description: s.description || "",
+          tax_rate: s.tax_rate,
+          min_stock: s.min_stock,
+          stock_by_branch: creates
+        }));
+      }
+
+      return Promise.all(jobs).then(function () {
+        UI.toast(I18N.t("prodadm.restockDone"), "ok");
+        UI.closeModal();
+        V._catalogChanged();
+        done();
+      });
+    });
   }
 
   /* Campo de imagen: acepta URL externa O archivo local (con vista previa). */

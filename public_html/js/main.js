@@ -157,7 +157,7 @@
         : (((window.__BRAND__ || {}).branches) || []);
       var rows = c.map(function (l) {
         return '<tr><td>' + UI.escHTML(l.title) + '</td><td class="num qcol-qty">' + l.qty +
-          '</td><td class="num qcol-total">' + UI.money(l.price * l.qty) + '</td></tr>';
+          '</td><td class="num qcol-total">' + UI.money(l.price * l.qty, true) + '</td></tr>';
       }).join("");
 
       var form = document.createElement("form");
@@ -167,7 +167,7 @@
         '<p class="muted" style="margin-bottom:1rem">' + UI.escHTML(I18N.t("resv.intro")) + '</p>' +
         '<div class="table-wrap"><table class="data quote-table"><tbody>' + rows +
           '<tr class="quote-total"><td><b>' + UI.escHTML(I18N.t("cart.total")) + '</b></td><td></td><td class="num qcol-total"><b>' +
-          UI.money(STORE.shopTotal()) + '</b></td></tr></tbody></table></div>' +
+          UI.money(STORE.shopTotal(), true) + '</b></td></tr></tbody></table></div>' +
         '<div class="field"><label>' + UI.escHTML(I18N.t("resv.name")) + '</label>' +
           '<input class="input" name="customer_name" required maxlength="120" autocomplete="name"></div>' +
         '<div class="resv-grid">' +

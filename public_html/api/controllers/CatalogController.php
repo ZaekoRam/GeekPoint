@@ -280,11 +280,14 @@ class CatalogController extends Controller
         $out = [];
         if (Database::ping()) {
             try {
+                // `b.*` para no romper si la columna `hours` aún no existe
+                // (migración 2026_09_03_000001 sin ejecutar) — el front la
+                // completa con un horario por defecto en ese caso.
                 $rows = Database::all(
-                    "SELECT id, code, name, city, state, address, phone, status
-                       FROM branches
-                      WHERE status = 'active'
-                      ORDER BY id"
+                    "SELECT b.*
+                       FROM branches b
+                      WHERE b.status = 'active'
+                      ORDER BY b.id"
                 );
                 foreach (($rows ?: []) as $r) {
                     $out[] = [
@@ -295,6 +298,7 @@ class CatalogController extends Controller
                         'state'   => (string) $r['state'],
                         'address' => (string) $r['address'],
                         'phone'   => (string) $r['phone'],
+                        'hours'   => (string) ($r['hours'] ?? ''),
                         'status'  => (string) $r['status'],
                     ];
                 }

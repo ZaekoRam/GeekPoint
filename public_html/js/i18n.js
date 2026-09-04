@@ -176,6 +176,7 @@
 
       "form.branchCode": "Clave", "form.branchName": "Nombre", "form.city": "Ciudad",
       "form.state": "Estado", "form.address": "Dirección", "form.phone": "Teléfono",
+      "form.hours": "Horario de atención",
       "form.password": "Contraseña", "form.passwordHint": "Déjala vacía para no cambiarla",
       "form.assignBranch": "Sucursal asignada", "form.description": "Descripción",
       "form.taxRate": "Tasa de IVA", "form.minStock": "Stock mínimo", "form.initialStock": "Stock inicial",
@@ -199,6 +200,11 @@
       "prodadm.stockByBranch": "Stock inicial por sucursal",
       "prodadm.needStock": "Asigna stock para al menos una sucursal.",
       "prodadm.deleted": "Producto eliminado ({n} registro(s)).",
+      "prodadm.restock": "Añadir stock por sucursal",
+      "prodadm.restockTitle": "Añadir stock — {name}",
+      "prodadm.restockHint": "Cantidad a SUMAR al stock actual de cada sucursal (0 = sin cambios).",
+      "prodadm.restockDone": "Stock añadido.",
+      "prodadm.notInBranch": "sin existencias — se dará de alta",
 
       "empty.none": "Sin registros todavía.",
       "confirm.delete": "¿Eliminar «{name}»? Esta acción no se puede deshacer.",
@@ -384,6 +390,7 @@
 
       "form.branchCode": "Code", "form.branchName": "Name", "form.city": "City",
       "form.state": "State", "form.address": "Address", "form.phone": "Phone",
+      "form.hours": "Opening hours",
       "form.password": "Password", "form.passwordHint": "Leave empty to keep it",
       "form.assignBranch": "Assigned branch", "form.description": "Description",
       "form.taxRate": "Tax rate", "form.minStock": "Minimum stock", "form.initialStock": "Initial stock",
@@ -407,6 +414,11 @@
       "prodadm.stockByBranch": "Initial stock per branch",
       "prodadm.needStock": "Set stock for at least one branch.",
       "prodadm.deleted": "Product removed ({n} record(s)).",
+      "prodadm.restock": "Add stock by branch",
+      "prodadm.restockTitle": "Add stock — {name}",
+      "prodadm.restockHint": "Amount to ADD to each branch's current stock (0 = no change).",
+      "prodadm.restockDone": "Stock added.",
+      "prodadm.notInBranch": "no stock — will be created",
 
       "empty.none": "No records yet.",
       "confirm.delete": "Delete “{name}”? This cannot be undone.",
