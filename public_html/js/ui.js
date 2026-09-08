@@ -114,6 +114,7 @@
     document.addEventListener("keydown", escClose);
     document.body.appendChild(wrap);
     openModalEl = wrap;
+    document.documentElement.classList.add("modal-open");   // bloquea el scroll de fondo
 
     // Animación de ENTRADA por clase (keyframes en components.css), no siempre-activa.
     if (!reduced) {
@@ -138,6 +139,7 @@
     if (!el) return;
     openModalEl = null;
     document.removeEventListener("keydown", escClose);
+    document.documentElement.classList.remove("modal-open");
     if (instant === true || reduced) { el.remove(); return; }
     el.classList.remove("is-entering");
     el.classList.add("is-leaving");

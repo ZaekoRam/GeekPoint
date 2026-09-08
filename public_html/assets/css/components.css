@@ -281,7 +281,10 @@ body.in-app .toast { border: 0; border-left: 3px solid var(--accent); border-rad
 @keyframes toastIn { from { opacity: 0; transform: translateX(24px); } }
 
 /* ---------- Modal ---------- */
-.modal { position: fixed; inset: 0; z-index: var(--z-modal); display: grid; place-items: center; padding: 1.2rem; }
+/* Con un modal abierto, el fondo NO se desplaza (el contenido del modal
+   scrollea dentro de .modal__card). */
+html.modal-open, html.modal-open body { overflow: hidden; }
+.modal { position: fixed; inset: 0; z-index: var(--z-modal); display: grid; place-items: center; padding: 1.2rem; overscroll-behavior: contain; }
 .modal__backdrop { position: absolute; inset: 0; background: rgba(12,12,14,.72); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
 .modal__card {
   position: relative; width: min(560px, 100%); max-height: 88vh; overflow-y: auto;

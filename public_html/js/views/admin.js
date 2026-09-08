@@ -348,6 +348,12 @@
           if (gv) volumesModal(gv, brs, function () { inventory(panel, root); });
           return;
         }
+        var ed = e.target.closest("[data-edit-sku]");
+        if (ed) {
+          var ge = prods.find(function (p) { return p.sku === ed.getAttribute("data-edit-sku"); });
+          if (ge) editProductModal(ge, cats, function () { inventory(panel, root); });
+          return;
+        }
         var rst = e.target.closest("[data-restock]");
         if (rst) {
           var g = prods.find(function (p) { return p.sku === rst.getAttribute("data-restock"); });
@@ -417,7 +423,7 @@
       }).join(" · ");
       return '' +
         '<article class="invcard' + (g.status !== "active" ? " is-inactive" : "") + '">' +
-          '<div class="invcard__main" data-restock="' + esc(g.sku) + '" title="' + esc(I18N.t("prodadm.restock")) + '">' +
+          '<div class="invcard__main" data-edit-sku="' + esc(g.sku) + '" title="' + esc(I18N.t("btn.edit")) + '">' +
             '<div class="invcard__media">' +
               '<img src="' + esc(V._productCover(g)) + '" alt="" loading="lazy" decoding="async" onerror="this.style.visibility=\'hidden\'">' +
               '<span class="invcard__stock badge ' + totalCls + '">' + g.total + '</span>' +
@@ -575,10 +581,97 @@
     });
   }
 
-  /* Campo de imagen: acepta URL externa O archivo local (con vista previa). */
-  function imageField(name, i18nKey, ph, multiple) {
+  /* Editar un SKU del inventario (nombre, categoría, precio, portada, etiquetas…).
+     Misma pinta que "Nuevo producto"; el cambio se aplica a la ficha del SKU
+     en TODAS sus sucursales (no toca el stock: eso es "± Ajustar stock"). */
+  function editProductModal(group, cats, done) {
+    var s = group.sample || {};
+    var ids = Object.keys(group.idByBranch).map(function (k) { return group.idByBranch[k]; }).filter(Boolean);
+    var catOpts = cats.map(function (x) {
+      return '<option value="' + esc(x.slug) + '"' + (x.slug === group.category_slug ? " selected" : "") + '>' +
+        esc(I18N.pick({ es: x.name_es, en: x.name_en })) + '</option>';
+    }).join("");
+
+    var c = document.createElement("form");
+    c.innerHTML =
+      row("col.sku", '<input class="input" value="' + esc(group.sku) + '" disabled>', "col.sku") +
+      row("prodadm.name", '<input class="input" name="name" required maxlength="180" value="' + esc(group.name) + '">') +
+      '<div class="grid-2">' +
+        row("prodadm.category", '<select class="select" name="category_slug" required>' + catOpts + '</select>') +
+        row("prodadm.price", '<input class="input" type="number" name="price" min="0" step="0.01" required value="' + (group.price != null ? group.price : "") + '">') +
+      '</div>' +
+      row("prodadm.synopsis", '<textarea class="input" name="description" rows="3" maxlength="500">' + esc(s.description || "") + '</textarea>') +
+      imageField("figure_png_url", "prodadm.figurePng",
+        "https://….png  —  o sube un PNG recortado del equipo", false,
+        s.figure_png_url || "") +
+      imageField("image_url", "prodadm.image",
+        "https://…, https://…  —  o sube fotos del equipo", true,
+        s.image_url || group.image_url || "") +
+      row("form.tags",
+        '<input class="input" name="tags" maxlength="120" placeholder="novedad, preventa" value="' + esc(s.tags || "") + '">' +
+        '<small class="muted" style="font-size:.68rem">' + esc(I18N.t("form.tagsHint")) + '</small>', "form.tags") +
+      '<div class="grid-2">' +
+        row("form.minStock", '<input class="input" type="number" name="min_stock" min="0" value="' + (s.min_stock != null ? s.min_stock : 3) + '">', "form.minStock") +
+        row("col.status",
+          '<select class="select" name="status">' +
+            '<option value="active"' + (group.status === "active" ? " selected" : "") + '>' + esc(I18N.t("status.active")) + '</option>' +
+            '<option value="inactive"' + (group.status !== "active" ? " selected" : "") + '>' + esc(I18N.t("status.inactive")) + '</option>' +
+          '</select>', "col.status") +
+      '</div>' +
+      formButtons();
+
+    var m = UI.modal({ title: I18N.t("btn.edit"), content: c, wide: true });
+
+    // Vista previa de los archivos elegidos (igual que en "Nuevo producto").
+    c.querySelectorAll("[data-file]").forEach(function (fi) {
+      fi.addEventListener("change", function () {
+        renderPreviews(fi, c.querySelector('[data-prev="' + fi.getAttribute("data-file") + '"]'));
+      });
+    });
+
+    bindForm(c, m, function (payload) {
+      if (!ids.length) return Promise.reject(new Error(I18N.t("toast.error")));
+      var cat = cats.filter(function (x) { return x.slug === payload.category_slug; })[0];
+
+      var typedGallery = (payload.image_url || "").split(",").map(function (u) { return u.trim(); }).filter(Boolean);
+      var typedFigure = (payload.figure_png_url || "").trim();
+      var figFiles = Array.prototype.slice.call((c.querySelector('[data-file="figure_png_url"]') || {}).files || []).slice(0, 1);
+      var galFiles = Array.prototype.slice.call((c.querySelector('[data-file="image_url"]') || {}).files || []);
+      if (figFiles.length || galFiles.length) UI.toast(I18N.t("prodadm.uploading"), "ok");
+
+      return Promise.all([
+        figFiles.length ? uploadFiles(figFiles) : Promise.resolve([]),
+        galFiles.length ? uploadFiles(galFiles) : Promise.resolve([])
+      ]).catch(function (err) {
+        throw new Error((err && err.message) || I18N.t("prodadm.uploadFail"));
+      }).then(function (up) {
+        var body = {
+          sku: group.sku,
+          name: (payload.name || "").trim(),
+          category_id: cat ? cat.id : (s.category_id || null),
+          price: parseFloat(payload.price) || 0,
+          description: (payload.description || "").trim(),
+          tags: (payload.tags || "").trim(),
+          image_url: typedGallery.concat(up[1]).join(","),
+          figure_png_url: up[0][0] || typedFigure,
+          min_stock: Math.max(0, parseInt(payload.min_stock, 10) || 0),
+          status: payload.status === "inactive" ? "inactive" : "active"
+        };
+        return Promise.all(ids.map(function (id) { return API.put("products/" + id, body); }));
+      }).then(function () {
+        UI.toast(I18N.t("toast.saved"), "ok");
+        UI.closeModal();
+        V._catalogChanged();
+        done();
+      });
+    });
+  }
+
+  /* Campo de imagen: acepta URL externa O archivo local (con vista previa).
+     `value` (opcional) precarga el campo de texto — para el modal de EDICIÓN. */
+  function imageField(name, i18nKey, ph, multiple, value) {
     return row(i18nKey,
-      '<input class="input" name="' + name + '" type="text" placeholder="' + esc(ph) + '">' +
+      '<input class="input" name="' + name + '" type="text" placeholder="' + esc(ph) + '" value="' + esc(value || "") + '">' +
       '<div class="uplfield">' +
         '<label class="uplfield__btn">' +
           '<input type="file" data-file="' + name + '" accept="image/png,image/jpeg,image/webp,image/gif"' +
