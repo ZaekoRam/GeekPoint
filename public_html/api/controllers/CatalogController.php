@@ -487,6 +487,16 @@ class CatalogController extends Controller
         if (!Database::ping()) {
             return [];
         }
+        // La columna `products.tags` puede no existir aún (migración
+        // 2026_09_08_000001 sin ejecutar): se detecta para no romper el catálogo.
+        $hasTags = false;
+        try {
+            $hasTags = (bool) Database::scalar(
+                "SELECT 1 FROM information_schema.COLUMNS
+                  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'tags' LIMIT 1"
+            );
+        } catch (\Throwable $e) {}
+
         try {
             // El filtro de categoría es por TEXTO (slug o nombre ES/EN en
             // minúsculas), NUNCA por id numérico — los ids no coinciden entre
@@ -498,6 +508,7 @@ class CatalogController extends Controller
                         MAX(c.name_es)       AS cat_es,
                         MAX(c.name_en)       AS cat_en,
                         MAX(p.description)   AS description,
+                        " . ($hasTags ? "MAX(p.tags)" : "''") . " AS tags,
                         MAX(p.image_url)     AS image_url,
                         MAX(p.figure_png_url) AS figure_png_url,
                         MAX(UNIX_TIMESTAMP(p.updated_at)) AS updated_ts,
@@ -625,7 +636,7 @@ class CatalogController extends Controller
                 'image_url'    => $cover,               // alias explícito para el JSON / debug
                 'images'       => $imgs ?: [$cover],
                 'figure_png_url' => $figurePng,   // PNG recortado (transparente) para la vista 3D pop-out
-                'tags'         => [],
+                'tags'         => array_values(array_filter(array_map('trim', explode(',', (string) ($r['tags'] ?? ''))), 'strlen')),
                 'rarity'       => $rarity,
                 'manufacturer' => $manufacturer,
                 'scale'        => $scale,

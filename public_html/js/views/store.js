@@ -142,7 +142,42 @@
       scheduleGrid(root, activeCat());   // rAF-coalesced: no bloquea al teclear
     }
 
+    // Compacto (ventana ≤768px): el CSS deja la barra SIEMPRE abierta y a lo
+    // ancho, así que aquí la lupa solo "limpia" y no hay estado que se atore.
+    var compactMq = window.matchMedia ? window.matchMedia("(max-width: 768px)") : { matches: false };
+    function compact() { return compactMq.matches; }
+
+    // Ancho al ABRIR = justo lo que ocupa la lupa + el texto del placeholder.
+    // Se mide el placeholder real (cambia con el idioma) y se guarda en
+    // --catsearch-open-w EN .catalog-controls: así el CSS puede a la vez
+    // fijar el ancho de la barra abierta y RESERVAR ese hueco a la derecha
+    // (padding-right) para que la búsqueda desplegada no tape ninguna
+    // categoría (p. ej. "Preventas") en pantallas medianas.
+    var controls = box.closest(".catalog-controls") || box.parentNode;
+    function fitOpenWidth() {
+      if (!box.isConnected) { window.removeEventListener("i18n:change", fitOpenWidth); return; }
+      var cs = window.getComputedStyle(input);
+      var probe = document.createElement("span");
+      probe.style.cssText = "position:absolute;left:-9999px;top:-9999px;white-space:pre;visibility:hidden";
+      probe.style.font = cs.font || (cs.fontWeight + " " + cs.fontSize + " " + cs.fontFamily);
+      probe.style.letterSpacing = cs.letterSpacing;
+      probe.textContent = input.getAttribute("placeholder") || "";
+      document.body.appendChild(probe);
+      var textW = probe.getBoundingClientRect().width;
+      probe.remove();
+      // lupa 40 + padding izq/der + margen 6 + borde 4
+      var pad = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+      if (controls) controls.style.setProperty("--catsearch-open-w", Math.ceil(40 + pad + textW + 6 + 4) + "px");
+    }
+    fitOpenWidth();
+    window.addEventListener("i18n:change", fitOpenWidth);
+
     toggle.addEventListener("click", function () {
+      if (compact()) {                       // barra fija: la lupa solo limpia
+        if (input.value) { input.value = ""; searchQ = ""; scheduleGrid(root, activeCat()); }
+        input.focus();
+        return;
+      }
       if (box.classList.contains("is-open")) {
         input.value = "";
         if (searchQ) { searchQ = ""; scheduleGrid(root, activeCat()); }
@@ -153,12 +188,14 @@
       }
     });
 
-    // Hover abre en dispositivos con puntero fino; en móvil manda el clic.
+    // Abrir en :hover (puntero fino, ventana no compacta). No parpadea: la barra
+    // flota (position:absolute), al desplegarse no refluye la fila ni cambia de
+    // sitio, así que el cursor sigue dentro y no se dispara mouseleave.
     if (UI.fineHover) {
-      box.addEventListener("mouseenter", function () { setOpen(true); });
-      box.addEventListener("mouseleave", collapseIfEmpty);
+      box.addEventListener("mouseenter", function () { if (!compact()) setOpen(true); });
+      box.addEventListener("mouseleave", function () { if (!compact()) collapseIfEmpty(); });
     }
-    input.addEventListener("blur", collapseIfEmpty);
+    input.addEventListener("blur", function () { if (!compact()) collapseIfEmpty(); });
     input.addEventListener("input", runFilter);
     input.addEventListener("keydown", function (e) {
       if (e.key === "Escape") { input.value = ""; searchQ = ""; scheduleGrid(root, activeCat()); setOpen(false); toggle.focus(); }
@@ -191,9 +228,17 @@
     return '<span class="ptag ptag--rare ptag--rare-' + rarityKind(r) + '">' + esc(r) + '</span>';
   }
 
+  /* Etiqueta legible: usa el diccionario ("ptag.novedad" -> "Novedad") y, si no
+     hay traducción, capitaliza la etiqueta cruda ("oferta" -> "Oferta"). */
+  function tagLabel(t) {
+    var s = I18N.t("ptag." + t);
+    if (s === "ptag." + t) s = String(t).charAt(0).toUpperCase() + String(t).slice(1);
+    return s;
+  }
+
   function cardHTML(p) {
     var tags = (p.tags || []).map(function (t) {
-      return '<span class="ptag ptag--' + esc(t) + '">' + esc(I18N.t("ptag." + t)) + '</span>';
+      return '<span class="ptag ptag--' + esc(t) + '">' + esc(tagLabel(t)) + '</span>';
     }).join("");
     if (p.rarity) {
       tags = rarityTag(p.rarity) + tags;

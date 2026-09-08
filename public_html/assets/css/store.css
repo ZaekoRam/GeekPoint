@@ -83,22 +83,29 @@
 
 /* ---------- Controles del catálogo (filtros + búsqueda) ---------- */
 .catalog-controls {
-  display: flex; align-items: flex-start; justify-content: space-between;
+  position: relative;                 /* ancla de la búsqueda flotante */
+  display: flex; align-items: flex-start;
   gap: 1rem; flex-wrap: wrap; margin-bottom: 1.6rem;
+  /* Hueco reservado a la derecha para la búsqueda ABIERTA: así, al desplegarse,
+     nunca tapa una categoría (las de más a la derecha, p. ej. "Preventas",
+     hacen wrap a otra línea si no caben). --catsearch-open-w lo fija el JS. */
+  padding-right: calc(var(--catsearch-open-w, 280px) + 12px);
 }
 .catalog-controls .catbar { margin-bottom: 0; flex: 1 1 auto; }
 
 /* ---------- Barra de búsqueda animada (neón brutalist) ----------
-   Colapsada = sólo la lupita (44px). Al abrir, la barra se despliega
-   hacia la derecha animando su propio ancho; el input rellena el hueco. */
+   FLOTANTE sobre la esquina superior derecha de los controles: al abrir NO
+   refluye la fila (antes, al desplegarse, saltaba a otra línea y salía de
+   debajo del cursor -> parpadeo abrir/cerrar). Colapsada = sólo la lupita. */
 .catsearch {
-  flex: 0 0 44px; min-width: 44px;    /* colapsada: sólo la lupita */
-  margin-left: auto;                  /* pegada al borde derecho de los filtros */
+  position: absolute; top: 0; right: 0; z-index: 3;
+  width: 44px;                        /* colapsada: sólo la lupita */
+  max-width: calc(100% - 4px);
   display: inline-flex; align-items: center; overflow: hidden;
-  max-width: 100%; box-sizing: border-box;
+  box-sizing: border-box;
   border: 2px solid var(--ink); background: var(--paper-2);
   box-shadow: 4px 4px 0 var(--ink);
-  transition: min-width .35s var(--ease-out), box-shadow .18s var(--ease-out);
+  transition: width .35s var(--ease-out), box-shadow .18s var(--ease-out);
 }
 .catsearch__toggle {
   flex: 0 0 40px; height: 40px; display: grid; place-items: center;
@@ -107,12 +114,19 @@
 }
 .catsearch__toggle svg { width: 18px; height: 18px; display: block; }
 .catsearch__input {
-  flex: 1 1 auto; min-width: 0; width: 100%; padding: 0 .7rem;
+  flex: 1 1 auto; width: 100%; min-width: 0; padding: 0 .6rem;
   border: 0; background: transparent; color: var(--ink);
-  font-family: var(--mono); font-size: .9rem; line-height: 40px; outline: 0;
+  font-family: var(--mono); font-size: .8rem; line-height: 40px; outline: 0;
 }
 .catsearch__input::placeholder { color: var(--muted); }
-.catsearch.is-open { min-width: 300px; box-shadow: 6px 6px 0 var(--neon-cyan); }
+.catsearch__input::-webkit-search-cancel-button { display: none; }  /* limpiamos con la lupa */
+/* Abierta: ancho = lupa + el texto del placeholder + su padding, SIN espacio
+   sobrante a la derecha. Lo calcula bindSearch() midiendo el placeholder
+   (--catsearch-open-w); el fallback en ch es solo por si el JS no corre. */
+.catsearch.is-open {
+  width: min(var(--catsearch-open-w, 280px), calc(100% - 4px));
+  box-shadow: 6px 6px 0 var(--neon-cyan);
+}
 .catsearch.is-open .catsearch__toggle { background: var(--neon-cyan); color: var(--ink); }
 @media (prefers-reduced-motion: reduce) {
   .catsearch { transition: box-shadow .18s var(--ease-out); }
@@ -598,10 +612,16 @@ body.in-app [data-static-store] { display: none !important; }
   .section { padding: 2.2rem var(--gutter); }
   .section__head { margin-bottom: 1.2rem; gap: .5rem; }
 
-  .catalog-controls { gap: .7rem; margin-bottom: 1.1rem; }
-  /* Búsqueda: al abrir ocupa casi toda la fila */
-  .catsearch.is-open { min-width: min(320px, 82vw); }
-  .catsearch__input { line-height: 38px; }
+  .catalog-controls { gap: .7rem; margin-bottom: 1.1rem; padding-right: 0; }
+  /* Móvil / ventana chica: la búsqueda NO flota ni se colapsa — barra estática
+     de ancho completo bajo las categorías, input siempre visible. */
+  .catsearch,
+  .catsearch.is-open {
+    position: static; order: 3;
+    flex: 1 1 100%; width: 100%; max-width: none; min-width: 0; margin-left: 0;
+  }
+  .catsearch__input { flex: 1 1 auto; width: auto; font-size: .9rem; line-height: 38px; padding: 0 .7rem; }
+  .catsearch__toggle { flex: 0 0 40px; }
 
   /* Grid: 2 columnas compactas, sin desbordes */
   .pgrid { gap: .7rem; grid-template-columns: repeat(2, minmax(0, 1fr)); }

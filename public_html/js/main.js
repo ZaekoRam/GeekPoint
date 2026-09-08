@@ -145,6 +145,41 @@
       }
     });
 
+    /* Stock disponible de una línea del carrito según el catálogo cargado.
+       Devuelve un número, o null si no se puede determinar (no se bloquea). */
+    function lineAvailable(l, branchCode) {
+      if (!window.Catalog || !Catalog.get) return null;
+      var idStr = String(l.id);
+      var branches = null;
+      var p = Catalog.get(idStr);
+      if (p && p.branches && p.branches.length) branches = p.branches;
+      if (!branches && Catalog.all) {
+        var m = idStr.match(/^(.*)-v(\d+(?:\.\d+)?)$/);   // id sintético "<serie>-vN"
+        var all = Catalog.all();
+        for (var i = 0; i < all.length && !branches; i++) {
+          var vcs = all[i].volume_covers || [];
+          for (var j = 0; j < vcs.length; j++) {
+            if (String(vcs[j].id) === idStr && vcs[j].branches && vcs[j].branches.length) { branches = vcs[j].branches; break; }
+          }
+          if (!branches && m && all[i].id === m[1] && all[i].branches && all[i].branches.length) branches = all[i].branches;
+        }
+      }
+      if (!branches) return null;
+      if (branchCode) {
+        var b = branches.filter(function (x) { return x.code === branchCode; })[0];
+        return b ? (b.stock || 0) : 0;
+      }
+      return branches.reduce(function (mx, x) { return Math.max(mx, x.stock || 0); }, 0);
+    }
+    function stockShortages(branchCode) {
+      var out = [];
+      STORE.shopCart.forEach(function (l) {
+        var avail = lineAvailable(l, branchCode);
+        if (avail != null && avail < l.qty) out.push({ title: l.title, need: l.qty, have: avail });
+      });
+      return out;
+    }
+
     /* ---- Apartar: crea una reserva real (POST) y muestra el ticket con folio + código de barras ---- */
     function quote() {
       var c = STORE.shopCart;
@@ -191,6 +226,17 @@
         e.preventDefault();
         if (!form.reportValidity()) return;
         errBox.hidden = true;
+
+        // No permitir apartar si algún artículo no tiene stock suficiente
+        // (en la sucursal elegida, o en la mejor sucursal si es "cualquiera").
+        var shortages = stockShortages(form.branch_code.value);
+        if (shortages.length) {
+          errBox.textContent = I18N.t("resv.shortStock") + " " +
+            shortages.map(function (s) { return s.title + " (" + s.have + "/" + s.need + ")"; }).join(", ");
+          errBox.hidden = false;
+          return;
+        }
+
         btn.classList.add("is-loading");
         API.post("reservations", {
           customer_name: form.customer_name.value.trim(),

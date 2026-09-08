@@ -60,12 +60,12 @@
       var k = d.kpis;
       panel.innerHTML =
         V._kpi([
-          { label: I18N.t("kpi.salesToday"), value: UI.money(k.sales_today_total), foot: k.sales_today_count + " " + I18N.t("col.tickets").toLowerCase(), mod: "kpi--accent" },
-          { label: I18N.t("kpi.salesMonth"), value: UI.money(k.sales_month_total), foot: k.sales_month_count + " " + I18N.t("col.tickets").toLowerCase() },
-          { label: I18N.t("kpi.products"), value: k.products_active, mono: true },
-          { label: I18N.t("kpi.lowStock"), value: k.low_stock, mono: true, mod: k.low_stock ? "kpi--warn" : "" },
-          { label: I18N.t("kpi.registers"), value: k.registers_active, mono: true },
-          { label: I18N.t("kpi.invValue"), value: UI.money(k.inventory_value) }
+          { label: I18N.t("kpi.salesToday"), value: UI.money(k.sales_today_total), foot: k.sales_today_count + " " + I18N.t("col.tickets").toLowerCase(), mod: "kpi--accent", href: "#/manager/sales" },
+          { label: I18N.t("kpi.salesMonth"), value: UI.money(k.sales_month_total), foot: k.sales_month_count + " " + I18N.t("col.tickets").toLowerCase(), href: "#/manager/sales" },
+          { label: I18N.t("kpi.products"), value: k.products_active, mono: true, href: "#/manager/products" },
+          { label: I18N.t("kpi.lowStock"), value: k.low_stock, mono: true, mod: k.low_stock ? "kpi--warn" : "", href: "#/manager/inventory" },
+          { label: I18N.t("kpi.registers"), value: k.registers_active, mono: true, href: "#/manager/registers" },
+          { label: I18N.t("kpi.invValue"), value: UI.money(k.inventory_value), href: "#/manager/inventory" }
         ]) +
         '<div class="grid-2 mt">' +
           '<div class="card"><h2 class="mono" style="font-size:.9rem;color:var(--faint)">' + esc(I18N.t("misc.last14")) + '</h2>' + V._bars(d.sales_series, { labels: true }) + '</div>' +
@@ -208,6 +208,14 @@
       V._formRow(I18N.t("col.name"), '<input class="input" name="name" required value="' + esc(p.name || "") + '">') +
       V._formRow(I18N.t("col.category"), '<select class="select" name="category_id">' + catOpts + '</select>') +
       V._formRow(I18N.t("form.description"), '<textarea class="textarea" name="description">' + esc(p.description || "") + '</textarea>') +
+      V._formRow(I18N.t("form.prodadm.image"),
+        '<input class="input" name="image_url" placeholder="https://…, https://…" value="' + esc(p.image_url || "") + '">' +
+        '<small class="muted" style="font-size:.68rem">' + esc(I18N.t("form.prodadm.imageHint")) + '</small>') +
+      V._formRow(I18N.t("form.prodadm.figurePng"),
+        '<input class="input" name="figure_png_url" placeholder="https://….png" value="' + esc(p.figure_png_url || "") + '">') +
+      V._formRow(I18N.t("form.tags"),
+        '<input class="input" name="tags" placeholder="novedad, preventa" value="' + esc(p.tags || "") + '">' +
+        '<small class="muted" style="font-size:.68rem">' + esc(I18N.t("form.tagsHint")) + '</small>') +
       '<div class="grid-2">' +
         V._formRow(I18N.t("col.price"), '<input class="input" type="number" min="0" step="0.01" name="price" required value="' + (p.price != null ? p.price : "") + '">') +
         V._formRow(I18N.t("form.taxRate"), '<input class="input" type="number" min="0" max="1" step="0.001" name="tax_rate" value="' + (p.tax_rate != null ? p.tax_rate : "0.16") + '">') +

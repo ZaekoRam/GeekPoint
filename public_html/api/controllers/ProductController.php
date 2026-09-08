@@ -93,16 +93,18 @@ class ProductController extends Controller
         $stock = max(0, (int) ($d['stock'] ?? 0));
         $img       = $this->sanitizeImageList($d['image_url'] ?? '');
         $figurePng = $this->sanitizeImageUrl($d['figure_png_url'] ?? null);
+        $tags      = $this->sanitizeTags($d['tags'] ?? '');
 
         Database::begin();
         try {
             Database::run(
                 'INSERT INTO products
-                  (branch_id, sku, name, category_id, description, price, tax_rate, stock, min_stock, image_url, figure_png_url, status)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                  (branch_id, sku, name, category_id, description, tags, price, tax_rate, stock, min_stock, image_url, figure_png_url, status)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                 [
                     $branchId, $sku, mb_substr(trim((string) $d['name']), 0, 180), $catId,
                     mb_substr((string) ($d['description'] ?? ''), 0, 500),
+                    $tags,
                     round((float) $d['price'], 2),
                     isset($d['tax_rate']) && is_numeric($d['tax_rate']) ? (float) $d['tax_rate'] : App::config('tax')['default_rate'],
                     $stock,
@@ -181,6 +183,8 @@ class ProductController extends Controller
         $desc     = mb_substr($str($d['description'] ?? ''), 0, 500);
         $img      = $this->sanitizeImageList($d['image_url'] ?? '');            // fotos de galería (varias URLs)
         $figurePng = $this->sanitizeImageUrl($d['figure_png_url'] ?? null);     // figura recortada; '' -> NULL
+        $tags     = $this->sanitizeTags($d['tags'] ?? '');
+        $hasTags  = array_key_exists('tags', $d);
         $ref      = mb_substr(trim($str($d['source'] ?? 'import') . ' ' . $str($d['external_id'] ?? '')), 0, 60);
 
         $out = ['sku' => $sku, 'created' => [], 'updated' => []];
@@ -195,10 +199,14 @@ class ProductController extends Controller
                 if ($existing) {
                     $pid = (int) $existing['id'];
                     $newStock = (int) $existing['stock'] + $qty;
+                    // `tags` solo se pisa si el body lo trae (no borrar las que ya tenía).
                     Database::run(
                         'UPDATE products SET name = ?, category_id = ?, description = ?, price = ?,
-                                image_url = ?, figure_png_url = ?, stock = ?, status = "active" WHERE id = ?',
-                        [$name, $catId, $desc, $price, $img, $figurePng, $newStock, $pid]
+                                image_url = ?, figure_png_url = ?' . ($hasTags ? ', tags = ?' : '') . ',
+                                stock = ?, status = "active" WHERE id = ?',
+                        $hasTags
+                          ? [$name, $catId, $desc, $price, $img, $figurePng, $tags, $newStock, $pid]
+                          : [$name, $catId, $desc, $price, $img, $figurePng, $newStock, $pid]
                     );
                     if ($qty > 0) {
                         $this->logMovement($bid, $pid, $user['id'], 'restock', $qty, $newStock, 'IMPORT', $ref);
@@ -207,9 +215,9 @@ class ProductController extends Controller
                 } else {
                     Database::run(
                         'INSERT INTO products
-                           (branch_id, sku, name, category_id, description, price, tax_rate, stock, min_stock, image_url, figure_png_url, status)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "active")',
-                        [$bid, $sku, $name, $catId, $desc, $price, $taxRate, $qty, $minStock, $img, $figurePng]
+                           (branch_id, sku, name, category_id, description, tags, price, tax_rate, stock, min_stock, image_url, figure_png_url, status)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "active")',
+                        [$bid, $sku, $name, $catId, $desc, $tags, $price, $taxRate, $qty, $minStock, $img, $figurePng]
                     );
                     $pid = Database::lastId();
                     if ($qty > 0) {
@@ -257,16 +265,20 @@ class ProductController extends Controller
         $figurePng = array_key_exists('figure_png_url', $d)
             ? $this->sanitizeImageUrl($d['figure_png_url'])
             : ($current['figure_png_url'] ?? null);
+        $tags = array_key_exists('tags', $d)
+            ? $this->sanitizeTags($d['tags'])
+            : (string) ($current['tags'] ?? '');
 
         // El stock NO se cambia aquí: usa PATCH /products/{id}/stock
         Database::run(
-            'UPDATE products SET sku = ?, name = ?, category_id = ?, description = ?,
+            'UPDATE products SET sku = ?, name = ?, category_id = ?, description = ?, tags = ?,
                     price = ?, tax_rate = ?, min_stock = ?, image_url = ?, figure_png_url = ?, status = ?
              WHERE id = ?',
             [
                 $sku, mb_substr(trim((string) $d['name']), 0, 180),
                 $this->intOrNull($d['category_id'] ?? $current['category_id']),
                 mb_substr((string) ($d['description'] ?? $current['description']), 0, 500),
+                $tags,
                 round((float) $d['price'], 2),
                 isset($d['tax_rate']) && is_numeric($d['tax_rate']) ? (float) $d['tax_rate'] : $current['tax_rate'],
                 max(0, (int) ($d['min_stock'] ?? $current['min_stock'])),
@@ -485,6 +497,24 @@ class ProductController extends Controller
         if (is_array($v)) { $v = reset($v); }
         $v = trim(is_scalar($v) ? (string) $v : '');
         return $v !== '' ? mb_substr($v, 0, $max) : null;
+    }
+
+    /**
+     * Etiquetas de tienda (novedad, preventa, …). Acepta string "a,b" o array.
+     * Devuelve "a,b" en minúsculas, sin espacios ni duplicados (máx. 6, 120 chars).
+     */
+    private function sanitizeTags($v, $maxItems = 6, $maxTotal = 120)
+    {
+        $parts = is_array($v) ? $v : explode(',', (string) $v);
+        $clean = [];
+        foreach ($parts as $t) {
+            $t = strtolower(trim(is_scalar($t) ? (string) $t : ''));
+            $t = preg_replace('/[^a-z0-9\-]+/', '', $t);
+            if ($t === '' || strlen($t) > 24) continue;
+            $clean[$t] = true;
+            if (count($clean) >= $maxItems) break;
+        }
+        return mb_substr(implode(',', array_keys($clean)), 0, $maxTotal);
     }
 
     private function logMovement($branchId, $productId, $userId, $type, $delta, $resulting, $ref, $note)

@@ -99,6 +99,7 @@ CREATE TABLE `products` (
   `name`        VARCHAR(180) NOT NULL,
   `category_id` INT UNSIGNED NULL,
   `description` VARCHAR(500) NOT NULL DEFAULT '',
+  `tags`        VARCHAR(120) NOT NULL DEFAULT '',   -- etiquetas para la tienda: novedad,preventa
   `price`       DECIMAL(10,2) NOT NULL DEFAULT 0.00,
   `tax_rate`    DECIMAL(4,3)  NOT NULL DEFAULT 0.160,   -- IVA México 16%
   `stock`       INT NOT NULL DEFAULT 0,

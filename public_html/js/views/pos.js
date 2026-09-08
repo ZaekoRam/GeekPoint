@@ -7,9 +7,15 @@
   var $ = UI.$, $$ = UI.$$, esc = UI.escHTML, V = window.Views;
 
   var ctx = {
-    branchId: null, branches: [], registers: [], categories: [],
+    branchId: null, branches: [], registers: [], registerId: null, categories: [],
     products: [], filter: { q: "", cat: "" }, method: "cash", loaded: false
   };
+
+  /** id de la 1ª caja ACTIVA de la sucursal (para que el POS arranque en "Caja 1"). */
+  function firstRegisterId() {
+    var r = (ctx.registers || []).filter(function (x) { return x.status === "active"; })[0];
+    return r ? r.id : null;
+  }
 
   var EMOJI = { manga: "📗", figuras: "🗿", tcg: "🃏", comics: "💥", coleccionables: "🎁" };
 
@@ -53,7 +59,7 @@
           '<span class="spacer"></span>' +
           '<span data-branch-slot></span>' +
           '<button class="btn btn--ghost btn--sm" data-resv-open>🎫 ' + esc(I18N.t("resv.pos")) + '</button>' +
-          '<a class="btn btn--ghost btn--sm" href="' + esc(STORE.homeRoute()) + '" data-link>← ' + esc(I18N.t("nav.home")) + '</a>' +
+          '<a class="btn btn--ghost btn--sm" href="#/" data-link>← ' + esc(I18N.t("nav.home")) + '</a>' +
           '<button class="btn btn--ghost btn--sm" data-logout>' + esc(I18N.t("cta.logout")) + '</button>' +
         '</div>' +
         '<div class="content"><div class="pos">' +
@@ -79,6 +85,7 @@
         API.get("registers" + (isAdmin() ? "?branch_id=" + ctx.branchId : "")).then(function (d) { ctx.registers = d.registers; }).catch(function () { ctx.registers = []; })
       ]);
     }).then(function () {
+      ctx.registerId = firstRegisterId();   // el POS arranca con la Caja 1 elegida
       renderCats(root);
       renderCart(root);
       loadProducts(root);
@@ -150,7 +157,7 @@
       $("[data-branch]", root).addEventListener("change", function () {
         ctx.branchId = +this.value;
         STORE.cartClear();
-        API.get("registers?branch_id=" + ctx.branchId).then(function (r) { ctx.registers = r.registers; renderCart(root); });
+        API.get("registers?branch_id=" + ctx.branchId).then(function (r) { ctx.registers = r.registers; ctx.registerId = firstRegisterId(); renderCart(root); });
         loadProducts(root);
       });
     });
@@ -182,19 +189,32 @@
       ctx.products = d.products;
       grid.innerHTML = d.products.length ? d.products.map(cardHTML).join("")
         : '<div class="state"><div class="state__icon">🔍</div><p>' + esc(I18N.t("empty.none")) + '</p></div>';
+      // Portadas reales del catálogo de la tienda: si aún no cargó, repinta.
+      if (d.products.length && window.Catalog && Catalog.load && !Catalog.ready) {
+        var snapshot = ctx.products;
+        Catalog.load().then(function () {
+          if (ctx.products === snapshot && grid.isConnected) grid.innerHTML = ctx.products.map(cardHTML).join("");
+        }).catch(function () {});
+      }
     }).catch(function (err) { grid.innerHTML = V._error(err); });
   }
 
   function cardHTML(p) {
     var art = EMOJI[p.category_slug] || "📦";
-    var cls = "prod" + (p.stock === 0 ? " is-out" : (p.low_stock ? " is-low" : ""));
+    var out = p.stock === 0;
+    var cls = "prod" + (out ? " is-out" : (p.low_stock ? " is-low" : ""));
+    var cover = (V._productCover ? V._productCover(p) : "") || "";
     return (
-      '<button class="' + cls + '" data-add="' + p.id + '">' +
-        '<span class="prod__art">' + art + '</span>' +
-        '<span class="prod__name">' + esc(p.name) + '</span>' +
-        '<span class="prod__meta">' +
-          '<span class="prod__price">' + UI.money(p.price) + '</span>' +
-          '<span class="prod__stock">' + (p.stock === 0 ? esc(I18N.t("pos.outOfStock")) : (p.stock + " u")) + '</span>' +
+      '<button class="' + cls + '" data-add="' + p.id + '"' + (out ? " disabled" : "") + '>' +
+        '<span class="prod__media">' +
+          (cover
+            ? '<img src="' + esc(cover) + '" alt="" loading="lazy" decoding="async" onerror="this.remove()">'
+            : '<span class="prod__art">' + art + '</span>') +
+          '<span class="prod__badge">' + (out ? esc(I18N.t("pos.outOfStock")) : (p.stock + " u")) + '</span>' +
+        '</span>' +
+        '<span class="prod__body">' +
+          '<span class="prod__name">' + esc(p.name) + '</span>' +
+          '<span class="prod__price">' + UI.money(p.price, true) + '</span>' +
         '</span>' +
       '</button>'
     );
@@ -228,10 +248,15 @@
       );
     }).join("") : '<p class="muted" style="padding:1rem 0">' + esc(I18N.t("pos.empty")) + '</p>';
 
-    var regSel = ctx.registers.length
+    var activeRegs = ctx.registers.filter(function (r) { return r.status === "active"; });
+    if (activeRegs.length && !activeRegs.some(function (r) { return r.id == ctx.registerId; })) {
+      ctx.registerId = activeRegs[0].id;                    // por defecto, la Caja 1
+    }
+    var regSel = activeRegs.length
       ? '<div class="field"><label>' + esc(I18N.t("pos.register")) + '</label><select class="select" data-register>' +
-        '<option value="">—</option>' + ctx.registers.filter(function (r) { return r.status === "active"; })
-          .map(function (r) { return '<option value="' + r.id + '">' + esc(r.name) + '</option>'; }).join("") + '</select></div>'
+        activeRegs.map(function (r) {
+          return '<option value="' + r.id + '"' + (r.id == ctx.registerId ? " selected" : "") + '>' + esc(r.name) + '</option>';
+        }).join("") + '</select></div>'
       : "";
 
     var methods = ["cash", "card", "transfer"].map(function (m) {
@@ -269,6 +294,8 @@
         $("[data-change]", host).textContent = UI.money(change > 0 ? change : 0);
       });
     }
+    var regEl = $("[data-register]", host);
+    if (regEl) regEl.addEventListener("change", function () { ctx.registerId = +this.value || null; });
   }
 
   function checkout(root) {
@@ -286,7 +313,7 @@
     var regEl = $("[data-register]", host);
     var payload = {
       branch_id: ctx.branchId,
-      register_id: regEl && regEl.value ? +regEl.value : null,
+      register_id: (regEl && regEl.value ? +regEl.value : null) || ctx.registerId || null,
       customer_name: ($("[data-customer]", host) || {}).value || "",
       payment_method: method,
       amount_paid: amountPaid,

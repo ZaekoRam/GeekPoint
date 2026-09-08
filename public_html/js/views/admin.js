@@ -342,6 +342,12 @@
       }
 
       tableBox.addEventListener("click", function (e) {
+        var vol = e.target.closest("[data-volumes]");
+        if (vol) {
+          var gv = prods.find(function (p) { return p.sku === vol.getAttribute("data-volumes"); });
+          if (gv) volumesModal(gv, brs, function () { inventory(panel, root); });
+          return;
+        }
         var rst = e.target.closest("[data-restock]");
         if (rst) {
           var g = prods.find(function (p) { return p.sku === rst.getAttribute("data-restock"); });
@@ -429,6 +435,9 @@
           '</div>' +
           '<div class="invcard__acts">' +
             '<button class="btn btn--neon btn--sm invcard__adjust" data-restock="' + esc(g.sku) + '">± ' + esc(I18N.t("btn.adjust")) + '</button>' +
+            (g.category_slug === "manga" && !/\bvol\.?\s*\d|\btomo\s*\d|-\d{1,3}$/i.test(g.name + " " + g.sku)
+              ? '<button class="iconbtn" data-volumes="' + esc(g.sku) + '" title="' + esc(I18N.t("volumes.title")) + '" aria-label="' + esc(I18N.t("volumes.title")) + '">📖</button>'
+              : "") +
             delButton(g.sku, g.name) +
           '</div>' +
         '</article>';
@@ -501,6 +510,71 @@
     });
   }
 
+  /* Modal: divide un manga en TOMOS con precio individual.  Crea (o refresca)
+     un SKU por tomo (<base>-01, <base>-02…) con su precio; el stock se ajusta
+     después con el botón "＋". La tienda muestra el precio del tomo elegido. */
+  function volumesModal(group, branches, done) {
+    var m = String((group.sample && group.sample.description) || "").match(/(\d{1,3})\s*tomos?/i);
+    var guess = m ? Math.min(parseInt(m[1], 10), 60) : 12;
+    // MNG-S-JJK -> MNG-JJK ; MNG-JJK -> MNG-JJK
+    var base = group.sku.replace(/-S-/i, "-").replace(/[^A-Za-z0-9]+$/, "");
+    var seriesName = group.name.replace(/\s*(?:vol\.?|volumen|tomo)\s*\d+\s*$/i, "").trim();
+
+    var c = document.createElement("form");
+    c.innerHTML =
+      '<p class="muted" style="margin-bottom:.5rem">' + esc(group.name) + ' · <span class="mono">' + esc(group.sku) + '</span></p>' +
+      row("volumes.count", '<input class="input" type="number" min="1" max="80" name="count" value="' + guess + '" data-vol-count>', "volumes.count") +
+      '<div data-vol-rows></div>' +
+      formButtons();
+    var mod = UI.modal({ title: I18N.t("volumes.title"), content: c, wide: true });
+
+    function pad2(v) { return v < 10 ? "0" + v : "" + v; }
+    function drawRows() {
+      var n = Math.max(1, Math.min(80, parseInt(c.querySelector("[data-vol-count]").value, 10) || 1));
+      var rows = "";
+      for (var v = 1; v <= n; v++) {
+        rows += '<label class="pkm-branch"><span>' + esc(I18N.t("prod.volume")) + ' ' + v +
+          '<br><small class="muted mono" style="font-size:.62rem">' + esc(base + "-" + pad2(v)) + '</small></span>' +
+          '<input class="input" type="number" min="0" step="0.01" placeholder="' + (group.price || 0) +
+            '" data-vol="' + pad2(v) + '" style="width:7rem;text-align:right"></label>';
+      }
+      c.querySelector("[data-vol-rows]").innerHTML =
+        '<p class="field__label mono" style="font-size:.7rem;color:var(--faint);text-transform:uppercase;letter-spacing:.1em;margin:.6rem 0 .5rem">' +
+          esc(I18N.t("volumes.priceEach")) + '</p><div class="pkm-branches">' + rows + '</div>';
+    }
+    drawRows();
+    c.querySelector("[data-vol-count]").addEventListener("input", drawRows);
+
+    bindForm(c, mod, function () {
+      var zeroStock = {};
+      branches.forEach(function (b) { zeroStock[b.id] = 0; });
+      var jobs = [];
+      c.querySelectorAll("[data-vol]").forEach(function (inp) {
+        if (inp.value === "") return;
+        var price = parseFloat(inp.value);
+        if (!(price >= 0)) return;
+        var p2 = inp.getAttribute("data-vol");
+        jobs.push(API.post("products/import", {
+          source: "volume",
+          sku: base + "-" + p2,
+          name: seriesName + " " + I18N.t("prod.volume") + " " + parseInt(p2, 10),
+          category_slug: "manga",
+          price: Math.round(price * 100) / 100,
+          image_url: group.image_url || "",
+          description: (group.sample && group.sample.description) || "",
+          stock_by_branch: zeroStock
+        }));
+      });
+      if (!jobs.length) return Promise.reject(new Error(I18N.t("volumes.needPrice")));
+      return Promise.all(jobs).then(function () {
+        UI.toast(I18N.t("volumes.done", { n: jobs.length }), "ok");
+        UI.closeModal();
+        V._catalogChanged();
+        done();
+      });
+    });
+  }
+
   /* Campo de imagen: acepta URL externa O archivo local (con vista previa). */
   function imageField(name, i18nKey, ph, multiple) {
     return row(i18nKey,
@@ -559,6 +633,8 @@
         "https://….png  —  o sube un PNG recortado del equipo", false) +
       imageField("image_url", "prodadm.image",
         "https://…, https://…  —  o sube fotos del equipo", true) +
+      row("form.tags", '<input class="input" name="tags" maxlength="120" placeholder="novedad, preventa">' +
+        '<small class="muted" style="font-size:.68rem">' + esc(I18N.t("form.tagsHint")) + '</small>', "form.tags") +
       '<p class="field__label mono" style="font-size:.7rem;color:var(--faint);text-transform:uppercase;letter-spacing:.1em;margin:.4rem 0 .5rem">' +
         esc(I18N.t("prodadm.stockByBranch")) + '</p>' +
       '<div class="pkm-branches">' + branches.map(function (b) {
@@ -622,6 +698,7 @@
           // esto en products.description y la tienda lo muestra como sinopsis.
           description: [maker, scale].filter(Boolean).concat(synopsis ? [synopsis] : []).join(" · ")
                        || synopsis || "Alta manual",
+          tags: (payload.tags || "").trim(),
           stock_by_branch: stock
         };
         return API.post("products/import", draft);
