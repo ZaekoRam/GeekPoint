@@ -541,8 +541,9 @@
       var cat = esc(PRV_LABEL[g.category_slug] || g.category_slug || "—");
       var perBranch = branchDigest(brMap, branches);
       var name = g.displayName || g.name;
-      var showVolBtn = g.category_slug === "manga" &&
-        !/\bvol\.?\s*\d|\btomo\s*\d|-\d{1,3}$/i.test(g.name + " " + g.sku);
+      // Manga y cómics: SIEMPRE ofrecen "Tomos y precios" (añadir volúmenes /
+      // números sueltos y editar sus precios), estén plegados o no.
+      var showVolBtn = g.category_slug === "manga" || g.category_slug === "comics";
       return '' +
         '<article class="invcard' + (g.status !== "active" ? " is-inactive" : "") + '">' +
           '<div class="invcard__main" data-edit-sku="' + esc(g.sku) + '" title="' + esc(I18N.t("btn.edit")) + '">' +
@@ -638,33 +639,58 @@
     });
   }
 
-  /* Modal: divide un manga en TOMOS con precio individual.  Crea (o refresca)
-     un SKU por tomo (<base>-01, <base>-02…) con su precio; el stock se ajusta
-     después con el botón "＋". La tienda muestra el precio del tomo elegido. */
+  function _pad2(v) { return v < 10 ? "0" + v : "" + v; }
+
+  /* SKU base para tomos/números sueltos de una serie:
+     MNG-S-JJK -> MNG-JJK ;  MNG-JJK-03 -> MNG-JJK ;  CMC-AVG-1 -> CMC-AVG */
+  function _volBase(sku) {
+    return String(sku || "").replace(/-S-/i, "-").replace(/-\d{1,3}$/, "").replace(/[^A-Za-z0-9]+$/, "");
+  }
+
+  /* Modal "Tomos y precios" (manga y cómics).
+     · Campo "Número de tomos": genera la cuadrícula Vol. 1 … Vol. N.
+     · Cada tomo tiene su precio: si YA existe en la BD se precarga con su precio
+       actual (editable); si no existe, se deja vacío (placeholder = precio de la
+       serie) y solo se crea al escribir un precio.
+     · Un único botón "Guardar" abajo: crea los nuevos (stock 0, se ajusta luego
+       con "± Ajustar stock") y actualiza el precio de los que ya estaban.
+     · Botón "+ Añadir nuevo tomo": formulario detallado tipo "Nuevo producto"
+       (SIN categoría, marca ni línea) para UN tomo con portada / stock propios. */
   function volumesModal(group, branches, done) {
-    var m = String((group.sample && group.sample.description) || "").match(/(\d{1,3})\s*tomos?/i);
-    var guess = m ? Math.min(parseInt(m[1], 10), 60) : 12;
-    // MNG-S-JJK -> MNG-JJK ; MNG-JJK -> MNG-JJK
-    var base = group.sku.replace(/-S-/i, "-").replace(/[^A-Za-z0-9]+$/, "");
-    var seriesName = group.name.replace(/\s*(?:vol\.?|volumen|tomo)\s*\d+\s*$/i, "").trim();
+    var kids = [group].concat(group.children || []);
+    // Mapa  nº de tomo -> grupo existente  (para precargar precio y sus ids).
+    var byNum = {};
+    kids.forEach(function (mm) {
+      var n = _issueNum(mm.sku, mm.name);
+      if (n > 0) byNum[n] = mm;
+    });
+    var base = _volBase(group.sku);
+    var seriesName = _seriesTitle(group.displayName || group.name) || group.name;
+    var maxExisting = Object.keys(byNum).reduce(function (mx, k) { return Math.max(mx, +k); }, 0);
+    var descMatch = String((group.sample && group.sample.description) || "").match(/(\d{1,3})\s*tomos?/i);
+    var guess = descMatch ? Math.min(parseInt(descMatch[1], 10), 80) : Math.max(maxExisting, 12);
 
     var c = document.createElement("form");
     c.innerHTML =
-      '<p class="muted" style="margin-bottom:.5rem">' + esc(group.name) + ' · <span class="mono">' + esc(group.sku) + '</span></p>' +
-      row("volumes.count", '<input class="input" type="number" min="1" max="80" name="count" value="' + guess + '" data-vol-count>', "volumes.count") +
+      '<p class="muted" style="margin-bottom:.6rem">' + esc(group.displayName || group.name) +
+        ' · <span class="mono">' + esc(group.sku) + '</span></p>' +
+      '<button type="button" class="btn btn--neon btn--sm" data-add-vol style="margin-bottom:.9rem">' +
+        esc(I18N.t("volumes.addNew")) + '</button>' +
+      row("volumes.count", '<input class="input" type="number" min="1" max="99" name="count" value="' + guess + '" data-vol-count>', "volumes.count") +
       '<div data-vol-rows></div>' +
       formButtons();
     var mod = UI.modal({ title: I18N.t("volumes.title"), content: c, wide: true });
 
-    function pad2(v) { return v < 10 ? "0" + v : "" + v; }
     function drawRows() {
-      var n = Math.max(1, Math.min(80, parseInt(c.querySelector("[data-vol-count]").value, 10) || 1));
+      var n = Math.max(1, Math.min(99, parseInt(c.querySelector("[data-vol-count]").value, 10) || 1));
       var rows = "";
       for (var v = 1; v <= n; v++) {
+        var ex = byNum[v];
         rows += '<label class="pkm-branch"><span>' + esc(I18N.t("prod.volume")) + ' ' + v +
-          '<br><small class="muted mono" style="font-size:.62rem">' + esc(base + "-" + pad2(v)) + '</small></span>' +
-          '<input class="input" type="number" min="0" step="0.01" placeholder="' + (group.price || 0) +
-            '" data-vol="' + pad2(v) + '" style="width:7rem;text-align:right"></label>';
+          '<br><small class="muted mono" style="font-size:.62rem">' + esc((ex && ex.sku) || (base + "-" + _pad2(v))) + '</small></span>' +
+          '<input class="input" type="number" min="0" step="0.01" data-vol="' + v + '"' +
+            (ex && ex.price != null ? ' value="' + ex.price + '"' : ' placeholder="' + (group.price || 0) + '"') +
+            ' style="width:7rem;text-align:right"></label>';
       }
       c.querySelector("[data-vol-rows]").innerHTML =
         '<p class="field__label mono" style="font-size:.7rem;color:var(--faint);text-transform:uppercase;letter-spacing:.1em;margin:.6rem 0 .5rem">' +
@@ -672,6 +698,19 @@
     }
     drawRows();
     c.querySelector("[data-vol-count]").addEventListener("input", drawRows);
+
+    c.querySelector("[data-add-vol]").addEventListener("click", function () {
+      newVolumeModal({
+        base: base, seriesName: seriesName, nextNum: maxExisting + 1,
+        categorySlug: group.category_slug || "manga",
+        sample: group.sample || {},
+        imageUrl: group.image_url || ""
+      }, branches, function () {
+        UI.closeModal();
+        V._catalogChanged();
+        done();
+      });
+    });
 
     bindForm(c, mod, function () {
       var zeroStock = {};
@@ -681,23 +720,119 @@
         if (inp.value === "") return;
         var price = parseFloat(inp.value);
         if (!(price >= 0)) return;
-        var p2 = inp.getAttribute("data-vol");
-        jobs.push(API.post("products/import", {
-          source: "volume",
-          sku: base + "-" + p2,
-          name: seriesName + " " + I18N.t("prod.volume") + " " + parseInt(p2, 10),
-          category_slug: "manga",
-          price: Math.round(price * 100) / 100,
-          image_url: group.image_url || "",
-          description: (group.sample && group.sample.description) || "",
-          stock_by_branch: zeroStock
-        }));
+        var rounded = Math.round(price * 100) / 100;
+        var v = parseInt(inp.getAttribute("data-vol"), 10);
+        var ex = byNum[v];
+        if (ex) {
+          if (rounded === Number(ex.price)) return;                 // sin cambios
+          var ids = Object.keys(ex.idByBranch || {}).map(function (k) { return ex.idByBranch[k]; }).filter(Boolean);
+          ids.forEach(function (id) {
+            jobs.push(API.put("products/" + id, { sku: ex.sku, name: ex.name, price: rounded }));
+          });
+        } else {
+          jobs.push(API.post("products/import", {
+            source: "volume",
+            sku: base + "-" + _pad2(v),
+            name: seriesName + " " + I18N.t("prod.volume") + " " + v,
+            category_slug: group.category_slug || "manga",
+            price: rounded,
+            image_url: group.image_url || "",
+            description: (group.sample && group.sample.description) || "",
+            stock_by_branch: zeroStock
+          }));
+        }
       });
-      if (!jobs.length) return Promise.reject(new Error(I18N.t("volumes.needPrice")));
+      if (!jobs.length) { UI.closeModal(); return Promise.resolve(); }
       return Promise.all(jobs).then(function () {
         UI.toast(I18N.t("volumes.done", { n: jobs.length }), "ok");
         UI.closeModal();
         V._catalogChanged();
+        done();
+      });
+    });
+  }
+
+  /* Formulario "Nuevo volumen" — clon de "Nuevo producto" SIN categoría, marca
+     ni línea (se heredan de la serie).  Crea un SKU <base>-NN vía products/import. */
+  function newVolumeModal(ctx, branches, done) {
+    var c = document.createElement("form");
+    c.innerHTML =
+      row("prod.volume", '<input class="input" type="number" name="volnum" min="1" max="999" value="' + ctx.nextNum + '" data-volnum>' +
+        '<small class="muted mono" style="font-size:.66rem" data-sku-preview>' + esc(ctx.base + "-" + _pad2(ctx.nextNum)) + '</small>', "prod.volume") +
+      row("prodadm.name", '<input class="input" name="name" required maxlength="180" value="' +
+        esc(ctx.seriesName + " " + I18N.t("prod.volume") + " " + ctx.nextNum) + '">') +
+      row("prodadm.price", '<input class="input" type="number" name="price" min="0" step="0.01" required value="' +
+        (ctx.sample.price != null ? ctx.sample.price : "") + '">') +
+      row("prodadm.synopsis", '<textarea class="input" name="description" rows="3" maxlength="500">' +
+        esc(ctx.sample.description || "") + '</textarea>') +
+      imageField("figure_png_url", "prodadm.figurePng",
+        "https://….png  —  o sube un PNG recortado del equipo", false, ctx.sample.figure_png_url || "") +
+      imageField("image_url", "prodadm.image",
+        "https://…, https://…  —  o sube fotos del equipo", true, ctx.imageUrl || "") +
+      tagField(ctx.sample.tags || "") +
+      '<p class="field__label mono" style="font-size:.7rem;color:var(--faint);text-transform:uppercase;letter-spacing:.1em;margin:.4rem 0 .5rem">' +
+        esc(I18N.t("prodadm.stockByBranch")) + '</p>' +
+      '<div class="pkm-branches">' + branches.map(function (b) {
+        return '<label class="pkm-branch"><span>' + esc(b.name) + '</span>' +
+          '<input class="input" type="number" min="0" step="1" value="0" data-branch="' + b.id + '"></label>';
+      }).join("") + '</div>' +
+      formButtons();
+
+    var m = UI.modal({ title: I18N.t("volumes.newTitle"), content: c, wide: true });
+    bindTagPick(c);
+
+    var numEl = c.querySelector("[data-volnum]");
+    var skuPrev = c.querySelector("[data-sku-preview]");
+    numEl.addEventListener("input", function () {
+      var n = Math.max(1, parseInt(numEl.value, 10) || 1);
+      skuPrev.textContent = ctx.base + "-" + _pad2(n);
+    });
+
+    c.querySelectorAll("[data-file]").forEach(function (fi) {
+      fi.addEventListener("change", function () {
+        renderPreviews(fi, c.querySelector('[data-prev="' + fi.getAttribute("data-file") + '"]'));
+      });
+    });
+
+    bindForm(c, m, function (payload) {
+      var stock = {}, any = false;
+      c.querySelectorAll("[data-branch]").forEach(function (inp) {
+        var n = Math.max(0, parseInt(inp.value, 10) || 0);
+        if (n > 0) { stock[inp.getAttribute("data-branch")] = n; any = true; }
+      });
+      // El stock puede quedar en 0 y ajustarse luego; import exige al menos una
+      // sucursal en stock_by_branch, así que mandamos todas (a 0 si no se indicó).
+      if (!any) branches.forEach(function (b) { stock[b.id] = 0; });
+
+      var num = Math.max(1, parseInt(payload.volnum, 10) || ctx.nextNum);
+      var sku = ctx.base + "-" + _pad2(num);
+      var typedGallery = (payload.image_url || "").split(",").map(function (u) { return u.trim(); }).filter(Boolean);
+      var typedFigure = (payload.figure_png_url || "").trim();
+      var figFiles = Array.prototype.slice.call((c.querySelector('[data-file="figure_png_url"]') || {}).files || []).slice(0, 1);
+      var galFiles = Array.prototype.slice.call((c.querySelector('[data-file="image_url"]') || {}).files || []);
+      if (figFiles.length || galFiles.length) UI.toast(I18N.t("prodadm.uploading"), "ok");
+
+      return Promise.all([
+        figFiles.length ? uploadFiles(figFiles) : Promise.resolve([]),
+        galFiles.length ? uploadFiles(galFiles) : Promise.resolve([])
+      ]).catch(function (err) {
+        throw new Error((err && err.message) || I18N.t("prodadm.uploadFail"));
+      }).then(function (up) {
+        return API.post("products/import", {
+          source: "volume",
+          sku: sku,
+          name: (payload.name || "").trim() || (ctx.seriesName + " " + I18N.t("prod.volume") + " " + num),
+          category_slug: ctx.categorySlug,
+          price: Math.round((parseFloat(payload.price) || 0) * 100) / 100,
+          description: (payload.description || "").trim(),
+          image_url: typedGallery.concat(up[1]).join(","),
+          figure_png_url: up[0][0] || typedFigure,
+          tags: (payload.tags || "").trim(),
+          stock_by_branch: stock
+        });
+      }).then(function () {
+        UI.toast(I18N.t("volumes.created"), "ok");
+        UI.closeModal();
         done();
       });
     });
@@ -729,9 +864,7 @@
       imageField("image_url", "prodadm.image",
         "https://…, https://…  —  o sube fotos del equipo", true,
         s.image_url || group.image_url || "") +
-      row("form.tags",
-        '<input class="input" name="tags" maxlength="120" placeholder="novedad, preventa" value="' + esc(s.tags || "") + '">' +
-        '<small class="muted" style="font-size:.68rem">' + esc(I18N.t("form.tagsHint")) + '</small>', "form.tags") +
+      tagField(s.tags || "") +
       '<div class="grid-2">' +
         row("form.minStock", '<input class="input" type="number" name="min_stock" min="0" value="' + (s.min_stock != null ? s.min_stock : 3) + '">', "form.minStock") +
         row("col.status",
@@ -743,6 +876,7 @@
       formButtons();
 
     var m = UI.modal({ title: I18N.t("btn.edit"), content: c, wide: true });
+    bindTagPick(c);
 
     // Vista previa de los archivos elegidos (igual que en "Nuevo producto").
     c.querySelectorAll("[data-file]").forEach(function (fi) {
@@ -786,6 +920,38 @@
         V._catalogChanged();
         done();
       });
+    });
+  }
+
+  /* Selector de etiquetas de tienda — SOLO 3 opciones fijas, no texto libre.
+     Renderiza 3 chips + un <input type=hidden name=tags> que bindForm lee. */
+  var TAG_OPTIONS = ["novedad", "oferta", "preventa"];
+  function tagField(value) {
+    var sel = String(value || "").toLowerCase().split(",").map(function (s) { return s.trim(); });
+    return row("tags.pick",
+      '<div class="tagpick" data-tagpick>' +
+        TAG_OPTIONS.map(function (t) {
+          return '<button type="button" class="tagpick__opt' + (sel.indexOf(t) !== -1 ? " is-on" : "") +
+            '" data-tag="' + t + '">' + esc(I18N.t("ptag." + t)) + '</button>';
+        }).join("") +
+      '</div>' +
+      '<input type="hidden" name="tags" value="' + esc(TAG_OPTIONS.filter(function (t) { return sel.indexOf(t) !== -1; }).join(",")) + '">' +
+      '<small class="muted" style="font-size:.68rem">' + esc(I18N.t("tags.pickHint")) + '</small>',
+      "tags.pick");
+  }
+  /* Enlaza los chips con el input hidden dentro de `scope` (el <form>). */
+  function bindTagPick(scope) {
+    var box = scope.querySelector("[data-tagpick]");
+    if (!box) return;
+    var hidden = scope.querySelector('input[type="hidden"][name="tags"]');
+    box.addEventListener("click", function (e) {
+      var b = e.target.closest(".tagpick__opt");
+      if (!b) return;
+      b.classList.toggle("is-on");
+      var on = Array.prototype.filter.call(box.querySelectorAll(".tagpick__opt"), function (x) {
+        return x.classList.contains("is-on");
+      }).map(function (x) { return x.getAttribute("data-tag"); });
+      if (hidden) hidden.value = on.join(",");
     });
   }
 
@@ -848,8 +1014,7 @@
         "https://….png  —  o sube un PNG recortado del equipo", false) +
       imageField("image_url", "prodadm.image",
         "https://…, https://…  —  o sube fotos del equipo", true) +
-      row("form.tags", '<input class="input" name="tags" maxlength="120" placeholder="novedad, preventa">' +
-        '<small class="muted" style="font-size:.68rem">' + esc(I18N.t("form.tagsHint")) + '</small>', "form.tags") +
+      tagField("") +
       '<p class="field__label mono" style="font-size:.7rem;color:var(--faint);text-transform:uppercase;letter-spacing:.1em;margin:.4rem 0 .5rem">' +
         esc(I18N.t("prodadm.stockByBranch")) + '</p>' +
       '<div class="pkm-branches">' + branches.map(function (b) {
@@ -859,6 +1024,7 @@
       formButtons();
 
     var m = UI.modal({ title: I18N.t("prodadm.new"), content: c, wide: true });
+    bindTagPick(c);
 
     // Vista previa de los archivos locales elegidos.
     c.querySelectorAll("[data-file]").forEach(function (fi) {
@@ -1241,4 +1407,7 @@
 
   V.admin = { render: render, mount: mount, roles: ["admin"] };
   V.productModal = newProductModal;   // modal de alta compartido (usado también por Gerente)
+  V._inventoryView = inventory;       // vista de inventario completa (plegado de series,
+                                      // tarjetas, editar / ± ajustar / 📖 tomos) — la reusa
+                                      // el panel de Gerente acotada a su sucursal.
 })();

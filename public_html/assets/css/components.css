@@ -231,6 +231,20 @@ body.in-app .chip { border: 0; border-radius: 999px; box-shadow: var(--nm-out-sm
 .chip.is-active { background: var(--panini); color: var(--ink); }
 body.in-app .chip.is-active { background: var(--accent); color: #05060b; box-shadow: var(--glow-cyan); }
 
+/* ---------- Selector de etiquetas (novedad / oferta / preventa) ---------- */
+.tagpick { display: flex; flex-wrap: wrap; gap: .5rem; }
+.tagpick__opt {
+  padding: .42rem .9rem; border: 2px solid var(--line); background: var(--surface);
+  font-family: var(--mono); font-size: .72rem; font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--muted); cursor: pointer; border-radius: 0;
+  transition: background .15s var(--ease-out), color .15s var(--ease-out),
+              border-color .15s var(--ease-out), transform .12s var(--ease-out);
+}
+.tagpick__opt:hover { transform: translateY(-1px); }
+.tagpick__opt.is-on { background: var(--panini); color: var(--ink); border-color: var(--panini); }
+body.in-app .tagpick__opt { border: 0; border-radius: 999px; box-shadow: var(--nm-out-sm); }
+body.in-app .tagpick__opt.is-on { background: var(--accent); color: #05060b; box-shadow: var(--glow-cyan); }
+
 /* ---------- Tablas ---------- */
 .table-wrap { overflow-x: auto; border: 2px solid var(--line); }
 body.in-app .table-wrap { border: 1px solid var(--line-soft); border-radius: var(--radius); }

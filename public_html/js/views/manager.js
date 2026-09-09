@@ -87,113 +87,38 @@
 
   /* ---------------- Products CRUD + stock ---------------- */
 
-  /* Portada del producto para la tarjeta (helper compartido en shell.js). */
-  function invCover(p) { return V._productCover ? V._productCover(p) : ""; }
-
-  /* Tarjeta de inventario (estilo tienda) — al hacer clic AJUSTA el stock
-     (no "comprar"). Botón principal "± Ajustar stock" + editar / eliminar. */
-  function invCardHTML(p) {
-    var stockCls = p.stock === 0 ? "badge--danger" : (p.low_stock ? "badge--warn" : "badge--ok");
-    var cat = esc(I18N.pick({ es: p.category_es, en: p.category_en }) || p.category_slug || "—");
-    return '' +
-      '<article class="invcard' + (p.status !== "active" ? " is-inactive" : "") + '">' +
-        '<div class="invcard__main" data-adjust="' + p.id + '" title="' + esc(I18N.t("btn.adjust")) + '">' +
-          '<div class="invcard__media">' +
-            '<img src="' + esc(invCover(p)) + '" alt="" loading="lazy" decoding="async" ' +
-              'onerror="this.style.visibility=\'hidden\'">' +
-            '<span class="invcard__stock badge ' + stockCls + '">' + p.stock + '</span>' +
-            (p.status !== "active" ? '<span class="invcard__off">' + esc(I18N.t("status.inactive")) + '</span>' : "") +
-          '</div>' +
-          '<div class="invcard__body">' +
-            '<span class="invcard__cat">' + cat + '</span>' +
-            '<h3 class="invcard__name">' + esc(p.name) + '</h3>' +
-            '<span class="invcard__sku mono">' + esc(p.sku) + '</span>' +
-            '<div class="invcard__foot">' +
-              '<span class="invcard__price mono">' + UI.money(p.price, true) + '</span>' +
-              '<span class="invcard__min mono">' + esc(I18N.t("col.min").toLowerCase()) + ' ' + p.min_stock + '</span>' +
-            '</div>' +
-          '</div>' +
-        '</div>' +
-        '<div class="invcard__acts">' +
-          '<button class="btn btn--neon btn--sm invcard__adjust" data-adjust="' + p.id + '">± ' + esc(I18N.t("btn.adjust")) + '</button>' +
-          '<button class="iconbtn" data-edit="' + p.id + '" title="' + esc(I18N.t("btn.edit")) + '">✎</button>' +
-          V._delButton({ attr: "data-del", value: p.id, name: p.name }) +
-        '</div>' +
-      '</article>';
+  /* El inventario del Gerente reutiliza EXACTAMENTE la misma vista que el panel
+     de Admin: plegado de series (tomos de manga y números de cómic bajo su
+     tarjeta de serie), tarjetas estilo tienda y los mismos modales de editar /
+     ± ajustar stock / 📖 tomos / nuevo producto. El endpoint de productos ya
+     viene acotado a la sucursal del gerente, así que la función sirve sin
+     cambios. Si admin.js no estuviera cargada, se cae a una tabla simple. */
+  function products(panel, root) {
+    if (V._inventoryView) { V._inventoryView(panel, root); return; }
+    productsFallback(panel, root);
   }
 
-  function products(panel, root) {
+  function productsFallback(panel, root) {
     panel.innerHTML = V._loading();
-    Promise.all([API.get("products?status=all&limit=200"), categories(), API.get("branches")]).then(function (res) {
-      var list = res[0].products, cats = res[1], branches = (res[2] && res[2].branches) || [];
-      // Gerente: solo su sucursal; Admin (si entra aquí): todas.
-      var myBranch = (STORE.session && STORE.session.branch && STORE.session.branch.id) ||
-                     (STORE.user && STORE.user.branch_id) || null;
-      var branchesForUser = (STORE.role === "admin" || !myBranch)
-        ? branches
-        : branches.filter(function (b) { return b.id == myBranch; });
-      var toolbar = '<div class="toolbar">' +
-        '<input class="input" data-q placeholder="' + esc(I18N.t("pos.search")) + '">' +
-        '<select class="select" data-cat><option value="">' + esc(I18N.t("pos.all")) + '</option>' +
-        cats.map(function (c) { return '<option value="' + c.id + '">' + esc(I18N.pick({ es: c.name_es, en: c.name_en })) + '</option>'; }).join("") + '</select>' +
-        '<label class="chip"><input type="checkbox" data-low style="margin-right:.3rem">' + esc(I18N.t("col.lowstock")) + '</label>' +
-        '<span class="mono muted" data-prod-count style="font-size:.72rem;margin-left:auto"></span>' +
-        '</div><div class="invgrid" data-grid></div>';
-      panel.innerHTML = toolbar;
-
-      function draw() {
-        var q = ($("[data-q]", panel).value || "").toLowerCase();
-        var cat = $("[data-cat]", panel).value;
-        var low = $("[data-low]", panel).checked;
-        var rows = list.filter(function (p) {
-          if (cat && p.category_id != cat) return false;
-          if (low && !p.low_stock) return false;
-          if (q && (p.name + " " + p.sku).toLowerCase().indexOf(q) === -1) return false;
-          return true;
-        });
-        var host = $("[data-grid]", panel);
-        host.innerHTML = rows.length
-          ? rows.map(invCardHTML).join("")
-          : '<div class="state">' + (V._icon ? V._icon.empty : "") + '<p>' + esc(I18N.t("empty.none")) + '</p></div>';
-        var cnt = $("[data-prod-count]", panel);
-        if (cnt) cnt.textContent = rows.length + " " + I18N.t("nav.products").toLowerCase();
-      }
-      draw();
-
-      // Portadas reales desde el catálogo de la tienda: si aún no cargó, repinta
-      // al resolver para que aparezcan las carátulas (mangas/cómics sin imagen).
-      if (window.Catalog && Catalog.load && !Catalog.ready) {
-        Catalog.load().then(function () { if ($("[data-grid]", panel)) draw(); }).catch(function () {});
-      }
-
-      ["[data-q]", "[data-cat]", "[data-low]"].forEach(function (sel) {
-        $(sel, panel).addEventListener("input", draw);
-        $(sel, panel).addEventListener("change", draw);
-      });
-
-      panel.addEventListener("click", function (e) {
-        var ed = e.target.closest("[data-edit]"), aj = e.target.closest("[data-adjust]"), dl = e.target.closest("[data-del]");
+    Promise.all([API.get("products?status=all&limit=200"), categories()]).then(function (res) {
+      var list = res[0].products, cats = res[1];
+      panel.innerHTML = V._table([
+        { key: "name", label: I18N.t("col.name"), render: function (r) {
+          return '<b>' + esc(r.name) + '</b><br><span class="mono muted" style="font-size:.7rem">' + esc(r.sku) + '</span>'; } },
+        { key: "price", label: I18N.t("col.price"), cls: "num right", render: function (r) { return UI.money(r.price); } },
+        { key: "stock", label: I18N.t("col.stock"), cls: "num" },
+        { key: "id", label: I18N.t("col.actions"), render: function (r) {
+          return '<button class="btn btn--neon btn--sm" data-adjust="' + r.id + '">± ' + esc(I18N.t("btn.adjust")) + '</button> ' +
+                 '<button class="iconbtn" data-edit="' + r.id + '" title="' + esc(I18N.t("btn.edit")) + '">&#9998;</button>'; } }
+      ], list);
+      panel.onclick = function (e) {
+        var ed = e.target.closest("[data-edit]"), aj = e.target.closest("[data-adjust]");
         var find = function (btn, a) { return list.find(function (p) { return p.id == btn.getAttribute(a); }); };
         if (ed) productForm(find(ed, "data-edit"), cats, function () { products(panel, root); });
         if (aj) adjustForm(find(aj, "data-adjust"), function () { products(panel, root); });
-        if (dl) {
-          var p = find(dl, "data-del");
-          UI.confirm(I18N.t("confirm.delete", { name: p.name }), function () {
-            API.del("products/" + p.id).then(function (r) {
-              UI.toast(r && r.message ? r.message : I18N.t("toast.deleted"), "ok");
-              V._catalogChanged(); products(panel, root);
-            }).catch(V._apiToast);
-          }, { danger: true });
-        }
-      });
-      var nb = root.querySelector("[data-new-product]");
-      if (nb) nb.onclick = function () {
-        var reload = function () { products(panel, root); };
-        // Modal ÚNICO compartido con el panel de Admin (image_url multi-URL,
-        // marca/fabricante, categoría, stock por sucursal).
-        if (V.productModal) V.productModal(branchesForUser, cats, reload);
-        else productForm(null, cats, reload);
       };
+      var nb = root.querySelector("[data-new-product]");
+      if (nb) nb.onclick = function () { productForm(null, cats, function () { products(panel, root); }); };
     }).catch(function (err) { panel.innerHTML = V._error(err); });
   }
 
