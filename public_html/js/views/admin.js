@@ -309,7 +309,9 @@
     ]).then(function (res) {
       var brs = res[0].branches;
       var cats = res[1].categories;
-      var prods = groupBySku(res[2].products, brs);
+      var folded = foldSeries(groupBySku(res[2].products, brs));
+      var prods = folded.list;      // tarjetas visibles: 1 por serie / cómic / producto suelto
+      var bySku = folded.bySku;     // TODOS los SKU (series + tomos ocultos) para las acciones
 
       panel.innerHTML =
         '<div class="toolbar">' +
@@ -344,19 +346,19 @@
       tableBox.addEventListener("click", function (e) {
         var vol = e.target.closest("[data-volumes]");
         if (vol) {
-          var gv = prods.find(function (p) { return p.sku === vol.getAttribute("data-volumes"); });
+          var gv = bySku[vol.getAttribute("data-volumes")];
           if (gv) volumesModal(gv, brs, function () { inventory(panel, root); });
           return;
         }
         var ed = e.target.closest("[data-edit-sku]");
         if (ed) {
-          var ge = prods.find(function (p) { return p.sku === ed.getAttribute("data-edit-sku"); });
+          var ge = bySku[ed.getAttribute("data-edit-sku")];
           if (ge) editProductModal(ge, cats, function () { inventory(panel, root); });
           return;
         }
         var rst = e.target.closest("[data-restock]");
         if (rst) {
-          var g = prods.find(function (p) { return p.sku === rst.getAttribute("data-restock"); });
+          var g = bySku[rst.getAttribute("data-restock")];
           if (g) restockModal(g, brs, function () { inventory(panel, root); });
           return;
         }
@@ -406,6 +408,122 @@
     return V._delButton({ attr: "data-del-sku", value: sku, name: name });
   }
 
+  /* =============================================================
+     Plegado de series — los tomos de manga y los números de cómic NO se
+     muestran como tarjetas sueltas: se esconden bajo la tarjeta de su
+     serie (que se puede desplegar). Reglas:
+       · manga  -> se agrupa por título de serie normalizado (misma lógica
+                   que la tienda: quita "Vol. N", alias Kimetsu↔Demon Slayer…).
+                   La fila SIN marcador de tomo (o SKU `MNG-S-*`) es la serie
+                   padre; el resto son tomos hijos. Si NO hay fila de serie
+                   (solo tomos sueltos) NO se pliega — nada desaparece.
+       · cómics -> best-effort por prefijo de SKU `CMC-XXX-<n>` (o título si
+                   no encaja). El número más bajo es el padre.
+       · lo demás (tcg, coleccionables, preventa) nunca se pliega.
+     Devuelve { list, bySku }.  `list` = tarjetas visibles (padres + sueltos);
+     `bySku` = TODOS los SKU para que editar/ajustar/eliminar sigan funcionando.
+     ============================================================= */
+  var _VOLRE = /\s*[-–—:·]?\s*(?:vol\.?|volumen|tomo|t\.|#|n[°º]\.?|no\.?)\s*\d+(?:\.\d+)?\s*$/i;
+  var _SERIES_ALIAS = {
+    "kimetsu no yaiba": "demon slayer",
+    "demon slayer kimetsu no yaiba": "demon slayer",
+    "shingeki no kyojin": "attack on titan",
+    "boku no hero academia": "my hero academia",
+    "hagane no renkinjutsushi": "fullmetal alchemist",
+    "sousou no frieren": "frieren beyond journey s end",
+    "jojo no kimyou na bouken": "jojo s bizarre adventure"
+  };
+  function _seriesTitle(name) {
+    return String(name || "").replace(_VOLRE, "").replace(/[\s:–—·-]+$/, "").trim();
+  }
+  function _seriesKey(name) {
+    var k = _seriesTitle(name).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    return _SERIES_ALIAS[k] || k;
+  }
+  function _isVolumeName(name) { return _VOLRE.test(String(name || "")); }
+  function _comicPrefix(sku) {
+    var m = String(sku || "").match(/^(CMC-[A-Za-z0-9]+)-\d+$/);
+    return m ? m[1].toUpperCase() : "";
+  }
+  function _issueNum(sku, name) {
+    var m = String(sku || "").match(/-(\d+)$/) || String(name || "").match(/(\d+)\s*$/);
+    return m ? parseInt(m[1], 10) : 0;
+  }
+
+  function foldSeries(skuGroups) {
+    skuGroups = skuGroups || [];
+    var bySku = {};
+    skuGroups.forEach(function (g) { bySku[g.sku] = g; });
+
+    var buckets = {}, order = [], passthrough = [];
+
+    skuGroups.forEach(function (g) {
+      var cat = g.category_slug || "";
+      var key = null;
+      if (cat === "manga") {
+        key = "M:" + _seriesKey(g.name);
+        g._series = /^MNG-S-/i.test(g.sku) || !_isVolumeName(g.name);
+      } else if (cat === "comics") {
+        key = "C:" + (_comicPrefix(g.sku) || _seriesKey(g.name));
+        g._series = false;
+      }
+      if (key === null || _seriesKey(g.name) === "") { passthrough.push(g); return; }
+      if (!buckets[key]) { buckets[key] = []; order.push(key); }
+      buckets[key].push(g);
+    });
+
+    var list = [];
+    order.forEach(function (key) {
+      var members = buckets[key];
+      if (members.length === 1) { list.push(members[0]); return; }
+
+      var parent, children;
+      if (key.charAt(0) === "C") {
+        members.sort(function (a, b) { return _issueNum(a.sku, a.name) - _issueNum(b.sku, b.name); });
+        parent = members[0];
+        children = members.slice(1);
+      } else {
+        var series = members.filter(function (m) { return m._series; });
+        if (!series.length) { members.forEach(function (m) { list.push(m); }); return; }  // solo tomos sueltos
+        parent = series.filter(function (m) { return /^MNG-S-/i.test(m.sku); })[0] || series[0];
+        children = members.filter(function (m) { return m !== parent; });
+        children.sort(function (a, b) { return _issueNum(a.sku, a.name) - _issueNum(b.sku, b.name); });
+      }
+
+      parent.displayName = _seriesTitle(parent.name) || parent.name;
+      parent.children = children;
+      parent.groupTotal = parent.total;
+      parent.groupByBranch = {};
+      Object.keys(parent.byBranch).forEach(function (b) { parent.groupByBranch[b] = parent.byBranch[b]; });
+      children.forEach(function (c) {
+        parent.groupTotal += c.total;
+        Object.keys(c.byBranch).forEach(function (b) {
+          parent.groupByBranch[b] = (parent.groupByBranch[b] || 0) + c.byBranch[b];
+        });
+      });
+      list.push(parent);
+    });
+
+    list = list.concat(passthrough);
+    list.sort(function (a, b) {
+      return String(a.displayName || a.name).localeCompare(String(b.displayName || b.name));
+    });
+    return { list: list, bySku: bySku };
+  }
+
+  function _foldLabel(g) {
+    var n = (g.children || []).length;
+    var en = I18N.lang === "en";
+    if (g.category_slug === "comics") return n + " " + (en ? (n === 1 ? "issue" : "issues") : (n === 1 ? "número" : "números"));
+    return n + " " + (en ? (n === 1 ? "volume" : "volumes") : (n === 1 ? "tomo" : "tomos"));
+  }
+
+  function branchDigest(map, branches) {
+    return (branches || []).map(function (b) {
+      return esc(String(b.code || "").replace(/^GKP-/, "")) + " " + ((map || {})[b.id] || 0);
+    }).join(" · ");
+  }
+
   /* Inventario consolidado como GRILLA DE TARJETAS (mismo estilo que la tienda).
      Cada tarjeta agrupa un SKU: portada, categoría, precio, stock TOTAL y el
      desglose por sucursal. Al pulsarla (o "± Ajustar stock") abre el modal de
@@ -416,22 +534,26 @@
     }
     branches = branches || [];
     return '<div class="invgrid">' + list.map(function (g) {
-      var totalCls = g.total === 0 ? "badge--danger" : (g.total <= 6 ? "badge--warn" : "badge--ok");
+      var kids = g.children || [];
+      var total = kids.length ? g.groupTotal : g.total;
+      var brMap = kids.length ? g.groupByBranch : g.byBranch;
+      var totalCls = total === 0 ? "badge--danger" : (total <= 6 ? "badge--warn" : "badge--ok");
       var cat = esc(PRV_LABEL[g.category_slug] || g.category_slug || "—");
-      var perBranch = branches.map(function (b) {
-        return esc(String(b.code || "").replace(/^GKP-/, "")) + " " + (g.byBranch[b.id] || 0);
-      }).join(" · ");
+      var perBranch = branchDigest(brMap, branches);
+      var name = g.displayName || g.name;
+      var showVolBtn = g.category_slug === "manga" &&
+        !/\bvol\.?\s*\d|\btomo\s*\d|-\d{1,3}$/i.test(g.name + " " + g.sku);
       return '' +
         '<article class="invcard' + (g.status !== "active" ? " is-inactive" : "") + '">' +
           '<div class="invcard__main" data-edit-sku="' + esc(g.sku) + '" title="' + esc(I18N.t("btn.edit")) + '">' +
             '<div class="invcard__media">' +
               '<img src="' + esc(V._productCover(g)) + '" alt="" loading="lazy" decoding="async" onerror="this.style.visibility=\'hidden\'">' +
-              '<span class="invcard__stock badge ' + totalCls + '">' + g.total + '</span>' +
+              '<span class="invcard__stock badge ' + totalCls + '">' + total + '</span>' +
               (g.status !== "active" ? '<span class="invcard__off">' + esc(I18N.t("status.inactive")) + '</span>' : "") +
             '</div>' +
             '<div class="invcard__body">' +
-              '<span class="invcard__cat">' + cat + '</span>' +
-              '<h3 class="invcard__name">' + esc(g.name) + '</h3>' +
+              '<span class="invcard__cat">' + cat + (kids.length ? ' · ' + esc(_foldLabel(g)) : '') + '</span>' +
+              '<h3 class="invcard__name">' + esc(name) + '</h3>' +
               '<span class="invcard__sku mono">' + esc(g.sku) + '</span>' +
               '<div class="invcard__foot">' +
                 '<span class="invcard__price mono">' + UI.money(g.price, true) + '</span>' +
@@ -441,10 +563,10 @@
           '</div>' +
           '<div class="invcard__acts">' +
             '<button class="btn btn--neon btn--sm invcard__adjust" data-restock="' + esc(g.sku) + '">± ' + esc(I18N.t("btn.adjust")) + '</button>' +
-            (g.category_slug === "manga" && !/\bvol\.?\s*\d|\btomo\s*\d|-\d{1,3}$/i.test(g.name + " " + g.sku)
+            (showVolBtn
               ? '<button class="iconbtn" data-volumes="' + esc(g.sku) + '" title="' + esc(I18N.t("volumes.title")) + '" aria-label="' + esc(I18N.t("volumes.title")) + '">📖</button>'
               : "") +
-            delButton(g.sku, g.name) +
+            delButton(g.sku, name) +
           '</div>' +
         '</article>';
     }).join("") + '</div>';
