@@ -90,9 +90,10 @@
   /* El inventario del Gerente reutiliza EXACTAMENTE la misma vista que el panel
      de Admin: plegado de series (tomos de manga y números de cómic bajo su
      tarjeta de serie), tarjetas estilo tienda y los mismos modales de editar /
-     ± ajustar stock / 📖 tomos / nuevo producto. El endpoint de productos ya
-     viene acotado a la sucursal del gerente, así que la función sirve sin
-     cambios. Si admin.js no estuviera cargada, se cae a una tabla simple. */
+     ± ajustar stock / nuevo producto (en manga y cómics "± ajustar stock" abre
+     el modal de tomos: stock a sumar + precio por volumen). El endpoint de
+     productos ya viene acotado a la sucursal del gerente, así que la función
+     sirve sin cambios. Si admin.js no estuviera cargada, se cae a una tabla. */
   function products(panel, root) {
     if (V._inventoryView) { V._inventoryView(panel, root); return; }
     productsFallback(panel, root);

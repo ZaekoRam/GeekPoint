@@ -344,12 +344,6 @@
       }
 
       tableBox.addEventListener("click", function (e) {
-        var vol = e.target.closest("[data-volumes]");
-        if (vol) {
-          var gv = bySku[vol.getAttribute("data-volumes")];
-          if (gv) volumesModal(gv, brs, function () { inventory(panel, root); });
-          return;
-        }
         var ed = e.target.closest("[data-edit-sku]");
         if (ed) {
           var ge = bySku[ed.getAttribute("data-edit-sku")];
@@ -359,7 +353,14 @@
         var rst = e.target.closest("[data-restock]");
         if (rst) {
           var g = bySku[rst.getAttribute("data-restock")];
-          if (g) restockModal(g, brs, function () { inventory(panel, root); });
+          if (g) {
+            // Manga y cómics -> modal de tomos (stock + precio por volumen).
+            // El resto -> ajuste de stock por sucursal de siempre.
+            if (g.category_slug === "manga" || g.category_slug === "comics")
+              volumesModal(g, brs, function () { inventory(panel, root); });
+            else
+              restockModal(g, brs, function () { inventory(panel, root); });
+          }
           return;
         }
         var del = e.target.closest("[data-del-sku]");
@@ -541,9 +542,6 @@
       var cat = esc(PRV_LABEL[g.category_slug] || g.category_slug || "—");
       var perBranch = branchDigest(brMap, branches);
       var name = g.displayName || g.name;
-      // Manga y cómics: SIEMPRE ofrecen "Tomos y precios" (añadir volúmenes /
-      // números sueltos y editar sus precios), estén plegados o no.
-      var showVolBtn = g.category_slug === "manga" || g.category_slug === "comics";
       return '' +
         '<article class="invcard' + (g.status !== "active" ? " is-inactive" : "") + '">' +
           '<div class="invcard__main" data-edit-sku="' + esc(g.sku) + '" title="' + esc(I18N.t("btn.edit")) + '">' +
@@ -564,9 +562,6 @@
           '</div>' +
           '<div class="invcard__acts">' +
             '<button class="btn btn--neon btn--sm invcard__adjust" data-restock="' + esc(g.sku) + '">± ' + esc(I18N.t("btn.adjust")) + '</button>' +
-            (showVolBtn
-              ? '<button class="iconbtn" data-volumes="' + esc(g.sku) + '" title="' + esc(I18N.t("volumes.title")) + '" aria-label="' + esc(I18N.t("volumes.title")) + '">📖</button>'
-              : "") +
             delButton(g.sku, name) +
           '</div>' +
         '</article>';
@@ -647,18 +642,22 @@
     return String(sku || "").replace(/-S-/i, "-").replace(/-\d{1,3}$/, "").replace(/[^A-Za-z0-9]+$/, "");
   }
 
-  /* Modal "Tomos y precios" (manga y cómics).
+  /* Modal "Tomos y precios" — se abre desde "± Ajustar stock" en las tarjetas de
+     manga y cómics (sustituye al modal de reabastecer normal para esas series).
      · Campo "Número de tomos": genera la cuadrícula Vol. 1 … Vol. N.
-     · Cada tomo tiene su precio: si YA existe en la BD se precarga con su precio
-       actual (editable); si no existe, se deja vacío (placeholder = precio de la
-       serie) y solo se crea al escribir un precio.
-     · Un único botón "Guardar" abajo: crea los nuevos (stock 0, se ajusta luego
-       con "± Ajustar stock") y actualiza el precio de los que ya estaban.
-     · Botón "+ Añadir nuevo tomo": formulario detallado tipo "Nuevo producto"
-       (SIN categoría, marca ni línea) para UN tomo con portada / stock propios. */
+     · Cada fila: SKU + "stock: N" de la sucursal elegida, y dos campos:
+        - Precio: si el tomo YA existe se precarga (editable, afecta a todas las
+          sucursales); si no existe, vacío (placeholder = precio de la serie) y
+          el tomo solo se crea al escribir un precio.
+        - Stock: cantidad a SUMAR al stock actual en la sucursal elegida (igual
+          que "± Ajustar stock" normal). Deja en blanco / 0 para no tocarlo.
+          Cambiar de sucursal recarga el "stock: N" de cada fila.
+     · "Guardar" aplica todo de una: precios + sumas de stock + altas de tomos.
+     · "+ Añadir nuevo tomo": formulario detallado tipo "Nuevo producto" (SIN
+       categoría, marca ni línea) para UN tomo con portada / stock propios. */
   function volumesModal(group, branches, done) {
     var kids = [group].concat(group.children || []);
-    // Mapa  nº de tomo -> grupo existente  (para precargar precio y sus ids).
+    // Mapa  nº de tomo -> grupo existente  (para precargar precio/stock y sus ids).
     var byNum = {};
     kids.forEach(function (mm) {
       var n = _issueNum(mm.sku, mm.name);
@@ -668,7 +667,10 @@
     var seriesName = _seriesTitle(group.displayName || group.name) || group.name;
     var maxExisting = Object.keys(byNum).reduce(function (mx, k) { return Math.max(mx, +k); }, 0);
     var descMatch = String((group.sample && group.sample.description) || "").match(/(\d{1,3})\s*tomos?/i);
-    var guess = descMatch ? Math.min(parseInt(descMatch[1], 10), 80) : Math.max(maxExisting, 12);
+    var guess = descMatch ? Math.min(parseInt(descMatch[1], 10), 80) : (maxExisting || 12);
+
+    var brs = branches || [];
+    var defBranch = (window.STORE && STORE.user && STORE.user.branch_id) || (brs[0] && brs[0].id) || null;
 
     var c = document.createElement("form");
     c.innerHTML =
@@ -677,27 +679,61 @@
       '<button type="button" class="btn btn--neon btn--sm" data-add-vol style="margin-bottom:.9rem">' +
         esc(I18N.t("volumes.addNew")) + '</button>' +
       row("volumes.count", '<input class="input" type="number" min="1" max="99" name="count" value="' + guess + '" data-vol-count>', "volumes.count") +
+      (brs.length > 1
+        ? row("volumes.stockBranch", '<select class="input" data-vol-branch>' + brs.map(function (b) {
+            return '<option value="' + b.id + '"' + (b.id === defBranch ? " selected" : "") + '>' + esc(b.name) + '</option>';
+          }).join("") + '</select>', "volumes.stockBranch")
+        : "") +
       '<div data-vol-rows></div>' +
       formButtons();
     var mod = UI.modal({ title: I18N.t("volumes.title"), content: c, wide: true });
 
+    function selBranch() {
+      var sel = c.querySelector("[data-vol-branch]");
+      return sel ? parseInt(sel.value, 10) : defBranch;
+    }
+
     function drawRows() {
+      // Conserva lo ya tecleado al recalcular filas (cambio de sucursal / conteo).
+      var typed = {};
+      c.querySelectorAll("[data-vol]").forEach(function (i) {
+        (typed[i.getAttribute("data-vol")] = typed[i.getAttribute("data-vol")] || {}).price = i.value;
+      });
+      c.querySelectorAll("[data-stock]").forEach(function (i) {
+        (typed[i.getAttribute("data-stock")] = typed[i.getAttribute("data-stock")] || {}).stock = i.value;
+      });
+
       var n = Math.max(1, Math.min(99, parseInt(c.querySelector("[data-vol-count]").value, 10) || 1));
+      var bid = selBranch();
+      var bName = (brs.filter(function (b) { return b.id === bid; })[0] || {}).name || "";
       var rows = "";
       for (var v = 1; v <= n; v++) {
         var ex = byNum[v];
+        var stk = ex && ex.byBranch ? (ex.byBranch[bid] || 0) : 0;
+        var t = typed[v] || {};
+        var priceAttr = (t.price != null && t.price !== "")
+          ? ' value="' + esc(t.price) + '"'
+          : (ex && ex.price != null ? ' value="' + ex.price + '"' : ' placeholder="' + (group.price || 0) + '"');
+        var stockAttr = (t.stock != null && t.stock !== "") ? ' value="' + esc(t.stock) + '"' : ' placeholder="0"';
         rows += '<label class="pkm-branch"><span>' + esc(I18N.t("prod.volume")) + ' ' + v +
-          '<br><small class="muted mono" style="font-size:.62rem">' + esc((ex && ex.sku) || (base + "-" + _pad2(v))) + '</small></span>' +
-          '<input class="input" type="number" min="0" step="0.01" data-vol="' + v + '"' +
-            (ex && ex.price != null ? ' value="' + ex.price + '"' : ' placeholder="' + (group.price || 0) + '"') +
-            ' style="width:7rem;text-align:right"></label>';
+          '<br><small class="muted mono" style="font-size:.62rem">' + esc((ex && ex.sku) || (base + "-" + _pad2(v))) +
+            ' · ' + esc(I18N.t("col.stock").toLowerCase()) + ': ' + stk + '</small></span>' +
+          '<span style="display:flex;gap:.35rem;align-items:center">' +
+            '<input class="input" type="number" min="0" step="0.01" data-vol="' + v + '" title="' + esc(I18N.t("prodadm.price")) + '"' +
+              priceAttr + ' style="width:5.2rem;text-align:right">' +
+            '<input class="input" type="number" min="0" step="1" data-stock="' + v + '" title="+ ' + esc(I18N.t("btn.adjust")) + '"' +
+              stockAttr + ' style="width:3.8rem;text-align:right">' +
+          '</span></label>';
       }
       c.querySelector("[data-vol-rows]").innerHTML =
         '<p class="field__label mono" style="font-size:.7rem;color:var(--faint);text-transform:uppercase;letter-spacing:.1em;margin:.6rem 0 .5rem">' +
-          esc(I18N.t("volumes.priceEach")) + '</p><div class="pkm-branches">' + rows + '</div>';
+          esc(I18N.t("volumes.priceStockHint")) + (bName ? ' · ' + esc(bName) : '') + '</p>' +
+        '<div class="pkm-branches" style="grid-template-columns:repeat(auto-fit,minmax(232px,1fr))">' + rows + '</div>';
     }
     drawRows();
     c.querySelector("[data-vol-count]").addEventListener("input", drawRows);
+    var brSel = c.querySelector("[data-vol-branch]");
+    if (brSel) brSel.addEventListener("change", drawRows);
 
     c.querySelector("[data-add-vol]").addEventListener("click", function () {
       newVolumeModal({
@@ -713,35 +749,69 @@
     });
 
     bindForm(c, mod, function () {
-      var zeroStock = {};
-      branches.forEach(function (b) { zeroStock[b.id] = 0; });
+      var bid = selBranch();
+      var stockInp = {};
+      c.querySelectorAll("[data-stock]").forEach(function (i) { stockInp[i.getAttribute("data-stock")] = i; });
       var jobs = [];
-      c.querySelectorAll("[data-vol]").forEach(function (inp) {
-        if (inp.value === "") return;
-        var price = parseFloat(inp.value);
-        if (!(price >= 0)) return;
-        var rounded = Math.round(price * 100) / 100;
-        var v = parseInt(inp.getAttribute("data-vol"), 10);
+
+      c.querySelectorAll("[data-vol]").forEach(function (pInp) {
+        var v = parseInt(pInp.getAttribute("data-vol"), 10);
+        var sInp = stockInp[v];
         var ex = byNum[v];
+
+        var priceStr = String(pInp.value).trim();
+        var price = priceStr === "" ? null : Math.round(parseFloat(priceStr) * 100) / 100;
+        if (price != null && !(price >= 0)) price = null;
+
+        var stockStr = sInp ? String(sInp.value).trim() : "";
+        var add = stockStr === "" ? 0 : Math.max(0, parseInt(stockStr, 10) || 0);
+
         if (ex) {
-          if (rounded === Number(ex.price)) return;                 // sin cambios
-          var ids = Object.keys(ex.idByBranch || {}).map(function (k) { return ex.idByBranch[k]; }).filter(Boolean);
-          ids.forEach(function (id) {
-            jobs.push(API.put("products/" + id, { sku: ex.sku, name: ex.name, price: rounded }));
-          });
-        } else {
+          // 1) Precio: si cambió, se aplica a la ficha en TODAS las sucursales.
+          if (price != null && price !== Number(ex.price)) {
+            Object.keys(ex.idByBranch || {}).forEach(function (k) {
+              var id = ex.idByBranch[k];
+              if (id) jobs.push(API.put("products/" + id, { sku: ex.sku, name: ex.name, price: price }));
+            });
+          }
+          // 2) Stock: SUMA a lo que ya hay en la sucursal elegida.
+          if (add > 0) {
+            var idHere = ex.idByBranch && ex.idByBranch[bid];
+            if (idHere) {
+              jobs.push(API.patch("products/" + idHere + "/stock",
+                { mode: "delta", value: add, note: I18N.t("volumes.stockNote") }));
+            } else {
+              // El tomo aún no está en esa sucursal -> se crea ahí con ese stock.
+              var sbOne = {}; sbOne[bid] = add;
+              jobs.push(API.post("products/import", {
+                source: "restock", sku: ex.sku, name: ex.name,
+                category_slug: ex.category_slug || group.category_slug || "manga",
+                price: ex.price != null ? ex.price : group.price,
+                image_url: ex.image_url || group.image_url || "",
+                description: (ex.sample && ex.sample.description) || (group.sample && group.sample.description) || "",
+                stock_by_branch: sbOne
+              }));
+            }
+          }
+        } else if (price != null) {
+          // Tomo nuevo: se crea con su precio y, si se indicó, el stock de la sede.
+          var sbNew = {};
+          brs.forEach(function (b) { sbNew[b.id] = 0; });
+          if (add > 0) sbNew[bid] = add;
           jobs.push(API.post("products/import", {
             source: "volume",
             sku: base + "-" + _pad2(v),
             name: seriesName + " " + I18N.t("prod.volume") + " " + v,
             category_slug: group.category_slug || "manga",
-            price: rounded,
+            price: price,
             image_url: group.image_url || "",
             description: (group.sample && group.sample.description) || "",
-            stock_by_branch: zeroStock
+            stock_by_branch: sbNew
           }));
         }
+        // Tomo nuevo con solo stock y sin precio -> se ignora (no se puede crear sin precio).
       });
+
       if (!jobs.length) { UI.closeModal(); return Promise.resolve(); }
       return Promise.all(jobs).then(function () {
         UI.toast(I18N.t("volumes.done", { n: jobs.length }), "ok");
@@ -1408,6 +1478,7 @@
   V.admin = { render: render, mount: mount, roles: ["admin"] };
   V.productModal = newProductModal;   // modal de alta compartido (usado también por Gerente)
   V._inventoryView = inventory;       // vista de inventario completa (plegado de series,
-                                      // tarjetas, editar / ± ajustar / 📖 tomos) — la reusa
+                                      // tarjetas, editar / ± ajustar stock — en manga y
+                                      // cómics el ajuste abre el modal de tomos) — la reusa
                                       // el panel de Gerente acotada a su sucursal.
 })();
