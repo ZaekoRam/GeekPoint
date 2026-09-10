@@ -642,17 +642,76 @@
     return String(sku || "").replace(/-S-/i, "-").replace(/-\d{1,3}$/, "").replace(/[^A-Za-z0-9]+$/, "");
   }
 
+  /* Modal apilado: se dibuja ENCIMA del modal de UI.modal SIN cerrarlo, para
+     editar algo puntual (precio / stock de un tomo) con el listado todavía
+     visible detrás. Cierra con ✕, backdrop o Escape sin tocar el modal de abajo.
+     Usa fuente "básica" (var(--sans)) en el título, no la display del resto. */
+  function stackModal(title, formEl) {
+    var wrap = document.createElement("div");
+    wrap.className = "modal submodal is-entering";
+    wrap.style.zIndex = "700";
+    wrap.innerHTML =
+      '<div class="modal__backdrop" data-sub-close style="background:rgba(10,10,14,.5)"></div>' +
+      '<div class="modal__card" role="dialog" aria-modal="true">' +
+        '<button type="button" class="modal__close" data-sub-close aria-label="' + esc(I18N.t("btn.close")) + '">✕</button>' +
+        '<h2 class="modal__title" style="font-family:var(--sans);text-transform:none;letter-spacing:0;font-size:1.05rem">' + esc(title) + '</h2>' +
+        '<div class="modal__body"></div>' +
+      '</div>';
+    wrap.querySelector(".modal__body").appendChild(formEl);
+    function close() {
+      document.removeEventListener("keydown", onEsc, true);
+      wrap.classList.add("is-leaving");
+      setTimeout(function () { wrap.remove(); }, 160);
+    }
+    function onEsc(e) {
+      if (e.key !== "Escape") return;
+      e.stopImmediatePropagation(); e.preventDefault(); close();   // no cierres el modal de abajo
+    }
+    wrap.addEventListener("click", function (e) {
+      if (e.target.hasAttribute("data-sub-close")) close();
+    });
+    document.addEventListener("keydown", onEsc, true);             // captura: gana al Escape de UI.modal
+    document.body.appendChild(wrap);
+    if (window.I18N) I18N.apply(wrap);
+    setTimeout(function () { wrap.classList.remove("is-entering"); }, 240);
+    var first = wrap.querySelector("input, select, textarea");
+    if (first) { try { first.focus(); } catch (_) {} }
+    return { el: wrap, close: close };
+  }
+
+  /* Como bindForm pero para stackModal: el botón [data-cancel] NO llama a
+     UI.closeModal (eso cerraría el modal de abajo); lo enlaza quien lo usa. */
+  function bindSub(form, submitFn) {
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      if (!form.reportValidity()) return;
+      var payload = {};
+      Array.prototype.forEach.call(form.elements, function (el) { if (el.name) payload[el.name] = el.value; });
+      var btn = form.querySelector('button[type="submit"]');
+      if (btn) btn.classList.add("is-loading");
+      submitFn(payload).catch(function (err) {
+        if (btn) btn.classList.remove("is-loading");
+        apiToast(err);
+      });
+    });
+  }
+
   /* Modal "Tomos y precios" — se abre desde "± Ajustar stock" en las tarjetas de
      manga y cómics (sustituye al modal de reabastecer normal para esas series).
      · Campo "Número de tomos": genera la cuadrícula Vol. 1 … Vol. N.
-     · Cada fila: SKU + "stock: N" de la sucursal elegida, y dos campos:
-        - Precio: si el tomo YA existe se precarga (editable, afecta a todas las
-          sucursales); si no existe, vacío (placeholder = precio de la serie) y
-          el tomo solo se crea al escribir un precio.
-        - Stock: cantidad a SUMAR al stock actual en la sucursal elegida (igual
-          que "± Ajustar stock" normal). Deja en blanco / 0 para no tocarlo.
-          Cambiar de sucursal recarga el "stock: N" de cada fila.
-     · "Guardar" aplica todo de una: precios + sumas de stock + altas de tomos.
+     · Cada fila muestra SKU + "stock: N" de la sucursal elegida y dos botones:
+        - "Precio": sub-modal con un único campo de precio para ese tomo. Si el
+          tomo ya existe se precarga (al guardar afecta a todas las sucursales);
+          si no existe, se crea al guardar (stock 0 en todas las sucursales).
+        - "Stock": sub-modal con selector de sucursal + cantidad a SUMAR al
+          stock actual de esa sucursal (igual que "± Ajustar stock").
+       El "stock: N" de la fila usa el stock propio del tomo; si el tomo aún no
+       tiene ficha propia, hereda el stock del registro de la serie en esa
+       sucursal. Cambiar de sucursal recarga cada fila.
+     · Los sub-modales de "Precio"/"Stock" se apilan ENCIMA (stackModal): este
+       listado NO desaparece. "Cancelar" o Escape cierran solo el sub-modal;
+       al guardar se refresca el inventario y este modal se vuelve a abrir con
+       los datos nuevos. "Cerrar" cierra este modal.
      · "+ Añadir nuevo tomo": formulario detallado tipo "Nuevo producto" (SIN
        categoría, marca ni línea) para UN tomo con portada / stock propios. */
   function volumesModal(group, branches, done) {
@@ -672,6 +731,17 @@
     var brs = branches || [];
     var defBranch = (window.STORE && STORE.user && STORE.user.branch_id) || (brs[0] && brs[0].id) || null;
 
+    /* Tras guardar en un sub-modal: refresca la tabla del inventario y vuelve a
+       abrir ESTE modal con datos frescos (así el "modal anterior sigue saliendo"). */
+    function refresh() {
+      V._catalogChanged();
+      done();
+      API.get("products?status=all&limit=300").then(function (res) {
+        var folded = foldSeries(groupBySku(res.products, brs));
+        volumesModal(folded.bySku[group.sku] || group, branches, done);
+      }).catch(function () { volumesModal(group, branches, done); });
+    }
+
     var c = document.createElement("form");
     c.innerHTML =
       '<p class="muted" style="margin-bottom:.6rem">' + esc(group.displayName || group.name) +
@@ -685,49 +755,45 @@
           }).join("") + '</select>', "volumes.stockBranch")
         : "") +
       '<div data-vol-rows></div>' +
-      formButtons();
-    var mod = UI.modal({ title: I18N.t("volumes.title"), content: c, wide: true });
+      '<div style="display:flex;gap:.6rem;justify-content:flex-end;margin-top:.4rem">' +
+        '<button type="button" class="btn btn--ghost" data-close-vol>' + esc(I18N.t("btn.close")) + '</button></div>';
+    UI.modal({ title: I18N.t("volumes.title"), content: c, wide: true });
+    c.addEventListener("submit", function (e) { e.preventDefault(); });
+    c.querySelector("[data-close-vol]").addEventListener("click", UI.closeModal);
 
     function selBranch() {
       var sel = c.querySelector("[data-vol-branch]");
       return sel ? parseInt(sel.value, 10) : defBranch;
     }
 
-    function drawRows() {
-      // Conserva lo ya tecleado al recalcular filas (cambio de sucursal / conteo).
-      var typed = {};
-      c.querySelectorAll("[data-vol]").forEach(function (i) {
-        (typed[i.getAttribute("data-vol")] = typed[i.getAttribute("data-vol")] || {}).price = i.value;
-      });
-      c.querySelectorAll("[data-stock]").forEach(function (i) {
-        (typed[i.getAttribute("data-stock")] = typed[i.getAttribute("data-stock")] || {}).stock = i.value;
-      });
+    /* Stock a mostrar para un tomo en una sucursal: el propio del tomo si tiene
+       ficha; si no, hereda el del registro de la serie en esa sucursal. */
+    function rowStock(ex, bid) {
+      if (ex && ex.byBranch) return { n: ex.byBranch[bid] || 0, inherited: false };
+      return { n: (group.byBranch && group.byBranch[bid]) || 0, inherited: true };
+    }
 
+    function drawRows() {
       var n = Math.max(1, Math.min(99, parseInt(c.querySelector("[data-vol-count]").value, 10) || 1));
       var bid = selBranch();
       var bName = (brs.filter(function (b) { return b.id === bid; })[0] || {}).name || "";
       var rows = "";
       for (var v = 1; v <= n; v++) {
         var ex = byNum[v];
-        var stk = ex && ex.byBranch ? (ex.byBranch[bid] || 0) : 0;
-        var t = typed[v] || {};
-        var priceAttr = (t.price != null && t.price !== "")
-          ? ' value="' + esc(t.price) + '"'
-          : (ex && ex.price != null ? ' value="' + ex.price + '"' : ' placeholder="' + (group.price || 0) + '"');
-        var stockAttr = (t.stock != null && t.stock !== "") ? ' value="' + esc(t.stock) + '"' : ' placeholder="0"';
+        var st = rowStock(ex, bid);
+        var stockLbl = esc(I18N.t("col.stock").toLowerCase()) +
+          (st.inherited ? " " + esc(I18N.t("volumes.seriesStock")) : "") + ": " + st.n;
         rows += '<label class="pkm-branch"><span>' + esc(I18N.t("prod.volume")) + ' ' + v +
           '<br><small class="muted mono" style="font-size:.62rem">' + esc((ex && ex.sku) || (base + "-" + _pad2(v))) +
-            ' · ' + esc(I18N.t("col.stock").toLowerCase()) + ': ' + stk + '</small></span>' +
-          '<span style="display:flex;gap:.35rem;align-items:center">' +
-            '<input class="input" type="number" min="0" step="0.01" data-vol="' + v + '" title="' + esc(I18N.t("prodadm.price")) + '"' +
-              priceAttr + ' style="width:5.2rem;text-align:right">' +
-            '<input class="input" type="number" min="0" step="1" data-stock="' + v + '" title="+ ' + esc(I18N.t("btn.adjust")) + '"' +
-              stockAttr + ' style="width:3.8rem;text-align:right">' +
+            ' · ' + stockLbl + '</small></span>' +
+          '<span style="display:flex;gap:.4rem;align-items:center">' +
+            '<button type="button" class="btn btn--ghost btn--sm" style="font-family:var(--sans);letter-spacing:0;text-transform:none" data-price-vol="' + v + '">' + esc(I18N.t("volumes.priceBtn")) + '</button>' +
+            '<button type="button" class="btn btn--ghost btn--sm" style="font-family:var(--sans);letter-spacing:0;text-transform:none" data-stock-vol="' + v + '">' + esc(I18N.t("volumes.stockBtn")) + '</button>' +
           '</span></label>';
       }
       c.querySelector("[data-vol-rows]").innerHTML =
         '<p class="field__label mono" style="font-size:.7rem;color:var(--faint);text-transform:uppercase;letter-spacing:.1em;margin:.6rem 0 .5rem">' +
-          esc(I18N.t("volumes.priceStockHint")) + (bName ? ' · ' + esc(bName) : '') + '</p>' +
+          esc(I18N.t("volumes.rowHint")) + (bName ? ' · ' + esc(bName) : '') + '</p>' +
         '<div class="pkm-branches" style="grid-template-columns:repeat(auto-fit,minmax(232px,1fr))">' + rows + '</div>';
     }
     drawRows();
@@ -735,91 +801,127 @@
     var brSel = c.querySelector("[data-vol-branch]");
     if (brSel) brSel.addEventListener("change", drawRows);
 
+    c.querySelector("[data-vol-rows]").addEventListener("click", function (e) {
+      var pb = e.target.closest("[data-price-vol]");
+      if (pb) { volumePriceModal(parseInt(pb.getAttribute("data-price-vol"), 10)); return; }
+      var sb = e.target.closest("[data-stock-vol]");
+      if (sb) { volumeStockModal(parseInt(sb.getAttribute("data-stock-vol"), 10), selBranch()); return; }
+    });
+
     c.querySelector("[data-add-vol]").addEventListener("click", function () {
       newVolumeModal({
         base: base, seriesName: seriesName, nextNum: maxExisting + 1,
         categorySlug: group.category_slug || "manga",
         sample: group.sample || {},
         imageUrl: group.image_url || ""
-      }, branches, function () {
-        UI.closeModal();
-        V._catalogChanged();
-        done();
-      });
+      }, branches, refresh);
     });
 
-    bindForm(c, mod, function () {
-      var bid = selBranch();
-      var stockInp = {};
-      c.querySelectorAll("[data-stock]").forEach(function (i) { stockInp[i.getAttribute("data-stock")] = i; });
-      var jobs = [];
-
-      c.querySelectorAll("[data-vol]").forEach(function (pInp) {
-        var v = parseInt(pInp.getAttribute("data-vol"), 10);
-        var sInp = stockInp[v];
-        var ex = byNum[v];
-
-        var priceStr = String(pInp.value).trim();
-        var price = priceStr === "" ? null : Math.round(parseFloat(priceStr) * 100) / 100;
-        if (price != null && !(price >= 0)) price = null;
-
-        var stockStr = sInp ? String(sInp.value).trim() : "";
-        var add = stockStr === "" ? 0 : Math.max(0, parseInt(stockStr, 10) || 0);
-
+    /* ---- sub-modal apilado: PRECIO de un solo tomo ---- */
+    function volumePriceModal(v) {
+      var ex = byNum[v];
+      var nm = seriesName + " " + I18N.t("prod.volume") + " " + v;
+      var f = document.createElement("form");
+      f.innerHTML =
+        '<p class="muted" style="margin-bottom:.6rem">' + esc(nm) +
+          ' · <span class="mono">' + esc((ex && ex.sku) || (base + "-" + _pad2(v))) + '</span></p>' +
+        row("prodadm.price", '<input class="input" type="number" name="price" min="0" step="0.01" required ' +
+          (ex && ex.price != null ? 'value="' + ex.price + '"' : 'placeholder="' + (group.price || 0) + '"') + '>') +
+        formButtons();
+      var sub = stackModal(I18N.t("volumes.priceTitle", { name: nm }), f);
+      f.querySelector("[data-cancel]").addEventListener("click", sub.close);
+      bindSub(f, function (p) {
+        var price = Math.round(parseFloat(p.price) * 100) / 100;
+        if (!(price >= 0)) return Promise.reject(new Error(I18N.t("volumes.needPrice")));
+        var jobs;
         if (ex) {
-          // 1) Precio: si cambió, se aplica a la ficha en TODAS las sucursales.
-          if (price != null && price !== Number(ex.price)) {
-            Object.keys(ex.idByBranch || {}).forEach(function (k) {
-              var id = ex.idByBranch[k];
-              if (id) jobs.push(API.put("products/" + id, { sku: ex.sku, name: ex.name, price: price }));
-            });
-          }
-          // 2) Stock: SUMA a lo que ya hay en la sucursal elegida.
-          if (add > 0) {
-            var idHere = ex.idByBranch && ex.idByBranch[bid];
-            if (idHere) {
-              jobs.push(API.patch("products/" + idHere + "/stock",
-                { mode: "delta", value: add, note: I18N.t("volumes.stockNote") }));
-            } else {
-              // El tomo aún no está en esa sucursal -> se crea ahí con ese stock.
-              var sbOne = {}; sbOne[bid] = add;
-              jobs.push(API.post("products/import", {
-                source: "restock", sku: ex.sku, name: ex.name,
-                category_slug: ex.category_slug || group.category_slug || "manga",
-                price: ex.price != null ? ex.price : group.price,
-                image_url: ex.image_url || group.image_url || "",
-                description: (ex.sample && ex.sample.description) || (group.sample && group.sample.description) || "",
-                stock_by_branch: sbOne
-              }));
-            }
-          }
-        } else if (price != null) {
-          // Tomo nuevo: se crea con su precio y, si se indicó, el stock de la sede.
-          var sbNew = {};
-          brs.forEach(function (b) { sbNew[b.id] = 0; });
-          if (add > 0) sbNew[bid] = add;
-          jobs.push(API.post("products/import", {
-            source: "volume",
-            sku: base + "-" + _pad2(v),
-            name: seriesName + " " + I18N.t("prod.volume") + " " + v,
-            category_slug: group.category_slug || "manga",
-            price: price,
+          jobs = Object.keys(ex.idByBranch || {}).map(function (k) {
+            return API.put("products/" + ex.idByBranch[k], { sku: ex.sku, name: ex.name, price: price });
+          });
+        } else {
+          var sb = {};
+          brs.forEach(function (b) { sb[b.id] = 0; });
+          jobs = [API.post("products/import", {
+            source: "volume", sku: base + "-" + _pad2(v), name: nm,
+            category_slug: group.category_slug || "manga", price: price,
             image_url: group.image_url || "",
             description: (group.sample && group.sample.description) || "",
-            stock_by_branch: sbNew
-          }));
+            stock_by_branch: sb
+          })];
         }
-        // Tomo nuevo con solo stock y sin precio -> se ignora (no se puede crear sin precio).
+        return Promise.all(jobs).then(function () {
+          UI.toast(I18N.t("volumes.priceSaved"), "ok");
+          sub.close();
+          refresh();
+        });
       });
+    }
 
-      if (!jobs.length) { UI.closeModal(); return Promise.resolve(); }
-      return Promise.all(jobs).then(function () {
-        UI.toast(I18N.t("volumes.done", { n: jobs.length }), "ok");
-        UI.closeModal();
-        V._catalogChanged();
-        done();
+    /* ---- sub-modal apilado: STOCK de un solo tomo en una sucursal ---- */
+    function volumeStockModal(v, bid0) {
+      var ex = byNum[v];
+      var nm = seriesName + " " + I18N.t("prod.volume") + " " + v;
+      var f = document.createElement("form");
+      f.innerHTML =
+        '<p class="muted" style="margin-bottom:.6rem">' + esc(nm) +
+          ' · <span class="mono">' + esc((ex && ex.sku) || (base + "-" + _pad2(v))) + '</span></p>' +
+        (brs.length > 1
+          ? row("volumes.stockBranch", '<select class="input" name="branch" data-sb>' + brs.map(function (b) {
+              return '<option value="' + b.id + '"' + (b.id === bid0 ? " selected" : "") + '>' + esc(b.name) + '</option>';
+            }).join("") + '</select>', "volumes.stockBranch")
+          : '<input type="hidden" name="branch" value="' + (bid0 || (brs[0] && brs[0].id) || "") + '">') +
+        '<p class="muted mono" style="font-size:.72rem;margin:.1rem 0 .5rem" data-cur></p>' +
+        row("volumes.addStock", '<input class="input" type="number" name="add" min="0" step="1" value="0">', "volumes.addStock") +
+        formButtons();
+      var sub = stackModal(I18N.t("volumes.stockTitle", { name: nm }), f);
+      f.querySelector("[data-cancel]").addEventListener("click", sub.close);
+
+      function paintCur() {
+        var bid = parseInt((f.elements.branch && f.elements.branch.value) || bid0, 10);
+        var st = rowStock(ex, bid);
+        f.querySelector("[data-cur]").textContent = I18N.t("volumes.curStock") + ": " + st.n +
+          (st.inherited ? " (" + I18N.t("volumes.seriesStock") + ")" : "");
+      }
+      paintCur();
+      var sbSel = f.querySelector("[data-sb]");
+      if (sbSel) sbSel.addEventListener("change", paintCur);
+
+      bindSub(f, function (p) {
+        var bid = parseInt(p.branch, 10);
+        var add = Math.max(0, parseInt(p.add, 10) || 0);
+        if (!add) { sub.close(); return Promise.resolve(); }
+        var job;
+        if (ex && ex.idByBranch && ex.idByBranch[bid]) {
+          job = API.patch("products/" + ex.idByBranch[bid] + "/stock",
+            { mode: "delta", value: add, note: I18N.t("volumes.stockNote") });
+        } else if (ex) {
+          var sb1 = {}; sb1[bid] = add;
+          job = API.post("products/import", {
+            source: "restock", sku: ex.sku, name: ex.name,
+            category_slug: ex.category_slug || group.category_slug || "manga",
+            price: ex.price != null ? ex.price : group.price,
+            image_url: ex.image_url || group.image_url || "",
+            description: (group.sample && group.sample.description) || "",
+            stock_by_branch: sb1
+          });
+        } else {
+          var sb2 = {}; brs.forEach(function (b) { sb2[b.id] = 0; }); sb2[bid] = add;
+          job = API.post("products/import", {
+            source: "volume", sku: base + "-" + _pad2(v), name: nm,
+            category_slug: group.category_slug || "manga",
+            price: group.price != null ? group.price : 0,
+            image_url: group.image_url || "",
+            description: (group.sample && group.sample.description) || "",
+            stock_by_branch: sb2
+          });
+        }
+        return job.then(function () {
+          UI.toast(I18N.t("prodadm.restockDone"), "ok");
+          sub.close();
+          refresh();
+        });
       });
-    });
+    }
   }
 
   /* Formulario "Nuevo volumen" — clon de "Nuevo producto" SIN categoría, marca
