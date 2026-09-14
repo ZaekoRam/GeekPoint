@@ -59,11 +59,21 @@ Autenticación: cabecera `Authorization: Bearer <token>` (se obtiene en `/auth/l
 | Método | Ruta | Rol | Notas |
 |---|---|---|---|
 | GET | `/products?q=&category_id=&low_stock=1&status=active\|all&branch_id=` | auth | El cajero/gerente sólo ve su sucursal; el admin filtra con `branch_id` |
-| POST | `/products` | admin / gerente | `{sku,name,price,category_id,stock,min_stock,tax_rate}` |
+| POST | `/products` | admin / gerente | `{sku,name,price,category_id,stock,min_stock,tax_rate}`; sólo admin puede incluir descuento |
 | GET | `/products/{id}` | auth |
 | PUT | `/products/{id}` | admin / gerente | no cambia el stock |
 | PATCH | `/products/{id}/stock` | admin / gerente | `{mode: set\|delta, value, note}` → registra movimiento |
 | DELETE | `/products/{id}` | admin / gerente | baja lógica si tiene ventas |
+
+`price` siempre es el precio de lista con IVA. Las lecturas agregan
+`discount_percent`, `discount_starts_at`, `discount_ends_at`, `discount_status`
+(`none`, `scheduled`, `active`, `expired`), `effective_price` y `unit_savings`.
+Sólo `admin` puede escribir los tres campos de descuento; el porcentaje permitido
+es `0..90` y las fechas deben ser ISO 8601 con zona. En `PUT`, cualquier cambio de
+promoción se replica automáticamente a todas las filas del mismo SKU. En manga,
+la promoción también se aplica a la ficha de la serie y a todos sus tomos; cada
+tomo calcula el porcentaje sobre su propio precio. Los tomos creados posteriormente
+heredan la promoción vigente de su serie.
 
 ## Cajas
 
@@ -93,6 +103,7 @@ Autenticación: cabecera `Authorization: Bearer <token>` (se obtiene en `/auth/l
   "customer_name": "Mostrador",
   "payment_method": "cash",
   "amount_paid": 500,
+  "expected_total": 447,
   "items": [
     { "product_id": 1, "quantity": 2 },
     { "product_id": 7, "quantity": 1 }
@@ -104,6 +115,23 @@ El servidor: bloquea las filas de producto, valida stock, calcula subtotal/IVA/t
 (precio con IVA incluido, se desglosa hacia atrás), genera folio consecutivo por
 sucursal, inserta la venta y sus renglones, **descuenta el inventario** y registra un
 movimiento por cada producto. Todo en una transacción.
+
+El servidor vuelve a calcular el descuento vigente y nunca acepta precios enviados
+por el cliente. Si `expected_total` cambió responde `409 price_changed`. Cada renglón
+conserva `list_unit_price`, `discount_percent`, `unit_discount` y `unit_price` cobrado.
+
+## Apartados
+
+| Método | Ruta | Rol | Notas |
+|---|---|---|---|
+| POST | `/reservations` | público | Crea un apartado; acepta `expected_total`; los productos locales se recalculan por `product_id` o SKU/sucursal |
+| GET | `/reservations?status=&branch_id=` | personal | Lista de apartados |
+| GET | `/reservations/{folio}` | personal | Detalle y fotografía de precios |
+| PATCH | `/reservations/{folio}/status` | personal | `{status: cobrada\|cancelada, sale_id?}` |
+
+Las referencias `local-*` se resuelven contra `products` y se cotizan nuevamente
+en el servidor. Los elementos sintéticos de respaldo conservan el comportamiento
+de cotización no vinculante y no admiten descuentos administrables.
 
 ## Reportes
 

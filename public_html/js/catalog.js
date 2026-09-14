@@ -165,7 +165,13 @@
       if (!cover && images.length) cover = images[0];
       var branches = (p.branches && p.branches.length) ? p.branches : synthBranches(p.id);
       var volCovers = (fromApi && p.volume_covers && p.volume_covers.length)
-        ? p.volume_covers.map(function (vc) { return { v: String(vc.v), url: absUrl(vc.url, apiBase) }; })
+        ? p.volume_covers.map(function (vc) {
+            var copy = {};
+            for (var key in vc) if (Object.prototype.hasOwnProperty.call(vc, key)) copy[key] = vc[key];
+            copy.v = String(vc.v);
+            copy.url = absUrl(vc.url, apiBase);
+            return copy;
+          })
         : [];
       var figurePngRaw = p.figure_png_url || "";
       var figurePng = (fromApi && apiBase && figurePngRaw) ? absUrl(figurePngRaw, apiBase) : figurePngRaw;
@@ -175,6 +181,13 @@
         author: p.author || "",
         category: p.category || "manga",
         price: Number(p.price) || 0,
+        effective_price: p.effective_price != null ? Number(p.effective_price) : (Number(p.price) || 0),
+        unit_savings: Number(p.unit_savings) || 0,
+        discount_percent: Number(p.discount_percent) || 0,
+        discount_starts_at: p.discount_starts_at || null,
+        discount_ends_at: p.discount_ends_at || null,
+        discount_status: p.discount_status || "none",
+        price_varies: !!p.price_varies,
         tags: p.tags || [],
         // Rareza SOLO para cartas TCG y solo si es una etiqueta corta ("Rare",
         // "Ultra Rare"…). Evita que una sinopsis mal parseada en el backend
@@ -302,6 +315,10 @@
             v: String(v),
             url: p.cover || (prev && prev.url) || "",
             price: p.price || (prev && prev.price) || 0,
+            effective_price: p.effective_price != null ? p.effective_price : (p.price || (prev && prev.effective_price) || 0),
+            unit_savings: p.unit_savings || 0,
+            discount_percent: p.discount_percent || 0,
+            discount_status: p.discount_status || "none",
             id: p.source === "local" ? p.id : ((prev && prev.id) || null),
             branches: (p.branches && p.branches.length) ? p.branches : ((prev && prev.branches) || null),
             source: p.source || (prev && prev.source) || ""
@@ -327,6 +344,25 @@
       if (g.base) {
         if (vols.length) g.base.volume_covers = vols;
         g.base.series = g.base.series || g.series || g.base.title;
+        var pricedVolumes = vols.filter(function (v) {
+          return v.id && Number(v.effective_price != null ? v.effective_price : v.price) > 0;
+        });
+        if (pricedVolumes.length) {
+          var cheapestVolume = pricedVolumes.reduce(function (best, v) {
+            var value = Number(v.effective_price != null ? v.effective_price : v.price);
+            var bestValue = Number(best.effective_price != null ? best.effective_price : best.price);
+            return value < bestValue ? v : best;
+          });
+          g.base.price = Number(cheapestVolume.price) || 0;
+          g.base.effective_price = Number(cheapestVolume.effective_price != null
+            ? cheapestVolume.effective_price : cheapestVolume.price) || 0;
+          g.base.unit_savings = Number(cheapestVolume.unit_savings) || 0;
+          g.base.discount_percent = Number(cheapestVolume.discount_percent) || 0;
+          g.base.discount_status = cheapestVolume.discount_status || "none";
+          g.base.price_varies = pricedVolumes.some(function (v) {
+            return Math.abs(Number(v.effective_price != null ? v.effective_price : v.price) - g.base.effective_price) >= 0.01;
+          });
+        }
         // Consulta MangaDex con el nombre que trae TODOS los tomos.
         g.base.search_title = mangadexQuery(g.base.series || g.base.title);
         out.push(g.base);
@@ -336,7 +372,8 @@
       // Serie sin ficha externa: se sintetiza a partir de sus tomos locales.
       var lead = vols[0] || {};
       var cheapest = vols.reduce(function (m, x) {
-        return (x.price && (m === 0 || x.price < m)) ? x.price : m;
+        var ep = x.effective_price != null ? x.effective_price : x.price;
+        return (ep && (m === 0 || ep < m)) ? ep : m;
       }, 0) || lead.price || 0;
       var topVol = vols.length ? parseInt(vols[vols.length - 1].v, 10) : null;
       out.push({
@@ -344,7 +381,11 @@
         title: g.series || "Manga",
         author: "",
         category: "manga",
-        price: cheapest,
+        price: lead.price || cheapest,
+        effective_price: cheapest,
+        unit_savings: lead.unit_savings || 0,
+        discount_percent: lead.discount_percent || 0,
+        discount_status: lead.discount_status || "none",
         tags: [],
         rarity: "",
         source: "series",

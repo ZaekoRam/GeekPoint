@@ -185,7 +185,7 @@
     var qs = "?status=active&limit=120&branch_id=" + ctx.branchId;
     if (ctx.filter.q) qs += "&q=" + encodeURIComponent(ctx.filter.q);
     if (ctx.filter.cat) qs += "&category_id=" + ctx.filter.cat;
-    API.get("products" + qs).then(function (d) {
+    return API.get("products" + qs).then(function (d) {
       ctx.products = d.products;
       grid.innerHTML = d.products.length ? d.products.map(cardHTML).join("")
         : '<div class="state"><div class="state__icon">🔍</div><p>' + esc(I18N.t("empty.none")) + '</p></div>';
@@ -204,6 +204,7 @@
     var out = p.stock === 0;
     var cls = "prod" + (out ? " is-out" : (p.low_stock ? " is-low" : ""));
     var cover = (V._productCover ? V._productCover(p) : "") || "";
+    var discounted = p.discount_status === "active" && Number(p.effective_price) < Number(p.price);
     return (
       '<button class="' + cls + '" data-add="' + p.id + '"' + (out ? " disabled" : "") + '>' +
         '<span class="prod__media">' +
@@ -214,7 +215,9 @@
         '</span>' +
         '<span class="prod__body">' +
           '<span class="prod__name">' + esc(p.name) + '</span>' +
-          '<span class="prod__price">' + UI.money(p.price, true) + '</span>' +
+          '<span class="prod__price">' + (discounted
+            ? '<del>' + UI.money(p.price, true) + '</del><strong>' + UI.money(p.effective_price, true) + '</strong><small>−' + p.discount_percent + '%</small>'
+            : UI.money(p.effective_price != null ? p.effective_price : p.price, true)) + '</span>' +
         '</span>' +
       '</button>'
     );
@@ -222,7 +225,10 @@
 
   function mapProduct(p) {
     return {
-      id: p.id, name: p.name, sku: p.sku, price: p.price, tax_rate: p.tax_rate,
+      id: p.id, name: p.name, sku: p.sku,
+      list_price: p.price, price: p.effective_price != null ? p.effective_price : p.price,
+      discount_percent: p.discount_status === "active" ? p.discount_percent : 0,
+      unit_savings: p.discount_status === "active" ? p.unit_savings : 0, tax_rate: p.tax_rate,
       stock: p.stock, art: EMOJI[p.category_slug] || "📦"
     };
   }
@@ -233,10 +239,13 @@
     var items = STORE.cart;
 
     var itemsHTML = items.length ? items.map(function (l) {
+      var discounted = Number(l.unit_savings) > 0;
       return (
         '<div class="citem">' +
           '<div><div class="citem__name">' + esc(l.name) + '</div>' +
-            '<div class="citem__sub">' + UI.money(l.price) + ' · ' + esc(l.sku) + '</div></div>' +
+            '<div class="citem__sub">' + (discounted
+              ? '<del>' + UI.money(l.list_price) + '</del> ' + UI.money(l.price) + ' · −' + l.discount_percent + '%'
+              : UI.money(l.price)) + ' · ' + esc(l.sku) + '</div></div>' +
           '<div class="citem__qty">' +
             '<button class="qbtn" data-dec="' + l.id + '">−</button>' +
             '<span class="mono">' + l.qty + '</span>' +
@@ -273,6 +282,7 @@
       '<h2>' + esc(I18N.t("pos.cart")) + (t.count ? ' · <span class="mono">' + t.count + '</span>' : "") + '</h2>' +
       '<div class="cart__items">' + itemsHTML + '</div>' +
       '<div class="cart__totals">' +
+        (t.discount > 0 ? '<div class="row cart__discount"><span>' + esc(I18N.t("discount.total")) + '</span><span class="num">−' + UI.money(t.discount) + '</span></div>' : '') +
         '<div class="row"><span>' + esc(I18N.t("pos.subtotal")) + '</span><span class="num">' + UI.money(t.subtotal) + '</span></div>' +
         '<div class="row"><span>' + esc(I18N.t("pos.tax")) + ' (16%)</span><span class="num">' + UI.money(t.tax) + '</span></div>' +
         '<div class="row row--total"><span>' + esc(I18N.t("pos.total")) + '</span><span class="num" data-total>' + UI.money(t.total) + '</span></div>' +
@@ -317,6 +327,7 @@
       customer_name: ($("[data-customer]", host) || {}).value || "",
       payment_method: method,
       amount_paid: amountPaid,
+      expected_total: t.total,
       items: STORE.cart.map(function (l) { return { product_id: l.id, quantity: l.qty }; })
     };
 
@@ -330,6 +341,19 @@
       loadProducts(root);
     }).catch(function (err) {
       btn.classList.remove("is-loading");
+      if (err && err.data && err.data.error === "price_changed") {
+        (err.data.lines || []).forEach(function (serverLine) {
+          var line = STORE.cart.find(function (l) { return l.id == serverLine.product_id; });
+          if (!line) return;
+          line.list_price = serverLine.list_unit_price;
+          line.price = serverLine.unit_price;
+          line.discount_percent = serverLine.discount_percent;
+          line.unit_savings = serverLine.unit_discount;
+        });
+        renderCart(root);
+        UI.toast(I18N.t("discount.posUpdated"), "warn");
+        return;
+      }
       UI.toast(err.message || I18N.t("toast.error"), "error");
       loadProducts(root);
     });
@@ -339,7 +363,10 @@
   function ticketHTML(s) {
     var loc = I18N.lang === "en" ? "en-US" : "es-MX";
     var rows = (s.items || []).map(function (it) {
-      return '<div class="t-row"><span>' + it.quantity + '× ' + esc(it.product_name) + '</span><span>' + UI.money(it.line_total) + '</span></div>';
+      var detail = Number(it.unit_discount) > 0
+        ? '<small>' + esc(I18N.t("discount.listPrice")) + ' ' + UI.money(it.list_unit_price) + ' · −' + it.discount_percent + '% · ' + UI.money(it.unit_price) + '</small>'
+        : '';
+      return '<div class="t-row"><span>' + it.quantity + '× ' + esc(it.product_name) + detail + '</span><span>' + UI.money(it.line_total) + '</span></div>';
     }).join("");
     return (
       '<div class="ticket">' +
@@ -351,6 +378,7 @@
         '<div class="t-row"><span>' + esc(I18N.t("ticket.cashier")) + '</span><span>' + esc(s.cashier_name || "") + '</span></div>' +
         (s.register_name ? '<div class="t-row"><span>' + esc(I18N.t("pos.register")) + '</span><span>' + esc(s.register_name) + '</span></div>' : "") +
         '<hr>' + rows + '<hr>' +
+        (Number(s.discount_total) > 0 ? '<div class="t-row"><span>' + esc(I18N.t("discount.total")) + '</span><span>−' + UI.money(s.discount_total) + '</span></div>' : '') +
         '<div class="t-row"><span>' + esc(I18N.t("pos.subtotal")) + '</span><span>' + UI.money(s.subtotal) + '</span></div>' +
         '<div class="t-row"><span>' + esc(I18N.t("pos.tax")) + '</span><span>' + UI.money(s.tax) + '</span></div>' +
         '<div class="t-row t-row--total"><span>' + esc(I18N.t("pos.total")) + '</span><span>' + UI.money(s.total) + '</span></div>' +

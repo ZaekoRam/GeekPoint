@@ -289,6 +289,26 @@ a.kpi--link:hover .kpi__go { opacity: 1; transform: translateX(0); }
 .invcard__min { font-size: .6rem; color: var(--faint); text-transform: lowercase; }
 .invcard__acts { display: flex; align-items: center; gap: .4rem; padding: .55rem .7rem .7rem; }
 .invcard__adjust { flex: 1; white-space: nowrap; }
+.invcard__cat .promo-badge { margin-left: .25rem; font-size: .58rem; }
+.discount-editor {
+  margin: .9rem 0; padding: .9rem; border: 1px solid var(--line);
+  border-radius: var(--radius-sm); background: var(--surface-2);
+}
+.discount-editor h3 { font-size: .95rem; margin: 0 0 .65rem; }
+.discount-toggle { display: flex; align-items: center; gap: .5rem; cursor: pointer; }
+.discount-toggle input { width: 1.1rem; height: 1.1rem; accent-color: var(--panini); }
+.discount-editor [data-discount-fields] { margin-top: .75rem; }
+.discount-preview { display: flex; gap: .6rem; flex-wrap: wrap; margin: .6rem 0; }
+.discount-preview span { padding: .45rem .6rem; border-radius: 8px; background: var(--surface); font-size: .76rem; }
+.discount-preview b { display: block; font-family: var(--mono); color: var(--neon-cyan); }
+.discount-editor--readonly p { margin: 0; color: var(--muted); }
+.prod__price { display: flex; flex-direction: column; align-items: flex-start; }
+.prod__price del { color: var(--muted); font-size: .72rem; }
+.prod__price strong { color: var(--panini); }
+.prod__price small { color: var(--panini); font-weight: 800; }
+.citem__sub del { color: var(--muted); }
+.cart__discount { color: var(--panini); font-weight: 700; }
+.ticket .t-row small { display: block; color: var(--muted); font-size: .66rem; margin-top: .08rem; }
 @media (max-width: 480px) {
   .invgrid { gap: .7rem; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
   .invcard__name { font-size: .82rem; }

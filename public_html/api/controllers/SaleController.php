@@ -61,7 +61,8 @@ class SaleController extends Controller
 
             $ids = implode(',', array_map('intval', array_keys($wanted)));
             $rows = Database::all(
-                "SELECT id, name, sku, price, tax_rate, stock, status
+                "SELECT id, name, sku, price, discount_percent, discount_starts_at, discount_ends_at,
+                        tax_rate, stock, status
                  FROM products
                  WHERE branch_id = " . (int) $branchId . " AND id IN ($ids)
                  FOR UPDATE"
@@ -91,7 +92,9 @@ class SaleController extends Controller
                     );
                 }
 
-                $unit  = round((float) $p['price'], 2);
+                $pricing = Pricing::calculate($p);
+                $listUnit = $pricing['price'];
+                $unit  = $pricing['effective_price'];
                 $rate  = (float) $p['tax_rate'];
                 // Precio con IVA incluido: se desglosa hacia atrás.
                 $lineTotal    = round($unit * $qty, 2);
@@ -105,6 +108,9 @@ class SaleController extends Controller
                     'product_id'    => $pid,
                     'product_name'  => $p['name'],
                     'sku'           => $p['sku'],
+                    'list_unit_price' => $listUnit,
+                    'discount_percent' => $pricing['discount_status'] === 'active' ? $pricing['discount_percent'] : 0.0,
+                    'unit_discount' => $pricing['unit_savings'],
                     'unit_price'    => $unit,
                     'tax_rate'      => $rate,
                     'quantity'      => $qty,
@@ -118,6 +124,15 @@ class SaleController extends Controller
             $subtotal = round($subtotal, 2);
             $tax      = round($tax, 2);
             $total    = round($subtotal + $tax, 2);
+
+            $expected = $this->body('expected_total');
+            if ($expected !== null && (!is_numeric($expected) || abs(round((float) $expected, 2) - $total) >= 0.01)) {
+                Database::rollback();
+                Response::error(409, 'price_changed',
+                    'El precio cambió. Revisa el total actualizado antes de cobrar.',
+                    ['total' => $total, 'lines' => $lines]
+                );
+            }
 
             $amountPaid = $this->body('amount_paid');
             $amountPaid = is_numeric($amountPaid) ? round((float) $amountPaid, 2) : $total;
@@ -152,11 +167,12 @@ class SaleController extends Controller
             foreach ($lines as $ln) {
                 Database::run(
                     'INSERT INTO sale_items
-                       (sale_id, product_id, product_name, sku, unit_price, tax_rate, quantity,
-                        line_subtotal, line_tax, line_total)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                       (sale_id, product_id, product_name, sku, list_unit_price, discount_percent,
+                        unit_discount, unit_price, tax_rate, quantity, line_subtotal, line_tax, line_total)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                     [
                         $saleId, $ln['product_id'], $ln['product_name'], $ln['sku'],
+                        $ln['list_unit_price'], $ln['discount_percent'], $ln['unit_discount'],
                         $ln['unit_price'], $ln['tax_rate'], $ln['quantity'],
                         $ln['line_subtotal'], $ln['line_tax'], $ln['line_total'],
                     ]
@@ -275,12 +291,15 @@ class SaleController extends Controller
             $r['id'] = (int) $r['id'];
             $r['product_id'] = $r['product_id'] !== null ? (int) $r['product_id'] : null;
             $r['quantity'] = (int) $r['quantity'];
-            foreach (['unit_price', 'tax_rate', 'line_subtotal', 'line_tax', 'line_total'] as $k) {
+            foreach (['list_unit_price', 'discount_percent', 'unit_discount', 'unit_price', 'tax_rate', 'line_subtotal', 'line_tax', 'line_total'] as $k) {
                 $r[$k] = (float) $r[$k];
             }
             return $r;
         }, Database::all('SELECT * FROM sale_items WHERE sale_id = ? ORDER BY id', [(int) $id]));
 
+        $sale['discount_total'] = round(array_reduce($sale['items'], function ($sum, $it) {
+            return $sum + $it['unit_discount'] * $it['quantity'];
+        }, 0.0), 2);
         return $sale;
     }
 

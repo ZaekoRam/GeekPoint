@@ -39,21 +39,57 @@ class ReservationController extends Controller
         $total = 0.0;
         foreach ($items as $it) {
             $qty = max(1, (int) ($it['qty'] ?? $it['quantity'] ?? 1));
-            $price = round((float) ($it['price'] ?? $it['unit_price'] ?? 0), 2);
-            if ($price < 0) $price = 0;
+            $ref = mb_substr((string) ($it['ref'] ?? $it['id'] ?? ''), 0, 64);
+            $productId = (int) ($it['product_id'] ?? 0);
+            $local = $productId > 0
+                ? $this->localProductById($productId, $branchId, $qty)
+                : $this->localProductForRef($ref, $branchId, $qty);
+            if ($productId > 0) $ref = 'product-' . $productId;
+            if ($local) {
+                $pricing = Pricing::calculate($local);
+                $listPrice = $pricing['price'];
+                $price = $pricing['effective_price'];
+                $percent = $pricing['discount_status'] === 'active' ? $pricing['discount_percent'] : 0.0;
+                $unitDiscount = $pricing['unit_savings'];
+                $title = $local['name'];
+                $binding = true;
+            } else {
+                if ($productId > 0 || $this->isLocalRef($ref)) {
+                    Response::error(409, 'product_unavailable', 'Un producto local ya no está disponible.', ['product_ref' => $ref]);
+                }
+                // Elementos sintéticos: cotización no vinculante, sin descuento administrable.
+                $price = max(0, round((float) ($it['price'] ?? $it['unit_price'] ?? 0), 2));
+                $listPrice = $price;
+                $percent = 0.0;
+                $unitDiscount = 0.0;
+                $title = mb_substr((string) ($it['title'] ?? 'Producto'), 0, 200);
+                $binding = false;
+            }
             $line = round($price * $qty, 2);
             $clean[] = [
-                'ref'   => mb_substr((string) ($it['ref'] ?? $it['id'] ?? ''), 0, 64),
-                'title' => mb_substr((string) ($it['title'] ?? 'Producto'), 0, 200),
+                'ref'   => $ref,
+                'title' => $title,
+                'list_price' => $listPrice,
+                'discount_percent' => $percent,
+                'unit_discount' => $unitDiscount,
                 'price' => $price,
                 'qty'   => $qty,
                 'line'  => $line,
+                'binding' => $binding,
             ];
             $total += $line;
         }
         $total = round($total, 2);
         $subtotal = round($total / (1 + $rate), 2);
         $tax = round($total - $subtotal, 2);
+
+        if (array_key_exists('expected_total', $d)
+            && (!is_numeric($d['expected_total']) || abs(round((float) $d['expected_total'], 2) - $total) >= 0.01)) {
+            Response::error(409, 'price_changed',
+                'Uno o más precios cambiaron. Revisa el total actualizado.',
+                ['total' => $total, 'items' => $clean]
+            );
+        }
 
         // Folio único GP-XXXX.
         $folio = $this->uniqueFolio();
@@ -76,9 +112,12 @@ class ReservationController extends Controller
             $rid = Database::lastId();
             foreach ($clean as $c) {
                 Database::run(
-                    'INSERT INTO reservation_items (reservation_id, product_ref, title, unit_price, quantity, line_total)
-                     VALUES (?, ?, ?, ?, ?, ?)',
-                    [$rid, $c['ref'], $c['title'], $c['price'], $c['qty'], $c['line']]
+                    'INSERT INTO reservation_items
+                       (reservation_id, product_ref, title, list_unit_price, discount_percent,
+                        unit_discount, unit_price, quantity, line_total)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    [$rid, $c['ref'], $c['title'], $c['list_price'], $c['discount_percent'],
+                     $c['unit_discount'], $c['price'], $c['qty'], $c['line']]
                 );
             }
             Database::commit();
@@ -193,7 +232,8 @@ class ReservationController extends Controller
     {
         if (!$row) return null;
         $items = Database::all(
-            'SELECT id, product_ref, title, unit_price, quantity, line_total
+            'SELECT id, product_ref, title, list_unit_price, discount_percent, unit_discount,
+                    unit_price, quantity, line_total
              FROM reservation_items WHERE reservation_id = ? ORDER BY id',
             [(int) $row['id']]
         );
@@ -203,12 +243,65 @@ class ReservationController extends Controller
                 'id'         => (int) $it['id'],
                 'product_ref' => $it['product_ref'],
                 'title'      => $it['title'],
+                'list_unit_price' => (float) $it['list_unit_price'],
+                'discount_percent' => (float) $it['discount_percent'],
+                'unit_discount' => (float) $it['unit_discount'],
                 'unit_price' => (float) $it['unit_price'],
                 'quantity'   => (int) $it['quantity'],
                 'line_total' => (float) $it['line_total'],
+                'binding'    => $this->isBindingRef($it['product_ref']),
             ];
         }, $items ?: []);
         return $data;
+    }
+
+    private function isLocalRef($ref)
+    {
+        return (bool) preg_match('/^local-(?:tcg|comics|manga|figuras|coleccionables|preventa)-/i', (string) $ref);
+    }
+
+    private function isBindingRef($ref)
+    {
+        return $this->isLocalRef($ref) || preg_match('/^product-\d+$/', (string) $ref);
+    }
+
+    private function localProductById($productId, $branchId, $qty)
+    {
+        $params = [(int) $productId, (int) $qty];
+        $where = 'p.id = ? AND p.status = "active" AND p.stock >= ?';
+        if ($branchId !== null) {
+            $where .= ' AND p.branch_id = ?';
+            $params[] = (int) $branchId;
+        }
+        return Database::one('SELECT p.* FROM products p WHERE ' . $where . ' LIMIT 1', $params);
+    }
+
+    private function localProductForRef($ref, $branchId, $qty)
+    {
+        if (!$this->isLocalRef($ref)) return null;
+        $sku = strtoupper((string) preg_replace(
+            '/^local-(?:tcg|comics|manga|figuras|coleccionables|preventa)-/i', '', (string) $ref
+        ));
+        $params = [$sku, (int) $qty];
+        $where = 'p.sku = ? AND p.status = "active" AND p.stock >= ?';
+        if ($branchId !== null) {
+            $where .= ' AND p.branch_id = ?';
+            $params[] = (int) $branchId;
+        }
+        $rows = Database::all(
+            'SELECT p.* FROM products p WHERE ' . $where . ' ORDER BY p.id',
+            $params
+        );
+        $best = null;
+        $bestPrice = null;
+        foreach ($rows as $row) {
+            $effective = Pricing::calculate($row)['effective_price'];
+            if ($best === null || $effective < $bestPrice) {
+                $best = $row;
+                $bestPrice = $effective;
+            }
+        }
+        return $best;
     }
 
     private function castRow($r)

@@ -94,18 +94,25 @@ class ProductController extends Controller
         $img       = $this->sanitizeImageList($d['image_url'] ?? '');
         $figurePng = $this->sanitizeImageUrl($d['figure_png_url'] ?? null);
         $tags      = $this->sanitizeTags($d['tags'] ?? '');
+        $discount  = $this->discountForWrite($user, $d);
+        if (!$discount['supplied'] && $this->isMangaCategory($catId)) {
+            $discount = $this->seriesDiscountForName((string) $d['name']) ?: $discount;
+        }
 
         Database::begin();
         try {
             Database::run(
                 'INSERT INTO products
-                  (branch_id, sku, name, category_id, description, tags, price, tax_rate, stock, min_stock, image_url, figure_png_url, status)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                  (branch_id, sku, name, category_id, description, tags, price,
+                   discount_percent, discount_starts_at, discount_ends_at,
+                   tax_rate, stock, min_stock, image_url, figure_png_url, status)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                 [
                     $branchId, $sku, mb_substr(trim((string) $d['name']), 0, 180), $catId,
                     mb_substr((string) ($d['description'] ?? ''), 0, 500),
                     $tags,
                     round((float) $d['price'], 2),
+                    $discount['percent'], $discount['starts_at'], $discount['ends_at'],
                     isset($d['tax_rate']) && is_numeric($d['tax_rate']) ? (float) $d['tax_rate'] : App::config('tax')['default_rate'],
                     $stock,
                     max(0, (int) ($d['min_stock'] ?? 3)),
@@ -185,6 +192,10 @@ class ProductController extends Controller
         $figurePng = $this->sanitizeImageUrl($d['figure_png_url'] ?? null);     // figura recortada; '' -> NULL
         $tags     = $this->sanitizeTags($d['tags'] ?? '');
         $hasTags  = array_key_exists('tags', $d);
+        $discount = $this->discountForWrite($user, $d);
+        if (!$discount['supplied'] && $this->isMangaCategory($catId)) {
+            $discount = $this->seriesDiscountForName($name) ?: $discount;
+        }
         $ref      = mb_substr(trim($str($d['source'] ?? 'import') . ' ' . $str($d['external_id'] ?? '')), 0, 60);
 
         $out = ['sku' => $sku, 'created' => [], 'updated' => []];
@@ -193,20 +204,27 @@ class ProductController extends Controller
         try {
             foreach ($entries as $bid => $qty) {
                 $existing = Database::one(
-                    'SELECT id, stock FROM products WHERE branch_id = ? AND sku = ?',
+                    'SELECT id, stock, discount_percent, discount_starts_at, discount_ends_at
+                       FROM products WHERE branch_id = ? AND sku = ?',
                     [$bid, $sku]
                 );
                 if ($existing) {
                     $pid = (int) $existing['id'];
                     $newStock = (int) $existing['stock'] + $qty;
                     // `tags` solo se pisa si el body lo trae (no borrar las que ya tenía).
+                    $existingDiscount = $discount['supplied']
+                        ? $discount
+                        : Pricing::validateInput([], $existing);
                     Database::run(
                         'UPDATE products SET name = ?, category_id = ?, description = ?, price = ?,
                                 image_url = ?, figure_png_url = ?' . ($hasTags ? ', tags = ?' : '') . ',
+                                discount_percent = ?, discount_starts_at = ?, discount_ends_at = ?,
                                 stock = ?, status = "active" WHERE id = ?',
                         $hasTags
-                          ? [$name, $catId, $desc, $price, $img, $figurePng, $tags, $newStock, $pid]
-                          : [$name, $catId, $desc, $price, $img, $figurePng, $newStock, $pid]
+                          ? [$name, $catId, $desc, $price, $img, $figurePng, $tags,
+                             $existingDiscount['percent'], $existingDiscount['starts_at'], $existingDiscount['ends_at'], $newStock, $pid]
+                          : [$name, $catId, $desc, $price, $img, $figurePng,
+                             $existingDiscount['percent'], $existingDiscount['starts_at'], $existingDiscount['ends_at'], $newStock, $pid]
                     );
                     if ($qty > 0) {
                         $this->logMovement($bid, $pid, $user['id'], 'restock', $qty, $newStock, 'IMPORT', $ref);
@@ -215,9 +233,13 @@ class ProductController extends Controller
                 } else {
                     Database::run(
                         'INSERT INTO products
-                           (branch_id, sku, name, category_id, description, tags, price, tax_rate, stock, min_stock, image_url, figure_png_url, status)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "active")',
-                        [$bid, $sku, $name, $catId, $desc, $tags, $price, $taxRate, $qty, $minStock, $img, $figurePng]
+                           (branch_id, sku, name, category_id, description, tags, price,
+                            discount_percent, discount_starts_at, discount_ends_at,
+                            tax_rate, stock, min_stock, image_url, figure_png_url, status)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "active")',
+                        [$bid, $sku, $name, $catId, $desc, $tags, $price,
+                         $discount['percent'], $discount['starts_at'], $discount['ends_at'],
+                         $taxRate, $qty, $minStock, $img, $figurePng]
                     );
                     $pid = Database::lastId();
                     if ($qty > 0) {
@@ -268,27 +290,56 @@ class ProductController extends Controller
         $tags = array_key_exists('tags', $d)
             ? $this->sanitizeTags($d['tags'])
             : (string) ($current['tags'] ?? '');
+        $discount = $this->discountForWrite($user, $d, $current);
+        $productName = mb_substr(trim((string) $d['name']), 0, 180);
+        $categoryId = $this->intOrNull($d['category_id'] ?? $current['category_id']);
+        $categorySlug = (string) Database::scalar('SELECT slug FROM categories WHERE id = ? LIMIT 1', [$categoryId]);
 
-        // El stock NO se cambia aquí: usa PATCH /products/{id}/stock
-        Database::run(
-            'UPDATE products SET sku = ?, name = ?, category_id = ?, description = ?, tags = ?,
-                    price = ?, tax_rate = ?, min_stock = ?, image_url = ?, figure_png_url = ?, status = ?
-             WHERE id = ?',
-            [
-                $sku, mb_substr(trim((string) $d['name']), 0, 180),
-                $this->intOrNull($d['category_id'] ?? $current['category_id']),
-                mb_substr((string) ($d['description'] ?? $current['description']), 0, 500),
-                $tags,
-                round((float) $d['price'], 2),
-                isset($d['tax_rate']) && is_numeric($d['tax_rate']) ? (float) $d['tax_rate'] : $current['tax_rate'],
-                max(0, (int) ($d['min_stock'] ?? $current['min_stock'])),
-                $img,
-                $figurePng,
-                $this->pickEnum($d['status'] ?? $current['status'], ['active', 'inactive'], $current['status']),
-                $id,
-            ]
-        );
-        Response::ok(['product' => $this->cast($this->findFull($id))]);
+        $discountAffected = 1;
+        Database::begin();
+        try {
+            // El stock NO se cambia aquí: usa PATCH /products/{id}/stock.
+            Database::run(
+                'UPDATE products SET sku = ?, name = ?, category_id = ?, description = ?, tags = ?,
+                        price = ?, discount_percent = ?, discount_starts_at = ?, discount_ends_at = ?,
+                        tax_rate = ?, min_stock = ?, image_url = ?, figure_png_url = ?, status = ?
+                 WHERE id = ?',
+                [
+                    $sku, $productName,
+                    $categoryId,
+                    mb_substr((string) ($d['description'] ?? $current['description']), 0, 500),
+                    $tags,
+                    round((float) $d['price'], 2),
+                    $discount['percent'], $discount['starts_at'], $discount['ends_at'],
+                    isset($d['tax_rate']) && is_numeric($d['tax_rate']) ? (float) $d['tax_rate'] : $current['tax_rate'],
+                    max(0, (int) ($d['min_stock'] ?? $current['min_stock'])),
+                    $img,
+                    $figurePng,
+                    $this->pickEnum($d['status'] ?? $current['status'], ['active', 'inactive'], $current['status']),
+                    $id,
+                ]
+            );
+
+            // En mangas, el descuento pertenece al listado completo: se aplica
+            // a la ficha de serie y a cada tomo, aunque sus precios sean distintos.
+            // En las demás categorías sigue compartiéndose únicamente por SKU.
+            if ($user['role'] === 'admin' && $discount['supplied']) {
+                $targetIds = $this->discountTargetIds($id, $sku, $categorySlug, $productName);
+                if ($targetIds) {
+                    $marks = implode(',', array_fill(0, count($targetIds), '?'));
+                    Database::run(
+                        'UPDATE products SET discount_percent = ?, discount_starts_at = ?, discount_ends_at = ? WHERE id IN (' . $marks . ')',
+                        array_merge([$discount['percent'], $discount['starts_at'], $discount['ends_at']], $targetIds)
+                    );
+                    $discountAffected += (int) Database::scalar('SELECT ROW_COUNT()');
+                }
+            }
+            Database::commit();
+        } catch (Exception $e) {
+            Database::rollback();
+            throw $e;
+        }
+        Response::ok(['product' => $this->cast($this->findFull($id)), 'discount_affected' => $discountAffected]);
     }
 
     /** PATCH /products/{id}/stock  — ajuste manual con registro de movimiento */
@@ -533,6 +584,90 @@ class ProductController extends Controller
         return $id ? (int) $id : null;
     }
 
+    /** La categoría se consulta por id para no depender de ids fijos entre entornos. */
+    private function isMangaCategory($categoryId)
+    {
+        if (!$categoryId) return false;
+        $slug = mb_strtolower((string) Database::scalar(
+            'SELECT slug FROM categories WHERE id = ? LIMIT 1',
+            [(int) $categoryId]
+        ));
+        return $slug === 'manga' || $slug === 'mangas';
+    }
+
+    /** Misma clave de agrupación usada por catalog.js y el inventario admin. */
+    private function mangaSeriesKey($name)
+    {
+        $title = preg_replace(
+            '/\s*[-–—:·]?\s*(?:vol\.?|volumen|tomo|t\.?|#|n[°º]\.?|no\.?)\s*\d+(?:\.\d+)?\s*$/iu',
+            '',
+            trim((string) $name)
+        );
+        $title = preg_replace('/[\s:–—·-]+$/u', '', (string) $title);
+        $key = trim((string) preg_replace('/[^a-z0-9]+/', ' ', mb_strtolower((string) $title)));
+        $aliases = [
+            'kimetsu no yaiba' => 'demon slayer',
+            'demon slayer kimetsu no yaiba' => 'demon slayer',
+            'shingeki no kyojin' => 'attack on titan',
+            'boku no hero academia' => 'my hero academia',
+            'hagane no renkinjutsushi' => 'fullmetal alchemist',
+            'sousou no frieren' => 'frieren beyond journey s end',
+            'jojo no kimyou na bouken' => 'jojo s bizarre adventure',
+        ];
+        return $aliases[$key] ?? $key;
+    }
+
+    /** IDs que comparten el SKU; para manga incluye además todos los tomos de la serie. */
+    private function discountTargetIds($currentId, $sku, $categorySlug, $name)
+    {
+        $ids = Database::all(
+            'SELECT id FROM products WHERE sku = ? AND id <> ? AND status <> "deleted"',
+            [$sku, (int) $currentId]
+        );
+        $out = [];
+        foreach ($ids as $row) $out[(int) $row['id']] = true;
+
+        $slug = mb_strtolower(trim((string) $categorySlug));
+        $seriesKey = $this->mangaSeriesKey($name);
+        if (($slug === 'manga' || $slug === 'mangas') && $seriesKey !== '') {
+            $rows = Database::all(
+                'SELECT p.id, p.name
+                   FROM products p
+                   JOIN categories c ON c.id = p.category_id
+                  WHERE LOWER(c.slug) IN ("manga", "mangas")
+                    AND p.status <> "deleted" AND p.id <> ?',
+                [(int) $currentId]
+            );
+            foreach ($rows as $row) {
+                if ($this->mangaSeriesKey($row['name']) === $seriesKey) {
+                    $out[(int) $row['id']] = true;
+                }
+            }
+        }
+        return array_keys($out);
+    }
+
+    /** Promoción de la ficha padre para que un tomo nuevo la herede al crearse. */
+    private function seriesDiscountForName($name)
+    {
+        $seriesKey = $this->mangaSeriesKey($name);
+        if ($seriesKey === '') return null;
+        $rows = Database::all(
+            'SELECT p.sku, p.name, p.discount_percent, p.discount_starts_at, p.discount_ends_at
+               FROM products p
+               JOIN categories c ON c.id = p.category_id
+              WHERE LOWER(c.slug) IN ("manga", "mangas") AND p.status <> "deleted"
+              ORDER BY CASE WHEN p.sku LIKE "MNG-S-%" THEN 0 ELSE 1 END, p.id',
+            []
+        );
+        foreach ($rows as $row) {
+            if ($this->mangaSeriesKey($row['name']) === $seriesKey) {
+                return Pricing::validateInput([], $row);
+            }
+        }
+        return null;
+    }
+
     private function findFull($id)
     {
         return Database::one(
@@ -557,6 +692,20 @@ class ProductController extends Controller
         $r['stock']      = (int) $r['stock'];
         $r['min_stock']  = (int) $r['min_stock'];
         $r['low_stock']  = $r['stock'] <= $r['min_stock'];
+        $r = array_merge($r, Pricing::calculate($r));
         return $r;
+    }
+
+    private function discountForWrite(array $user, array $data, array $current = []): array
+    {
+        $fields = ['discount_percent', 'discount_starts_at', 'discount_ends_at'];
+        $supplied = false;
+        foreach ($fields as $field) {
+            if (array_key_exists($field, $data)) { $supplied = true; break; }
+        }
+        if ($supplied && $user['role'] !== 'admin') {
+            Response::forbidden('Solo el administrador general puede modificar descuentos.');
+        }
+        return Pricing::validateInput($supplied ? $data : [], $current);
     }
 }

@@ -236,12 +236,32 @@
     return s;
   }
 
+  function discountLabel(p) {
+    var pct = Number(p && p.discount_percent) || 0;
+    return pct.toFixed(pct % 1 ? 2 : 0);
+  }
+
+  function priceHTML(p, from) {
+    var list = Number(p && p.price) || 0;
+    var effective = Number(p && p.effective_price != null ? p.effective_price : list) || 0;
+    var prefix = from ? '<small>' + esc(I18N.t("discount.from")) + '</small> ' : '';
+    if (p && p.discount_status === "active" && effective < list) {
+      return '<span class="price-stack" aria-label="' + esc(I18N.t("discount.a11y", {
+        percent: discountLabel(p), before: UI.money(list), now: UI.money(effective)
+      })) + '"><del>' + UI.money(list) + '</del><strong>' + prefix + UI.money(effective) + '</strong></span>';
+    }
+    return '<span class="price-stack"><strong>' + prefix + UI.money(effective) + '</strong></span>';
+  }
+
   function cardHTML(p) {
     var tags = (p.tags || []).map(function (t) {
       return '<span class="ptag ptag--' + esc(t) + '">' + esc(tagLabel(t)) + '</span>';
     }).join("");
     if (p.rarity) {
       tags = rarityTag(p.rarity) + tags;
+    }
+    if (p.discount_status === "active") {
+      tags += '<span class="ptag promo-badge">−' + discountLabel(p) + '%</span>';
     }
     var totalStock = (p.branches || []).reduce(function (n, b) { return n + (b.stock || 0); }, 0);
     var isFigure = p.category === "figuras";
@@ -283,7 +303,7 @@
           '<h3 class="pcard__name">' + esc(p.title) + '</h3>' +
           (p.author ? '<span class="pcard__author">' + esc(p.author) + '</span>' : "") +
           '<div class="pcard__foot">' +
-            '<span class="pcard__price">' + UI.money(p.price) + '</span>' +
+            '<span class="pcard__price">' + priceHTML(p, p.price_varies) + '</span>' +
             '<button class="pcard__add" data-add>' + esc(I18N.t("prod.add")) + '</button>' +
           '</div>' +
           '<span class="pcard__stock">' + (totalStock > 0
@@ -463,7 +483,7 @@
     covers.sort(function (a, b) { return parseFloat(a.v) - parseFloat(b.v); });
 
     var showVolumePicker = isManga && covers.length > 0;
-    var startPrice = (covers[0] && covers[0].id && covers[0].price) || p.price;
+    var startProduct = (covers[0] && covers[0].id) ? covers[0] : p;
 
     // Galería de fotos reales del producto.
     // Figuras: cualquier nº de fotos + miniatura "Vista 3D" al frente.
@@ -507,7 +527,7 @@
         '</div>' +
         (p.synopsis ? '<p class="preview3d__syn">' + esc(Catalog.synopsis(p, I18N.lang)) + '</p>' : "") +
         '<div class="preview3d__buy">' +
-          '<span class="preview3d__price" data-price>' + UI.money(startPrice) + '</span>' +
+          '<span class="preview3d__price" data-price>' + priceHTML(startProduct, false) + '</span>' +
           '<button class="btn btn--panini" data-buy>' + esc(I18N.t("prod.buy")) + '</button>' +
         '</div>' +
       '</div>';
@@ -645,7 +665,7 @@
       function refresh() {
         var c = currentVol();
         if (stage && stage.setCover) stage.setCover(coverFor(c));
-        if (priceEl) priceEl.textContent = UI.money((c.id && c.price) || p.price);
+        if (priceEl) priceEl.innerHTML = priceHTML((c.id ? c : p), false);
         stockBox.innerHTML = stockPanelHTML(p, c.v, c);
         bindStockPanel();
       }
@@ -694,10 +714,13 @@
         if (c.id) {
           // Tomo REAL del inventario POS (id, precio y stock propios).
           item = { id: c.id, title: p.title + " " + I18N.t("prod.volume") + " " + c.v,
-                   price: c.price || p.price, cover: c.url || Catalog.coverURL(p) };
+                   price: c.price || p.price, effective_price: c.effective_price != null ? c.effective_price : (c.price || p.effective_price),
+                   discount_percent: c.discount_percent || 0, discount_status: c.discount_status || "none",
+                   unit_savings: c.unit_savings || 0, cover: c.url || Catalog.coverURL(p) };
         } else if (showVolumePicker) {
           item = { id: p.id + "-v" + c.v, title: p.title + " " + I18N.t("prod.volume") + " " + c.v,
-                   price: p.price, cover: c.url || p.cover };
+                   price: p.price, effective_price: p.effective_price, discount_percent: p.discount_percent,
+                   discount_status: p.discount_status, unit_savings: p.unit_savings, cover: c.url || p.cover };
         } else {
           item = p;
         }
@@ -1233,6 +1256,8 @@
     }
 
     Catalog.load().then(function () {
+      var repriced = STORE.shopReconcile(Catalog.all());
+      if (repriced) UI.toast(I18N.t("discount.cartUpdated", { n: repriced }), "warn");
       // Al resolver, pinta la categoría ACTUAL (el usuario pudo navegar durante
       // la carga) — no la capturada al montar.
       drawGrid(root, activeSlug);

@@ -301,7 +301,9 @@
 .pcard__price { font-family: var(--mono); font-weight: 700; font-size: 1.05rem; }
 .pcard__add {
   position: relative; overflow: hidden; isolation: isolate;
+  display: inline-flex; align-items: center; justify-content: center;
   font-family: var(--display); text-transform: uppercase; font-size: .78rem; letter-spacing: .04em;
+  line-height: 1; text-align: center;
   padding: .42rem .7rem; background: var(--panini); color: var(--ink); border: 2px solid var(--ink);
   transition: transform .16s var(--ease-bounce), box-shadow .16s var(--ease-out), filter .18s var(--ease-out);
 }
@@ -576,6 +578,19 @@ body:not(.in-app) .btn--panini.is-pop { animation: ctaPop .4s var(--ease-bounce)
 .rk-row { display: flex; justify-content: space-between; gap: .8rem; font-size: .82rem; padding: .18rem 0; }
 .rk-row--total { border-top: 2px solid var(--ink); margin-top: .4rem; padding-top: .5rem; font-weight: 700; font-size: 1rem; }
 .rk__hint { font-size: .74rem; color: var(--muted); margin-top: .9rem; }
+
+/* ---------- Precios promocionales ---------- */
+.promo-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: .16rem .42rem; border-radius: 999px; background: var(--panini);
+  color: #fff; font-family: var(--mono); font-weight: 800; line-height: 1.1;
+}
+.price-stack { display: inline-flex; flex-direction: column; align-items: flex-start; gap: .04rem; }
+.price-stack del, .price-old, .dr-item__price del { color: var(--muted); font-size: .72em; font-weight: 500; }
+.price-stack strong { color: var(--panini); font-size: 1.08em; }
+.price-stack small { font-size: .58em; color: var(--muted); text-transform: uppercase; }
+.dr-item__price { display: flex; align-items: center; gap: .3rem; flex-wrap: wrap; }
+.dr-item__price .promo-badge { font-size: .62rem; }
 
 /* ---------- POS: panel de apartados ---------- */
 .resv-lookup { display: flex; gap: .5rem; margin-bottom: 1rem; }

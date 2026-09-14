@@ -82,12 +82,20 @@
       var line = this.cart.find(function (l) { return l.id === product.id; });
       var max = Number(product.stock) || 0;
       if (line) {
+        line.list_price = Number(product.list_price != null ? product.list_price : product.price);
+        line.discount_percent = Number(product.discount_percent) || 0;
+        line.unit_savings = Number(product.unit_savings) || 0;
+        line.price = Number(product.price);
+        line.stock = max;
         if (line.qty < max) line.qty += 1;
         else { UI.toast(I18N.t("pos.outOfStock"), "warn"); return; }
       } else {
         if (max <= 0) { UI.toast(I18N.t("pos.outOfStock"), "warn"); return; }
         this.cart.push({
           id: product.id, name: product.name, sku: product.sku,
+          list_price: Number(product.list_price != null ? product.list_price : product.price),
+          discount_percent: Number(product.discount_percent) || 0,
+          unit_savings: Number(product.unit_savings) || 0,
           price: Number(product.price), tax_rate: Number(product.tax_rate) || 0.16,
           stock: max, qty: 1, art: product.art || "📦"
         });
@@ -114,9 +122,19 @@
     shopAdd: function (product, qty) {
       qty = qty || 1;
       var line = this.shopCart.find(function (l) { return l.id === product.id; });
-      if (line) line.qty += qty;
+      if (line) {
+        line.qty += qty;
+        line.list_price = Number(product.list_price != null ? product.list_price : product.price) || 0;
+        line.discount_percent = Number(product.discount_percent) || 0;
+        line.unit_savings = Number(product.unit_savings) || 0;
+        line.price = Number(product.effective_price != null ? product.effective_price : product.price) || 0;
+      }
       else this.shopCart.push({
-        id: product.id, title: product.title, price: Number(product.price) || 0,
+        id: product.id, title: product.title,
+        list_price: Number(product.list_price != null ? product.list_price : product.price) || 0,
+        discount_percent: Number(product.discount_percent) || 0,
+        unit_savings: Number(product.unit_savings) || 0,
+        price: Number(product.effective_price != null ? product.effective_price : product.price) || 0,
         cover: product.cover || "", qty: qty
       });
       saveShop(this.shopCart);
@@ -141,22 +159,60 @@
     shopTotal: function () {
       return Math.round(this.shopCart.reduce(function (s, l) { return s + l.price * l.qty; }, 0) * 100) / 100;
     },
+    shopReconcile: function (catalog, branchCode) {
+      var changed = 0;
+      catalog = catalog || [];
+      this.shopCart.forEach(function (line) {
+        var current = null;
+        for (var i = 0; i < catalog.length && !current; i++) {
+          if (String(catalog[i].id) === String(line.id)) current = catalog[i];
+          (catalog[i].volume_covers || []).forEach(function (v) {
+            if (String(v.id) === String(line.id)) current = v;
+          });
+        }
+        if (!current) return;
+        var priceSource = current;
+        if (branchCode && Array.isArray(current.branches)) {
+          var branchPrice = current.branches.find(function (branch) {
+            return String(branch.code) === String(branchCode);
+          });
+          if (branchPrice) priceSource = branchPrice;
+        }
+        var list = Number(priceSource.price) || 0;
+        var effective = Number(priceSource.effective_price != null ? priceSource.effective_price : priceSource.price) || 0;
+        var percent = Number(priceSource.discount_percent) || 0;
+        if (Math.abs((Number(line.price) || 0) - effective) >= 0.01
+            || Math.abs((Number(line.list_price) || 0) - list) >= 0.01
+            || Math.abs((Number(line.discount_percent) || 0) - percent) >= 0.01) changed++;
+        line.list_price = list;
+        line.price = effective;
+        line.discount_percent = percent;
+        line.unit_savings = Math.max(0, Math.round((list - effective) * 100) / 100);
+      });
+      if (changed) {
+        saveShop(this.shopCart);
+        emit("shop", this.shopCart);
+      }
+      return changed;
+    },
 
     cartTotals: function () {
-      var subtotal = 0, tax = 0, total = 0, count = 0;
+      var subtotal = 0, tax = 0, total = 0, count = 0, discount = 0;
       this.cart.forEach(function (l) {
         var lineTotal = l.price * l.qty;              // precio con IVA incluido
         var lineSub = lineTotal / (1 + l.tax_rate);
         subtotal += lineSub;
         tax += lineTotal - lineSub;
         total += lineTotal;
+        discount += (Number(l.unit_savings) || 0) * l.qty;
         count += l.qty;
       });
       return {
         subtotal: Math.round(subtotal * 100) / 100,
         tax: Math.round(tax * 100) / 100,
         total: Math.round(total * 100) / 100,
-        count: count
+        count: count,
+        discount: Math.round(discount * 100) / 100
       };
     }
   };

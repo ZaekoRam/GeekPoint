@@ -512,9 +512,13 @@ class CatalogController extends Controller
                         MAX(p.image_url)     AS image_url,
                         MAX(p.figure_png_url) AS figure_png_url,
                         MAX(UNIX_TIMESTAMP(p.updated_at)) AS updated_ts,
-                        ROUND(AVG(p.price), 2) AS price,
+                        MIN(p.price) AS price,
                         SUM(p.stock)         AS stock,
-                        GROUP_CONCAT(CONCAT(b.id, '|', b.code, '|', b.name, '|', p.stock) SEPARATOR ';;') AS branchmap
+                        GROUP_CONCAT(CONCAT(
+                          b.id, '|', b.code, '|', b.name, '|', p.stock, '|', p.id, '|', p.price, '|',
+                          p.discount_percent, '|', COALESCE(DATE_FORMAT(p.discount_starts_at, '%Y-%m-%d %H:%i:%s'), ''), '|',
+                          COALESCE(DATE_FORMAT(p.discount_ends_at, '%Y-%m-%d %H:%i:%s'), '')
+                        ) SEPARATOR ';;') AS branchmap
                  FROM products p
                  JOIN categories c ON c.id = p.category_id
                  LEFT JOIN branches b ON b.id = p.branch_id
@@ -539,14 +543,35 @@ class CatalogController extends Controller
             $branches = [];
             foreach (explode(';;', (string) $r['branchmap']) as $chunk) {
                 $parts = explode('|', $chunk);
-                if (count($parts) === 4) {
-                    $branches[] = [
+                if (count($parts) === 9) {
+                    $variant = [
+                        'id' => (int) $parts[4],
+                        'price' => (float) $parts[5],
+                        'discount_percent' => (float) $parts[6],
+                        'discount_starts_at' => $parts[7] !== '' ? $parts[7] : null,
+                        'discount_ends_at' => $parts[8] !== '' ? $parts[8] : null,
+                        'status' => 'active',
+                    ];
+                    $pricing = Pricing::calculate($variant);
+                    $branches[] = array_merge([
                         'id'    => (int) $parts[0],
                         'code'  => $parts[1],
                         'name'  => $parts[2],
                         'stock' => (int) $parts[3],
-                    ];
+                        'product_id' => (int) $parts[4],
+                    ], $pricing);
                 }
+            }
+
+            $candidates = array_values(array_filter($branches, function ($b) { return $b['stock'] > 0; }));
+            if (!$candidates) $candidates = $branches;
+            usort($candidates, function ($a, $b) {
+                return $a['effective_price'] <=> $b['effective_price'];
+            });
+            $bestPricing = $candidates ? $candidates[0] : Pricing::calculate(['price' => $r['price'], 'status' => 'active']);
+            $effectiveValues = [];
+            foreach ($candidates as $candidate) {
+                $effectiveValues[number_format($candidate['effective_price'], 2, '.', '')] = true;
             }
 
             $segs = array_map('trim', explode('·', (string) $r['description']));
@@ -629,7 +654,14 @@ class CatalogController extends Controller
                 'title'        => $r['name'],
                 'author'       => '',
                 'category'     => $category,
-                'price'        => (float) $r['price'],
+                'price'        => $bestPricing['price'],
+                'discount_percent' => $bestPricing['discount_percent'],
+                'discount_starts_at' => $bestPricing['discount_starts_at'],
+                'discount_ends_at' => $bestPricing['discount_ends_at'],
+                'discount_status' => $bestPricing['discount_status'],
+                'effective_price' => $bestPricing['effective_price'],
+                'unit_savings' => $bestPricing['unit_savings'],
+                'price_varies' => count($effectiveValues) > 1,
                 'currency'     => 'MXN',
                 'cover'        => $cover,
                 'cover_raw'    => $imgs[0] ?? $cover,

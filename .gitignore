@@ -1,6 +1,10 @@
 # Configuración con credenciales reales
 public_html/api/config.php
 
+# Configuración y arranque exclusivos del entorno local
+php-local.ini
+start-local.sh
+
 # Dependencias / temporales
 node_modules/
 *.log

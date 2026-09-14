@@ -392,12 +392,15 @@
     (rows || []).forEach(function (r) {
       var g = map[r.sku] || (map[r.sku] = {
         sku: r.sku, name: r.name, price: r.price, image_url: r.image_url,
+        effective_price: r.effective_price, discount_percent: r.discount_percent,
+        discount_status: r.discount_status, unit_savings: r.unit_savings,
         category_slug: r.category_slug || "", status: r.status,
-        total: 0, byBranch: {}, idByBranch: {}, sample: r
+        total: 0, byBranch: {}, idByBranch: {}, rowsByBranch: {}, sample: r
       });
       g.total += r.stock || 0;
       g.byBranch[r.branch_id] = (g.byBranch[r.branch_id] || 0) + (r.stock || 0);
       g.idByBranch[r.branch_id] = r.id;          // id del producto en esa sucursal
+      g.rowsByBranch[r.branch_id] = r;
       if (r.category_slug && !g.category_slug) g.category_slug = r.category_slug;
       if (r.status === "active") g.status = "active";
     });
@@ -542,6 +545,14 @@
       var cat = esc(PRV_LABEL[g.category_slug] || g.category_slug || "—");
       var perBranch = branchDigest(brMap, branches);
       var name = g.displayName || g.name;
+      var dp = Number(g.discount_percent) || 0;
+      var promo = g.discount_status === "active"
+        ? '<span class="promo-badge">−' + dp.toFixed(dp % 1 ? 2 : 0) + '%</span>'
+        : (g.discount_status === "scheduled" ? '<span class="badge badge--warn">' + esc(I18N.t("discount.scheduled")) + '</span>'
+          : (g.discount_status === "expired" ? '<span class="badge">' + esc(I18N.t("discount.expired")) + '</span>' : ''));
+      var shownPrice = g.discount_status === "active"
+        ? '<span class="price-old">' + UI.money(g.price, true) + '</span> <span>' + UI.money(g.effective_price, true) + '</span>'
+        : UI.money(g.price, true);
       return '' +
         '<article class="invcard' + (g.status !== "active" ? " is-inactive" : "") + '">' +
           '<div class="invcard__main" data-edit-sku="' + esc(g.sku) + '" title="' + esc(I18N.t("btn.edit")) + '">' +
@@ -551,11 +562,11 @@
               (g.status !== "active" ? '<span class="invcard__off">' + esc(I18N.t("status.inactive")) + '</span>' : "") +
             '</div>' +
             '<div class="invcard__body">' +
-              '<span class="invcard__cat">' + cat + (kids.length ? ' · ' + esc(_foldLabel(g)) : '') + '</span>' +
+              '<span class="invcard__cat">' + cat + (kids.length ? ' · ' + esc(_foldLabel(g)) : '') + ' ' + promo + '</span>' +
               '<h3 class="invcard__name">' + esc(name) + '</h3>' +
               '<span class="invcard__sku mono">' + esc(g.sku) + '</span>' +
               '<div class="invcard__foot">' +
-                '<span class="invcard__price mono">' + UI.money(g.price, true) + '</span>' +
+                '<span class="invcard__price mono">' + shownPrice + '</span>' +
                 (perBranch ? '<span class="mono" style="font-size:.58rem;color:var(--muted)">' + perBranch + '</span>' : "") +
               '</div>' +
             '</div>' +
@@ -1016,6 +1027,7 @@
   function editProductModal(group, cats, done) {
     var s = group.sample || {};
     var ids = Object.keys(group.idByBranch).map(function (k) { return group.idByBranch[k]; }).filter(Boolean);
+    var canDiscount = STORE.role === "admin";
     var catOpts = cats.map(function (x) {
       return '<option value="' + esc(x.slug) + '"' + (x.slug === group.category_slug ? " selected" : "") + '>' +
         esc(I18N.pick({ es: x.name_es, en: x.name_en })) + '</option>';
@@ -1037,6 +1049,7 @@
         "https://…, https://…  —  o sube fotos del equipo", true,
         s.image_url || group.image_url || "") +
       tagField(s.tags || "") +
+      discountField(s, canDiscount) +
       '<div class="grid-2">' +
         row("form.minStock", '<input class="input" type="number" name="min_stock" min="0" value="' + (s.min_stock != null ? s.min_stock : 3) + '">', "form.minStock") +
         row("col.status",
@@ -1049,6 +1062,7 @@
 
     var m = UI.modal({ title: I18N.t("btn.edit"), content: c, wide: true });
     bindTagPick(c);
+    bindDiscountEditor(c);
 
     // Vista previa de los archivos elegidos (igual que en "Nuevo producto").
     c.querySelectorAll("[data-file]").forEach(function (fi) {
@@ -1085,7 +1099,19 @@
           min_stock: Math.max(0, parseInt(payload.min_stock, 10) || 0),
           status: payload.status === "inactive" ? "inactive" : "active"
         };
-        return Promise.all(ids.map(function (id) { return API.put("products/" + id, body); }));
+        if (canDiscount) addDiscountPayload(c, body);
+        var targetId = s.id || ids[0];
+        var common = {};
+        Object.keys(body).forEach(function (key) {
+          if (["discount_percent", "discount_starts_at", "discount_ends_at"].indexOf(key) === -1) common[key] = body[key];
+        });
+        var jobs = ids.filter(function (id) { return String(id) !== String(targetId); })
+          .map(function (id) { return API.put("products/" + id, common); });
+        // Guarda primero los datos comunes y al final el descuento. El PUT del
+        // producto objetivo replica automáticamente la promoción por SKU.
+        return Promise.all(jobs).then(function () {
+          return API.put("products/" + targetId, body);
+        });
       }).then(function () {
         UI.toast(I18N.t("toast.saved"), "ok");
         UI.closeModal();
@@ -1125,6 +1151,94 @@
       }).map(function (x) { return x.getAttribute("data-tag"); });
       if (hidden) hidden.value = on.join(",");
     });
+  }
+
+  function localDateTime(iso) {
+    if (!iso) return "";
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return "";
+    var z = function (n) { return String(n).padStart(2, "0"); };
+    return d.getFullYear() + "-" + z(d.getMonth() + 1) + "-" + z(d.getDate()) + "T" + z(d.getHours()) + ":" + z(d.getMinutes());
+  }
+
+  function discountField(p, editable) {
+    p = p || {};
+    var enabled = Number(p.discount_percent) > 0;
+    if (!editable) {
+      var status = p.discount_status || "none";
+      return '<section class="discount-editor discount-editor--readonly"><h3>' + esc(I18N.t("discount.title")) + '</h3>' +
+        '<p>' + esc(I18N.t("discount.status." + status)) +
+        (enabled ? ' · −' + Number(p.discount_percent) + '% · ' + UI.money(p.effective_price) : '') + '</p></section>';
+    }
+    return '<section class="discount-editor" data-discount-editor>' +
+      '<h3>' + esc(I18N.t("discount.title")) + '</h3>' +
+      '<label class="discount-toggle"><input type="checkbox" data-discount-toggle' + (enabled ? ' checked' : '') + '> ' +
+        '<span>' + esc(I18N.t("discount.apply")) + '</span></label>' +
+      '<div data-discount-fields' + (enabled ? '' : ' hidden') + '>' +
+        '<div class="grid-2">' +
+          row("discount.percent", '<input class="input" type="number" name="discount_percent" min="1" max="90" step="0.01" value="' + (enabled ? Number(p.discount_percent) : 15) + '"><small class="field__error" data-discount-error></small>') +
+          '<div></div>' +
+          row("discount.starts", '<input class="input" type="datetime-local" name="discount_starts_at" value="' + esc(localDateTime(p.discount_starts_at)) + '">') +
+          row("discount.ends", '<input class="input" type="datetime-local" name="discount_ends_at" value="' + esc(localDateTime(p.discount_ends_at)) + '">') +
+        '</div>' +
+        '<div class="discount-preview" data-discount-preview></div>' +
+      '</div></section>';
+  }
+
+  function bindDiscountEditor(form) {
+    var editor = form.querySelector("[data-discount-editor]");
+    if (!editor) return;
+    var toggle = editor.querySelector("[data-discount-toggle]");
+    var fields = editor.querySelector("[data-discount-fields]");
+    var percent = editor.querySelector('[name="discount_percent"]');
+    var price = form.querySelector('[name="price"]');
+    var preview = editor.querySelector("[data-discount-preview]");
+    fields.id = "discount-fields-" + Math.random().toString(36).slice(2);
+    toggle.setAttribute("aria-controls", fields.id);
+    function renderPreview() {
+      var list = Math.round((parseFloat(price && price.value) || 0) * 100) / 100;
+      var pct = toggle.checked ? (parseFloat(percent.value) || 0) : 0;
+      var finalPrice = Math.round(list * (1 - pct / 100) * 100) / 100;
+      preview.innerHTML = '<span>' + esc(I18N.t("discount.listPrice")) + ' <b>' + UI.money(list) + '</b></span>' +
+        '<span>' + esc(I18N.t("discount.savings")) + ' <b>' + UI.money(list - finalPrice) + '</b></span>' +
+        '<span>' + esc(I18N.t("discount.finalPrice")) + ' <b>' + UI.money(finalPrice) + '</b></span>';
+    }
+    function sync() {
+      fields.hidden = !toggle.checked;
+      toggle.setAttribute("aria-expanded", toggle.checked ? "true" : "false");
+      percent.required = toggle.checked;
+      renderPreview();
+    }
+    toggle.addEventListener("change", sync);
+    percent.addEventListener("input", renderPreview);
+    percent.addEventListener("input", function () {
+      var msg = editor.querySelector("[data-discount-error]");
+      if (msg) { msg.textContent = ""; msg.hidden = true; }
+    });
+    percent.addEventListener("invalid", function () {
+      var msg = editor.querySelector("[data-discount-error]");
+      if (msg) { msg.textContent = I18N.t("discount.invalidPercent"); msg.hidden = false; }
+    });
+    if (price) price.addEventListener("input", renderPreview);
+    sync();
+  }
+
+  function addDiscountPayload(form, body) {
+    var toggle = form.querySelector("[data-discount-toggle]");
+    if (!toggle) return body;
+    if (!toggle.checked) {
+      body.discount_percent = 0;
+      body.discount_starts_at = null;
+      body.discount_ends_at = null;
+    } else {
+      var pct = form.querySelector('[name="discount_percent"]');
+      var starts = form.querySelector('[name="discount_starts_at"]');
+      var ends = form.querySelector('[name="discount_ends_at"]');
+      body.discount_percent = pct.value;
+      body.discount_starts_at = starts.value ? new Date(starts.value).toISOString() : null;
+      body.discount_ends_at = ends.value ? new Date(ends.value).toISOString() : null;
+    }
+    return body;
   }
 
   /* Campo de imagen: acepta URL externa O archivo local (con vista previa).
@@ -1187,6 +1301,7 @@
       imageField("image_url", "prodadm.image",
         "https://…, https://…  —  o sube fotos del equipo", true) +
       tagField("") +
+      discountField({}, STORE.role === "admin") +
       '<p class="field__label mono" style="font-size:.7rem;color:var(--faint);text-transform:uppercase;letter-spacing:.1em;margin:.4rem 0 .5rem">' +
         esc(I18N.t("prodadm.stockByBranch")) + '</p>' +
       '<div class="pkm-branches">' + branches.map(function (b) {
@@ -1197,6 +1312,7 @@
 
     var m = UI.modal({ title: I18N.t("prodadm.new"), content: c, wide: true });
     bindTagPick(c);
+    bindDiscountEditor(c);
 
     // Vista previa de los archivos locales elegidos.
     c.querySelectorAll("[data-file]").forEach(function (fi) {
@@ -1254,6 +1370,7 @@
           tags: (payload.tags || "").trim(),
           stock_by_branch: stock
         };
+        if (STORE.role === "admin") addDiscountPayload(c, draft);
         return API.post("products/import", draft);
       }).then(function () {
         UI.toast(I18N.t("toast.created"), "ok");
@@ -1555,6 +1672,16 @@
     form.addEventListener("submit", function (e) {
       e.preventDefault();
       if (!form.reportValidity()) return;
+      Array.prototype.forEach.call(form.querySelectorAll(".field.has-error"), function (field) {
+        field.classList.remove("has-error");
+      });
+      Array.prototype.forEach.call(form.querySelectorAll("[data-api-error]"), function (msg) {
+        msg.remove();
+      });
+      Array.prototype.forEach.call(form.querySelectorAll("[data-discount-error]"), function (msg) {
+        msg.textContent = "";
+        msg.hidden = true;
+      });
       var payload = {};
       Array.prototype.forEach.call(form.elements, function (el) {
         if (el.name) payload[el.name] = el.value;
@@ -1567,7 +1694,21 @@
         if (err.data && err.data.fields) {
           Object.keys(err.data.fields).forEach(function (f) {
             var input = form.elements[f];
-            if (input) { input.closest(".field").classList.add("has-error"); }
+            if (input) {
+              var field = input.closest(".field");
+              if (!field) return;
+              field.classList.add("has-error");
+              var message = field.querySelector("[data-discount-error]");
+              if (!message) {
+                message = document.createElement("small");
+                message.className = "field__error";
+                message.setAttribute("data-api-error", "");
+                field.appendChild(message);
+              }
+              var messages = err.data.fields[f];
+              message.textContent = Array.isArray(messages) ? messages.join(" ") : String(messages);
+              message.hidden = false;
+            }
           });
         }
       });

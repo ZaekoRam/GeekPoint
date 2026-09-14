@@ -101,10 +101,13 @@
         itemsEl.innerHTML = '<div class="cart-drawer__empty">' + UI.escHTML(I18N.t("cart.empty")) + '</div>';
       } else {
         itemsEl.innerHTML = c.map(function (l) {
+          var discounted = Number(l.discount_percent) > 0 && Number(l.list_price) > Number(l.price);
           return '<div class="dr-item" data-line="' + UI.escHTML(l.id) + '">' +
             '<img class="dr-item__media" src="' + UI.escHTML(l.cover || "") + '" alt="" />' +
             '<div><div class="dr-item__name">' + UI.escHTML(l.title) + '</div>' +
-              '<div class="dr-item__price">' + UI.money(l.price) + '</div>' +
+              '<div class="dr-item__price">' + (discounted
+                ? '<del>' + UI.money(l.list_price) + '</del> <strong>' + UI.money(l.price) + '</strong> <span class="promo-badge">−' + l.discount_percent + '%</span>'
+                : UI.money(l.price)) + '</div>' +
               '<div class="dr-item__qty">' +
                 '<button data-dec>−</button><span class="mono">' + l.qty + '</span><button data-inc>+</button>' +
               '</div></div>' +
@@ -184,6 +187,9 @@
     function quote() {
       var c = STORE.shopCart;
       if (!c.length) { UI.toast(I18N.t("cart.empty"), "warn"); return; }
+      var repriced = STORE.shopReconcile(window.Catalog ? Catalog.all() : []);
+      if (repriced) UI.toast(I18N.t("discount.cartUpdated", { n: repriced }), "warn");
+      c = STORE.shopCart;
 
       // Sucursales ACTIVAS de la BD (tabla `branches`); respaldo estático si el
       // API aún no respondió.  La opción "Cualquier sucursal" se conserva fija.
@@ -191,8 +197,10 @@
         ? Catalog.branches().filter(function (b) { return String(b.status || "active") !== "inactive"; })
         : (((window.__BRAND__ || {}).branches) || []);
       var rows = c.map(function (l) {
-        return '<tr><td>' + UI.escHTML(l.title) + '</td><td class="num qcol-qty">' + l.qty +
-          '</td><td class="num qcol-total">' + UI.money(l.price * l.qty, true) + '</td></tr>';
+        return '<tr><td>' + UI.escHTML(l.title) +
+          (!/^local-/i.test(String(l.id)) ? '<small class="muted">' + UI.escHTML(I18N.t("resv.nonbinding")) + '</small>' : '') +
+          '</td><td class="num qcol-qty">' + l.qty + '</td><td class="num qcol-total">' +
+          UI.money(l.price * l.qty, true) + '</td></tr>';
       }).join("");
 
       var form = document.createElement("form");
@@ -200,7 +208,7 @@
       form.setAttribute("novalidate", "");
       form.innerHTML =
         '<p class="muted" style="margin-bottom:1rem">' + UI.escHTML(I18N.t("resv.intro")) + '</p>' +
-        '<div class="table-wrap"><table class="data quote-table"><tbody>' + rows +
+        '<div class="table-wrap"><table class="data quote-table"><tbody data-quote-body>' + rows +
           '<tr class="quote-total"><td><b>' + UI.escHTML(I18N.t("cart.total")) + '</b></td><td></td><td class="num qcol-total"><b>' +
           UI.money(STORE.shopTotal(), true) + '</b></td></tr></tbody></table></div>' +
         '<div class="field"><label>' + UI.escHTML(I18N.t("resv.name")) + '</label>' +
@@ -221,11 +229,29 @@
       UI.modal({ title: I18N.t("resv.title"), content: form });
       var errBox = form.querySelector("[data-resv-error]");
       var btn = form.querySelector('button[type="submit"]');
+      var branchSelect = form.querySelector('[name="branch_code"]');
+
+      function refreshQuotePrices() {
+        var changed = STORE.shopReconcile(window.Catalog ? Catalog.all() : [], branchSelect.value);
+        var quoteBody = form.querySelector("[data-quote-body]");
+        quoteBody.innerHTML = STORE.shopCart.map(function (l) {
+          return '<tr><td>' + UI.escHTML(l.title) +
+            (!/^local-/i.test(String(l.id)) ? '<small class="muted">' + UI.escHTML(I18N.t("resv.nonbinding")) + '</small>' : '') +
+            '</td><td class="num qcol-qty">' + l.qty + '</td><td class="num qcol-total">' +
+            UI.money(l.price * l.qty, true) + '</td></tr>';
+        }).join("") + '<tr class="quote-total"><td><b>' + UI.escHTML(I18N.t("cart.total")) +
+          '</b></td><td></td><td class="num qcol-total"><b>' + UI.money(STORE.shopTotal(), true) + '</b></td></tr>';
+        return changed;
+      }
+      branchSelect.addEventListener("change", function () {
+        if (refreshQuotePrices()) UI.toast(I18N.t("discount.cartUpdated", { n: 1 }), "warn");
+      });
 
       form.addEventListener("submit", function (e) {
         e.preventDefault();
         if (!form.reportValidity()) return;
         errBox.hidden = true;
+        refreshQuotePrices();
 
         // No permitir apartar si algún artículo no tiene stock suficiente
         // (en la sucursal elegida, o en la mejor sucursal si es "cualquiera").
@@ -243,6 +269,7 @@
           customer_email: form.customer_email.value.trim(),
           customer_phone: form.customer_phone.value.trim(),
           branch_code: form.branch_code.value,
+          expected_total: STORE.shopTotal(),
           items: STORE.shopCart.map(function (l) {
             return { ref: l.id, title: l.title, price: l.price, qty: l.qty };
           })
@@ -251,6 +278,11 @@
           showReservationTicket(r);
         }).catch(function (err) {
           btn.classList.remove("is-loading");
+          if (err && err.data && err.data.error === "price_changed" && window.Catalog) {
+            Catalog.load(true).then(function () {
+              refreshQuotePrices();
+            });
+          }
           errBox.textContent = (err && err.message) || I18N.t("resv.error");
           errBox.hidden = false;
         });
@@ -262,7 +294,8 @@
       var barcode = window.Barcode ? Barcode.code128svg(r.folio, { height: 64, moduleWidth: 2 }) : "";
       var itemsHTML = (r.items || []).map(function (it) {
         return '<div class="rk-row"><span>' + it.quantity + '× ' + UI.escHTML(it.title) + '</span>' +
-          '<span class="mono">' + UI.money(it.line_total) + '</span></div>';
+          '<span class="mono">' + UI.money(it.line_total) + '</span></div>' +
+          (it.binding === false ? '<small class="muted">' + UI.escHTML(I18N.t("resv.nonbinding")) + '</small>' : '');
       }).join("");
 
       var wrap = document.createElement("div");

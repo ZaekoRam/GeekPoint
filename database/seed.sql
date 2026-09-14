@@ -280,14 +280,14 @@ INSERT INTO `sales`
   (6,'MTY-000001',3,5,7,'Mostrador',158.00,25.28,183.28,'cash',200.00,16.72, DATE_SUB(NOW(), INTERVAL 5 HOUR));
 
 INSERT INTO `sale_items`
-  (`sale_id`,`product_id`,`product_name`,`sku`,`unit_price`,`tax_rate`,`quantity`,`line_subtotal`,`line_tax`,`line_total`) VALUES
-  (1, 1,'Jujutsu Kaisen Vol. 1','MNG-JJK-01',149.00,0.160,2,298.00,47.68,345.68),
-  (2, 7,'Pokémon TCG — Booster 151','TCG-PKM-151',119.00,0.160,1,119.00,19.04,138.04),
-  (3, 5,'Figura Gojo Satoru 1/7','FIG-GOJO-16',2490.00,0.160,1,2490.00,398.40,2888.40),
-  (4,15,'Kimetsu no Yaiba Vol. 23','MNG-KNY-23',149.00,0.160,1,149.00,23.84,172.84),
-  (4,13,'Jujutsu Kaisen Vol. 1','MNG-JJK-01',149.00,0.160,1,159.00,25.44,184.44),
-  (5,19,'Magic — Bundle Lost Caverns','TCG-MTG-LCI',1490.00,0.160,1,1490.00,238.40,1728.40),
-  (6,25,'Dandadan Vol. 12','MNG-DND-12',159.00,0.160,1,158.00,25.28,183.28);
+  (`sale_id`,`product_id`,`product_name`,`sku`,`list_unit_price`,`discount_percent`,`unit_discount`,`unit_price`,`tax_rate`,`quantity`,`line_subtotal`,`line_tax`,`line_total`) VALUES
+  (1, 1,'Jujutsu Kaisen Vol. 1','MNG-JJK-01',149.00,0.00,0.00,149.00,0.160,2,298.00,47.68,345.68),
+  (2, 7,'Pokémon TCG — Booster 151','TCG-PKM-151',119.00,0.00,0.00,119.00,0.160,1,119.00,19.04,138.04),
+  (3, 5,'Figura Gojo Satoru 1/7','FIG-GOJO-16',2490.00,0.00,0.00,2490.00,0.160,1,2490.00,398.40,2888.40),
+  (4,15,'Kimetsu no Yaiba Vol. 23','MNG-KNY-23',149.00,0.00,0.00,149.00,0.160,1,149.00,23.84,172.84),
+  (4,13,'Jujutsu Kaisen Vol. 1','MNG-JJK-01',149.00,0.00,0.00,149.00,0.160,1,159.00,25.44,184.44),
+  (5,19,'Magic — Bundle Lost Caverns','TCG-MTG-LCI',1490.00,0.00,0.00,1490.00,0.160,1,1490.00,238.40,1728.40),
+  (6,25,'Dandadan Vol. 12','MNG-DND-12',159.00,0.00,0.00,159.00,0.160,1,158.00,25.28,183.28);
 
 INSERT INTO `stock_movements`
   (`branch_id`,`product_id`,`user_id`,`type`,`quantity_delta`,`resulting_stock`,`reference`,`note`,`created_at`) VALUES
