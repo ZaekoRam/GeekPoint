@@ -313,16 +313,26 @@
       var prods = folded.list;      // tarjetas visibles: 1 por serie / cómic / producto suelto
       var bySku = folded.bySku;     // TODOS los SKU (series + tomos ocultos) para las acciones
 
+      // Sucursal activa para "Tomos y precios" (se elige aquí, no dentro del modal).
+      var activeBranchId = (window.STORE && STORE.user && STORE.user.branch_id) || (brs[0] && brs[0].id) || null;
+
       panel.innerHTML =
         '<div class="toolbar">' +
           '<label class="muted mono" style="font-size:.75rem">' + esc(I18N.t("col.category")) + '</label>' +
           '<select class="select" data-cat-filter><option value="">' + esc(I18N.t("pos.all")) + '</option>' +
             cats.map(function (c) { return '<option value="' + esc(c.slug) + '">' + esc(I18N.pick({ es: c.name_es, en: c.name_en })) + '</option>'; }).join("") +
           '</select>' +
+          (brs.length > 1
+            ? '<label class="muted mono" style="font-size:.75rem">' + esc(I18N.t("col.branch")) + '</label>' +
+              '<select class="select" data-branch-filter>' + brs.map(function (b) {
+                return '<option value="' + b.id + '"' + (b.id === activeBranchId ? " selected" : "") + '>' + esc(b.name) + '</option>';
+              }).join("") + '</select>'
+            : "") +
+          '<input class="input" type="search" data-search placeholder="' + esc(I18N.t("prodadm.searchPh")) + '" style="max-width:15rem">' +
           '<span class="spacer"></span>' +
           '<span class="mono muted" style="font-size:.72rem" data-prod-count>' + prods.length + ' ' + esc(I18N.t("nav.products").toLowerCase()) + '</span>' +
         '</div>' +
-        '<div data-prod-table>' + productsTable(prods, brs) + '</div>' +
+        '<div data-prod-table>' + productsTable(prods, brs, activeBranchId) + '</div>' +
         '<h2 class="mono" style="font-size:.9rem;color:var(--faint);margin:1.6rem 0 .6rem">' + esc(I18N.t("misc.alerts")) + '</h2>' +
         '<div data-alerts>' + alertsTable(res[3].alerts) + '</div>';
 
@@ -330,12 +340,23 @@
 
       function redrawTable() {
         var slug = ($("[data-cat-filter]", panel) || {}).value || "";
-        var list = slug ? prods.filter(function (p) { return p.category_slug === slug; }) : prods;
-        tableBox.innerHTML = productsTable(list, brs);
+        var q = _fold(($("[data-search]", panel) || {}).value || "");
+        var list = prods.filter(function (p) {
+          if (slug && p.category_slug !== slug) return false;
+          if (q && _fold(p.displayName || p.name).indexOf(q) === -1 && _fold(p.sku).indexOf(q) === -1) return false;
+          return true;
+        });
+        tableBox.innerHTML = productsTable(list, brs, activeBranchId);
         var cnt = $("[data-prod-count]", panel);
         if (cnt) cnt.textContent = list.length + " " + I18N.t("nav.products").toLowerCase();
       }
       $("[data-cat-filter]", panel).addEventListener("change", redrawTable);
+      $("[data-search]", panel).addEventListener("input", UI.debounce(redrawTable, 150));
+      var branchFilter = $("[data-branch-filter]", panel);
+      if (branchFilter) branchFilter.addEventListener("change", function () {
+        activeBranchId = parseInt(branchFilter.value, 10);
+        redrawTable();
+      });
 
       // El catálogo de la tienda trae las portadas reales; si aún no cargó al
       // pintar, se repinta cuando resuelve para que aparezcan las carátulas.
@@ -357,7 +378,7 @@
             // Manga y cómics -> modal de tomos (stock + precio por volumen).
             // El resto -> ajuste de stock por sucursal de siempre.
             if (g.category_slug === "manga" || g.category_slug === "comics")
-              volumesModal(g, brs, function () { inventory(panel, root); });
+              volumesModal(g, brs, function () { inventory(panel, root); }, activeBranchId);
             else
               restockModal(g, brs, function () { inventory(panel, root); });
           }
@@ -522,17 +543,19 @@
     return n + " " + (en ? (n === 1 ? "volume" : "volumes") : (n === 1 ? "tomo" : "tomos"));
   }
 
-  function branchDigest(map, branches) {
-    return (branches || []).map(function (b) {
-      return esc(String(b.code || "").replace(/^GKP-/, "")) + " " + ((map || {})[b.id] || 0);
-    }).join(" · ");
+  /* Stock de UNA sola sucursal (la activa en el panel de inventario) — ya no
+     se muestran las 3 sucursales concatenadas. */
+  function branchDigest(map, branches, activeBranchId) {
+    var b = (branches || []).filter(function (x) { return x.id === activeBranchId; })[0];
+    if (!b) return "";
+    return esc(String(b.code || "").replace(/^GKP-/, "")) + " " + ((map || {})[activeBranchId] || 0);
   }
 
   /* Inventario consolidado como GRILLA DE TARJETAS (mismo estilo que la tienda).
      Cada tarjeta agrupa un SKU: portada, categoría, precio, stock TOTAL y el
-     desglose por sucursal. Al pulsarla (o "± Ajustar stock") abre el modal de
-     reabastecer por sucursal — nunca "comprar". */
-  function productsTable(list, branches) {
+     stock de la sucursal activa. Al pulsarla (o "± Ajustar stock") abre el
+     modal de reabastecer por sucursal — nunca "comprar". */
+  function productsTable(list, branches, activeBranchId) {
     if (!list.length) {
       return '<div class="state">' + (V._icon ? V._icon.empty : "") + '<p>' + esc(I18N.t("empty.none")) + '</p></div>';
     }
@@ -543,7 +566,7 @@
       var brMap = kids.length ? g.groupByBranch : g.byBranch;
       var totalCls = total === 0 ? "badge--danger" : (total <= 6 ? "badge--warn" : "badge--ok");
       var cat = esc(PRV_LABEL[g.category_slug] || g.category_slug || "—");
-      var perBranch = branchDigest(brMap, branches);
+      var perBranch = branchDigest(brMap, branches, activeBranchId);
       var name = g.displayName || g.name;
       var dp = Number(g.discount_percent) || 0;
       var promo = g.discount_status === "active"
@@ -647,6 +670,12 @@
 
   function _pad2(v) { return v < 10 ? "0" + v : "" + v; }
 
+  /* minúsculas + sin acentos, para el buscador del inventario */
+  function _fold(s) {
+    s = String(s || "").toLowerCase();
+    return s.normalize ? s.normalize("NFD").replace(/[̀-ͯ]/g, "") : s;
+  }
+
   /* SKU base para tomos/números sueltos de una serie:
      MNG-S-JJK -> MNG-JJK ;  MNG-JJK-03 -> MNG-JJK ;  CMC-AVG-1 -> CMC-AVG */
   function _volBase(sku) {
@@ -709,23 +738,25 @@
 
   /* Modal "Tomos y precios" — se abre desde "± Ajustar stock" en las tarjetas de
      manga y cómics (sustituye al modal de reabastecer normal para esas series).
+     La sucursal para el "stock: N" de cada fila se elige en el panel de
+     inventario (selector junto a "N productos"), no aquí dentro.
+     No se edita el precio por tomo aquí (eso solo lo hace un admin, desde
+     "Editar producto" o al dar de alta el tomo con "+ Añadir nuevo tomo").
      · Campo "Número de tomos": genera la cuadrícula Vol. 1 … Vol. N.
-     · Cada fila muestra SKU + "stock: N" de la sucursal elegida y dos botones:
-        - "Precio": sub-modal con un único campo de precio para ese tomo. Si el
-          tomo ya existe se precarga (al guardar afecta a todas las sucursales);
-          si no existe, se crea al guardar (stock 0 en todas las sucursales).
-        - "Stock": sub-modal con selector de sucursal + cantidad a SUMAR al
-          stock actual de esa sucursal (igual que "± Ajustar stock").
+     · Cada fila muestra SKU + "stock: N" de esa sucursal y el botón "Stock":
+       sub-modal apilado con cantidad a SUMAR al stock actual de esa sucursal
+       (igual que "± Ajustar stock"); si el tomo aún no tiene ficha propia se
+       crea al guardar, con el precio de la serie.
        El "stock: N" de la fila usa el stock propio del tomo; si el tomo aún no
        tiene ficha propia, hereda el stock del registro de la serie en esa
-       sucursal. Cambiar de sucursal recarga cada fila.
-     · Los sub-modales de "Precio"/"Stock" se apilan ENCIMA (stackModal): este
-       listado NO desaparece. "Cancelar" o Escape cierran solo el sub-modal;
-       al guardar se refresca el inventario y este modal se vuelve a abrir con
+       sucursal.
+     · El sub-modal de "Stock" se apila ENCIMA (stackModal): este listado NO
+       desaparece. "Cancelar" o Escape cierran solo el sub-modal; al guardar
+       se refresca el inventario y este modal se vuelve a abrir con
        los datos nuevos. "Cerrar" cierra este modal.
      · "+ Añadir nuevo tomo": formulario detallado tipo "Nuevo producto" (SIN
        categoría, marca ni línea) para UN tomo con portada / stock propios. */
-  function volumesModal(group, branches, done) {
+  function volumesModal(group, branches, done, defaultBranchId) {
     var kids = [group].concat(group.children || []);
     // Mapa  nº de tomo -> grupo existente  (para precargar precio/stock y sus ids).
     var byNum = {};
@@ -740,7 +771,8 @@
     var guess = descMatch ? Math.min(parseInt(descMatch[1], 10), 80) : (maxExisting || 12);
 
     var brs = branches || [];
-    var defBranch = (window.STORE && STORE.user && STORE.user.branch_id) || (brs[0] && brs[0].id) || null;
+    var defBranch = defaultBranchId || (window.STORE && STORE.user && STORE.user.branch_id) || (brs[0] && brs[0].id) || null;
+    var bName = (brs.filter(function (b) { return b.id === defBranch; })[0] || {}).name || "";
 
     /* Tras guardar en un sub-modal: refresca la tabla del inventario y vuelve a
        abrir ESTE modal con datos frescos (así el "modal anterior sigue saliendo"). */
@@ -749,8 +781,8 @@
       done();
       API.get("products?status=all&limit=300").then(function (res) {
         var folded = foldSeries(groupBySku(res.products, brs));
-        volumesModal(folded.bySku[group.sku] || group, branches, done);
-      }).catch(function () { volumesModal(group, branches, done); });
+        volumesModal(folded.bySku[group.sku] || group, branches, done, defBranch);
+      }).catch(function () { volumesModal(group, branches, done, defBranch); });
     }
 
     var c = document.createElement("form");
@@ -760,22 +792,14 @@
       '<button type="button" class="btn btn--neon btn--sm" data-add-vol style="margin-bottom:.9rem">' +
         esc(I18N.t("volumes.addNew")) + '</button>' +
       row("volumes.count", '<input class="input" type="number" min="1" max="99" name="count" value="' + guess + '" data-vol-count>', "volumes.count") +
-      (brs.length > 1
-        ? row("volumes.stockBranch", '<select class="input" data-vol-branch>' + brs.map(function (b) {
-            return '<option value="' + b.id + '"' + (b.id === defBranch ? " selected" : "") + '>' + esc(b.name) + '</option>';
-          }).join("") + '</select>', "volumes.stockBranch")
-        : "") +
       '<div data-vol-rows></div>' +
       '<div style="display:flex;gap:.6rem;justify-content:flex-end;margin-top:.4rem">' +
         '<button type="button" class="btn btn--ghost" data-close-vol>' + esc(I18N.t("btn.close")) + '</button></div>';
-    UI.modal({ title: I18N.t("volumes.title"), content: c, wide: true });
+    UI.modal({ title: I18N.t("volumes.title") + (bName ? " · " + bName : ""), content: c, wide: true });
     c.addEventListener("submit", function (e) { e.preventDefault(); });
     c.querySelector("[data-close-vol]").addEventListener("click", UI.closeModal);
 
-    function selBranch() {
-      var sel = c.querySelector("[data-vol-branch]");
-      return sel ? parseInt(sel.value, 10) : defBranch;
-    }
+    function selBranch() { return defBranch; }
 
     /* Stock a mostrar para un tomo en una sucursal: el propio del tomo si tiene
        ficha; si no, hereda el del registro de la serie en esa sucursal. */
@@ -797,10 +821,8 @@
         rows += '<label class="pkm-branch"><span>' + esc(I18N.t("prod.volume")) + ' ' + v +
           '<br><small class="muted mono" style="font-size:.62rem">' + esc((ex && ex.sku) || (base + "-" + _pad2(v))) +
             ' · ' + stockLbl + '</small></span>' +
-          '<span style="display:flex;gap:.4rem;align-items:center">' +
-            '<button type="button" class="btn btn--ghost btn--sm" style="font-family:var(--sans);letter-spacing:0;text-transform:none" data-price-vol="' + v + '">' + esc(I18N.t("volumes.priceBtn")) + '</button>' +
-            '<button type="button" class="btn btn--ghost btn--sm" style="font-family:var(--sans);letter-spacing:0;text-transform:none" data-stock-vol="' + v + '">' + esc(I18N.t("volumes.stockBtn")) + '</button>' +
-          '</span></label>';
+          '<button type="button" class="btn btn--ghost btn--sm" style="font-family:var(--sans);letter-spacing:0;text-transform:none" data-stock-vol="' + v + '">' + esc(I18N.t("volumes.stockBtn")) + '</button>' +
+          '</label>';
       }
       c.querySelector("[data-vol-rows]").innerHTML =
         '<p class="field__label mono" style="font-size:.7rem;color:var(--faint);text-transform:uppercase;letter-spacing:.1em;margin:.6rem 0 .5rem">' +
@@ -809,12 +831,8 @@
     }
     drawRows();
     c.querySelector("[data-vol-count]").addEventListener("input", drawRows);
-    var brSel = c.querySelector("[data-vol-branch]");
-    if (brSel) brSel.addEventListener("change", drawRows);
 
     c.querySelector("[data-vol-rows]").addEventListener("click", function (e) {
-      var pb = e.target.closest("[data-price-vol]");
-      if (pb) { volumePriceModal(parseInt(pb.getAttribute("data-price-vol"), 10)); return; }
       var sb = e.target.closest("[data-stock-vol]");
       if (sb) { volumeStockModal(parseInt(sb.getAttribute("data-stock-vol"), 10), selBranch()); return; }
     });
@@ -828,74 +846,28 @@
       }, branches, refresh);
     });
 
-    /* ---- sub-modal apilado: PRECIO de un solo tomo ---- */
-    function volumePriceModal(v) {
-      var ex = byNum[v];
-      var nm = seriesName + " " + I18N.t("prod.volume") + " " + v;
-      var f = document.createElement("form");
-      f.innerHTML =
-        '<p class="muted" style="margin-bottom:.6rem">' + esc(nm) +
-          ' · <span class="mono">' + esc((ex && ex.sku) || (base + "-" + _pad2(v))) + '</span></p>' +
-        row("prodadm.price", '<input class="input" type="number" name="price" min="0" step="0.01" required ' +
-          (ex && ex.price != null ? 'value="' + ex.price + '"' : 'placeholder="' + (group.price || 0) + '"') + '>') +
-        formButtons();
-      var sub = stackModal(I18N.t("volumes.priceTitle", { name: nm }), f);
-      f.querySelector("[data-cancel]").addEventListener("click", sub.close);
-      bindSub(f, function (p) {
-        var price = Math.round(parseFloat(p.price) * 100) / 100;
-        if (!(price >= 0)) return Promise.reject(new Error(I18N.t("volumes.needPrice")));
-        var jobs;
-        if (ex) {
-          jobs = Object.keys(ex.idByBranch || {}).map(function (k) {
-            return API.put("products/" + ex.idByBranch[k], { sku: ex.sku, name: ex.name, price: price });
-          });
-        } else {
-          var sb = {};
-          brs.forEach(function (b) { sb[b.id] = 0; });
-          jobs = [API.post("products/import", {
-            source: "volume", sku: base + "-" + _pad2(v), name: nm,
-            category_slug: group.category_slug || "manga", price: price,
-            image_url: group.image_url || "",
-            description: (group.sample && group.sample.description) || "",
-            stock_by_branch: sb
-          })];
-        }
-        return Promise.all(jobs).then(function () {
-          UI.toast(I18N.t("volumes.priceSaved"), "ok");
-          sub.close();
-          refresh();
-        });
-      });
-    }
-
     /* ---- sub-modal apilado: STOCK de un solo tomo en una sucursal ---- */
     function volumeStockModal(v, bid0) {
       var ex = byNum[v];
       var nm = seriesName + " " + I18N.t("prod.volume") + " " + v;
       var f = document.createElement("form");
+      var bName = (brs.filter(function (b) { return b.id === bid0; })[0] || {}).name || "";
       f.innerHTML =
         '<p class="muted" style="margin-bottom:.6rem">' + esc(nm) +
           ' · <span class="mono">' + esc((ex && ex.sku) || (base + "-" + _pad2(v))) + '</span></p>' +
-        (brs.length > 1
-          ? row("volumes.stockBranch", '<select class="input" name="branch" data-sb>' + brs.map(function (b) {
-              return '<option value="' + b.id + '"' + (b.id === bid0 ? " selected" : "") + '>' + esc(b.name) + '</option>';
-            }).join("") + '</select>', "volumes.stockBranch")
-          : '<input type="hidden" name="branch" value="' + (bid0 || (brs[0] && brs[0].id) || "") + '">') +
+        '<input type="hidden" name="branch" value="' + (bid0 || (brs[0] && brs[0].id) || "") + '">' +
         '<p class="muted mono" style="font-size:.72rem;margin:.1rem 0 .5rem" data-cur></p>' +
         row("volumes.addStock", '<input class="input" type="number" name="add" min="0" step="1" value="0">', "volumes.addStock") +
         formButtons();
-      var sub = stackModal(I18N.t("volumes.stockTitle", { name: nm }), f);
+      var sub = stackModal(I18N.t("volumes.stockTitle", { name: nm }) + (bName ? " · " + bName : ""), f);
       f.querySelector("[data-cancel]").addEventListener("click", sub.close);
 
       function paintCur() {
-        var bid = parseInt((f.elements.branch && f.elements.branch.value) || bid0, 10);
-        var st = rowStock(ex, bid);
+        var st = rowStock(ex, bid0);
         f.querySelector("[data-cur]").textContent = I18N.t("volumes.curStock") + ": " + st.n +
           (st.inherited ? " (" + I18N.t("volumes.seriesStock") + ")" : "");
       }
       paintCur();
-      var sbSel = f.querySelector("[data-sb]");
-      if (sbSel) sbSel.addEventListener("change", paintCur);
 
       bindSub(f, function (p) {
         var bid = parseInt(p.branch, 10);
@@ -1028,6 +1000,7 @@
     var s = group.sample || {};
     var ids = Object.keys(group.idByBranch).map(function (k) { return group.idByBranch[k]; }).filter(Boolean);
     var canDiscount = STORE.role === "admin";
+    var canEditPrice = STORE.role === "admin";
     var catOpts = cats.map(function (x) {
       return '<option value="' + esc(x.slug) + '"' + (x.slug === group.category_slug ? " selected" : "") + '>' +
         esc(I18N.pick({ es: x.name_es, en: x.name_en })) + '</option>';
@@ -1039,7 +1012,9 @@
       row("prodadm.name", '<input class="input" name="name" required maxlength="180" value="' + esc(group.name) + '">') +
       '<div class="grid-2">' +
         row("prodadm.category", '<select class="select" name="category_slug" required>' + catOpts + '</select>') +
-        row("prodadm.price", '<input class="input" type="number" name="price" min="0" step="0.01" required value="' + (group.price != null ? group.price : "") + '">') +
+        row("prodadm.price", '<input class="input" type="number" name="price" min="0" step="0.01" required value="' +
+          (group.price != null ? group.price : "") + '"' + (canEditPrice ? "" : " disabled") + '>' +
+          (canEditPrice ? "" : '<small class="muted" style="font-size:.68rem">' + esc(I18N.t("prodadm.priceAdminOnly")) + '</small>')) +
       '</div>' +
       row("prodadm.synopsis", '<textarea class="input" name="description" rows="3" maxlength="500">' + esc(s.description || "") + '</textarea>') +
       imageField("figure_png_url", "prodadm.figurePng",

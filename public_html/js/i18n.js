@@ -246,6 +246,8 @@
       "prodadm.restockTitle": "Añadir stock — {name}",
       "prodadm.restockHint": "Cantidad a SUMAR al stock actual de cada sucursal (0 = sin cambios).",
       "prodadm.restockDone": "Stock añadido.",
+      "prodadm.searchPh": "Buscar por nombre o SKU…",
+      "prodadm.priceAdminOnly": "Solo un administrador puede cambiar el precio.",
       "prodadm.notInBranch": "sin existencias — se dará de alta",
 
       "empty.none": "Sin registros todavía.",
@@ -502,6 +504,8 @@
       "prodadm.restockTitle": "Add stock — {name}",
       "prodadm.restockHint": "Amount to ADD to each branch's current stock (0 = no change).",
       "prodadm.restockDone": "Stock added.",
+      "prodadm.searchPh": "Search by name or SKU…",
+      "prodadm.priceAdminOnly": "Only an admin can change the price.",
       "prodadm.notInBranch": "no stock — will be created",
 
       "empty.none": "No records yet.",
