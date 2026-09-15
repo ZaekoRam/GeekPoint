@@ -1699,4 +1699,7 @@
                                       // tarjetas, editar / ± ajustar stock — en manga y
                                       // cómics el ajuste abre el modal de tomos) — la reusa
                                       // el panel de Gerente acotada a su sucursal.
+  V._groupBySku = groupBySku;         // agrupa filas de producto por SKU (1 por sucursal).
+  V._foldSeries = foldSeries;         // pliega tomos/números bajo su serie — el POS la
+                                      // reusa para no repetir portadas de un mismo manga/cómic.
 })();

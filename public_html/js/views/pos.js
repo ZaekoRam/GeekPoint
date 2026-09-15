@@ -102,9 +102,18 @@
 
     root.addEventListener("click", function (e) {
       if (e.target.closest("[data-resv-open]")) { resvModal(root); return; }
+      var pickBtn = e.target.closest("[data-pick-series]");
+      if (pickBtn) { volumePickerModal(pickBtn.getAttribute("data-pick-series")); return; }
       var addBtn = e.target.closest("[data-add]");
       if (addBtn) {
-        var p = ctx.products.find(function (x) { return x.id == addBtn.getAttribute("data-add"); });
+        var id = addBtn.getAttribute("data-add");
+        var p = null;
+        ctx.products.some(function (g) {
+          if (g.children && g.children.length) return false;   // series: se agrega desde el selector
+          var s = g.sample || g;
+          if (String(s.id) === id) { p = s; return true; }
+          return false;
+        });
         if (p) { STORE.cartAdd(mapProduct(p)); }
         return;
       }
@@ -182,15 +191,23 @@
   function loadProducts(root) {
     var grid = $("[data-grid]", root);
     if (!ctx.branchId) { grid.innerHTML = '<p class="muted">' + esc(I18N.t("empty.none")) + '</p>'; return; }
-    var qs = "?status=active&limit=120&branch_id=" + ctx.branchId;
+    // Límite más alto que antes: al plegar por serie se necesitan las filas
+    // crudas de TODOS los tomos/números para poder ofrecerlos en el selector.
+    var qs = "?status=active&limit=300&branch_id=" + ctx.branchId;
     if (ctx.filter.q) qs += "&q=" + encodeURIComponent(ctx.filter.q);
     if (ctx.filter.cat) qs += "&category_id=" + ctx.filter.cat;
     return API.get("products" + qs).then(function (d) {
-      ctx.products = d.products;
-      grid.innerHTML = d.products.length ? d.products.map(cardHTML).join("")
+      // Mismo plegado que Admin/Gerente: los tomos de manga y números de
+      // cómic se esconden bajo su serie (no se repite la portada por tomo).
+      var folded = (V._foldSeries && V._groupBySku)
+        ? V._foldSeries(V._groupBySku(d.products))
+        : { list: d.products.map(function (p) { return { sku: p.sku, sample: p, name: p.name, category_slug: p.category_slug, price: p.price, effective_price: p.effective_price, discount_status: p.discount_status, discount_percent: p.discount_percent, total: p.stock }; }), bySku: {} };
+      ctx.products = folded.list;
+      ctx.bySku = folded.bySku;
+      grid.innerHTML = ctx.products.length ? ctx.products.map(cardHTML).join("")
         : '<div class="state"><div class="state__icon">🔍</div><p>' + esc(I18N.t("empty.none")) + '</p></div>';
       // Portadas reales del catálogo de la tienda: si aún no cargó, repinta.
-      if (d.products.length && window.Catalog && Catalog.load && !Catalog.ready) {
+      if (ctx.products.length && window.Catalog && Catalog.load && !Catalog.ready) {
         var snapshot = ctx.products;
         Catalog.load().then(function () {
           if (ctx.products === snapshot && grid.isConnected) grid.innerHTML = ctx.products.map(cardHTML).join("");
@@ -199,28 +216,144 @@
     }).catch(function (err) { grid.innerHTML = V._error(err); });
   }
 
-  function cardHTML(p) {
-    var art = EMOJI[p.category_slug] || "📦";
-    var out = p.stock === 0;
-    var cls = "prod" + (out ? " is-out" : (p.low_stock ? " is-low" : ""));
-    var cover = (V._productCover ? V._productCover(p) : "") || "";
-    var discounted = p.discount_status === "active" && Number(p.effective_price) < Number(p.price);
+  /* Tarjeta de la grilla del POS. Manga y cómics SIEMPRE ofrecen "Elige tomo"
+     (igual que Admin/Gerente ofrecen "Tomos y precios" para toda esa
+     categoría, tengan o no ya una ficha propia por tomo) — el botón NO agrega
+     nada directo: abre el selector (volumePickerModal). El resto de
+     categorías agrega directo al ticket como siempre. */
+  function cardHTML(g) {
+    var isSeries = g.category_slug === "manga" || g.category_slug === "comics";
+    var s = g.sample || g;                      // fila cruda (id, stock… de ESTA sucursal)
+    var total = g.groupTotal != null ? g.groupTotal : (g.total != null ? g.total : (s.stock || 0));
+    var out = total === 0;
+    var art = EMOJI[g.category_slug] || "📦";
+    var cls = "prod" + (out ? " is-out" : (s.low_stock ? " is-low" : ""));
+    var cover = (V._productCover ? V._productCover(g) : "") || "";
+    var name = g.displayName || g.name;
+    var discounted = !isSeries && g.discount_status === "active" && Number(g.effective_price) < Number(g.price);
+    var priceHTML = discounted
+      ? '<del>' + UI.money(g.price, true) + '</del><strong>' + UI.money(g.effective_price, true) + '</strong><small>−' + g.discount_percent + '%</small>'
+      : UI.money((isSeries ? g.price : (g.effective_price != null ? g.effective_price : g.price)), true);
     return (
-      '<button class="' + cls + '" data-add="' + p.id + '"' + (out ? " disabled" : "") + '>' +
+      '<button type="button" class="' + cls + '"' +
+        (isSeries ? ' data-pick-series="' + esc(g.sku) + '"' : ' data-add="' + s.id + '"' + (out ? " disabled" : "")) + '>' +
         '<span class="prod__media">' +
           (cover
             ? '<img src="' + esc(cover) + '" alt="" loading="lazy" decoding="async" onerror="this.remove()">'
             : '<span class="prod__art">' + art + '</span>') +
-          '<span class="prod__badge">' + (out ? esc(I18N.t("pos.outOfStock")) : (p.stock + " u")) + '</span>' +
+          '<span class="prod__badge">' + (isSeries ? esc(I18N.t("prod.pickVolume")) : (out ? esc(I18N.t("pos.outOfStock")) : (total + " u"))) + '</span>' +
         '</span>' +
         '<span class="prod__body">' +
-          '<span class="prod__name">' + esc(p.name) + '</span>' +
-          '<span class="prod__price">' + (discounted
-            ? '<del>' + UI.money(p.price, true) + '</del><strong>' + UI.money(p.effective_price, true) + '</strong><small>−' + p.discount_percent + '%</small>'
-            : UI.money(p.effective_price != null ? p.effective_price : p.price, true)) + '</span>' +
+          '<span class="prod__name">' + esc(name) + '</span>' +
+          '<span class="prod__price">' + priceHTML + '</span>' +
         '</span>' +
       '</button>'
     );
+  }
+
+  function _pad2(v) { return v < 10 ? "0" + v : "" + v; }
+  function _volNum(g) {
+    var s = g.sample || g;
+    var m = String(s.sku || "").match(/-(\d+)$/) || String(s.name || "").match(/(\d+)\s*$/);
+    return m ? parseInt(m[1], 10) : 0;
+  }
+  /* Copia superficial de una fila cruda con nombre/SKU de exhibición
+     reemplazados — para tomos "virtuales" (sin ficha propia): el `id` real
+     (el de la serie) es el que se vende y descuenta de stock; nombre y SKU
+     son solo cosméticos, para que el ticket muestre "Vol. N" y su SKU. */
+  function _withOverrides(sample, overrides) {
+    var out = {};
+    for (var k in sample) if (Object.prototype.hasOwnProperty.call(sample, k)) out[k] = sample[k];
+    for (var k2 in overrides) if (Object.prototype.hasOwnProperty.call(overrides, k2)) out[k2] = overrides[k2];
+    return out;
+  }
+
+  /* Selector de tomo/número: se abre al pulsar la tarjeta de un manga o
+     cómic — MISMO criterio que "Tomos y precios" en Admin: se listan TODOS
+     los tomos 1..N (no solo los que ya tienen ficha propia en la BD). Cada
+     fila agrega ESE tomo puntual al ticket — "una parte para añadir producto
+     a la venta actual", sin tocar precio ni stock. */
+  function volumePickerModal(sku) {
+    var g = ctx.bySku && ctx.bySku[sku];
+    if (!g) return;
+    var byNum = {};
+    // El marcador de serie de manga (SKU "MNG-S-…", sin número de tomo) no es
+    // un artículo vendible por sí mismo — solo agrupa a sus tomos. Un cómic SÍ
+    // vende su propio número más bajo (es el "padre" real).
+    ((g._series ? [] : [g]).concat(g.children || [])).forEach(function (k) {
+      var n = _volNum(k);
+      if (n > 0) byNum[n] = k;
+    });
+    var maxExisting = Object.keys(byNum).reduce(function (m, k) { return Math.max(m, +k); }, 0);
+    var descMatch = String((g.sample && g.sample.description) || "").match(/(\d{1,3})\s*tomos?/i);
+    var total = descMatch ? Math.min(parseInt(descMatch[1], 10), 80) : (maxExisting || 12);
+    var base = String(g.sku || "").replace(/-S-/i, "-").replace(/-\d{1,3}$/, "").replace(/[^A-Za-z0-9]+$/, "");
+    var seriesName = g.displayName || g.name;
+    var seriesSample = g.sample || g;
+
+    // Fila real (ya tiene ficha propia) o "virtual": hereda precio/stock de
+    // la serie (como "stock serie: N" en Admin). `sample` es solo para
+    // MOSTRAR la fila (con su "Vol. N" y SKU cosmético); `cartSample` es lo
+    // que de verdad se vende — en un tomo virtual es la FICHA REAL de la
+    // serie (mismo id para todos), porque es el único registro de stock que
+    // existe: el ticket/inventario lo cobra como la serie, no como "Vol. N".
+    var rows = [];
+    for (var v = 1; v <= total; v++) {
+      var k = byNum[v];
+      if (k) {
+        var realSample = k.sample || k;
+        rows.push({ sample: realSample, cartSample: realSample, name: k.displayName || k.name, virtual: false });
+      } else {
+        var vName = seriesName + " " + I18N.t("prod.volume") + " " + v;
+        var vSku = base + "-" + _pad2(v);
+        rows.push({
+          sample: _withOverrides(seriesSample, { name: vName, sku: vSku }),
+          cartSample: seriesSample, name: vName, virtual: true
+        });
+      }
+    }
+
+    // Misma estética que "Tomos y precios" en Admin/Gerente (.pkm-branches /
+    // .pkm-branch): línea de serie + SKU, encabezado en mono/mayúsculas y la
+    // cuadrícula de filas. Aquí cada fila ES el botón — tocarla agrega ESE
+    // tomo a la venta actual (sin precio/stock editable, solo vender).
+    var c = document.createElement("div");
+    c.innerHTML =
+      '<p class="muted" style="margin-bottom:.6rem">' + esc(seriesName) +
+        ' · <span class="mono">' + esc(g.sku) + '</span></p>' +
+      '<p class="field__label mono" style="font-size:.7rem;color:var(--faint);text-transform:uppercase;letter-spacing:.1em;margin:.6rem 0 .5rem">' +
+        esc(I18N.t("pos.pickVolumeHint")) + '</p>' +
+      '<div class="pkm-branches">' + rows.map(function (r, i) {
+        var s = r.sample;
+        var out = (s.stock || 0) === 0;
+        var discounted = !r.virtual && s.discount_status === "active" && Number(s.effective_price) < Number(s.price);
+        var priceHTML = discounted
+          ? '<del class="muted" style="font-size:.7rem;font-weight:400">' + UI.money(s.price, true) + '</del> ' +
+              UI.money(s.effective_price, true)
+          : UI.money(s.effective_price != null ? s.effective_price : s.price, true);
+        return '<button type="button" class="pkm-branch" data-vol-idx="' + i + '"' + (out ? " disabled" : "") +
+            ' style="border:0;width:100%;text-align:left' + (out ? ";opacity:.5" : "") + '">' +
+          '<span>' + esc(r.name) +
+            '<br><small class="muted mono" style="font-size:.62rem">' + esc(s.sku) + ' · ' +
+              (out ? esc(I18N.t("pos.outOfStock")) : esc(I18N.t("col.stock").toLowerCase()) +
+                (r.virtual ? " " + esc(I18N.t("volumes.seriesStock")) : "") + ': ' + s.stock) +
+            '</small></span>' +
+          '<span class="mono" style="font-weight:700;white-space:nowrap">' + priceHTML + '</span>' +
+        '</button>';
+      }).join("") + '</div>';
+    UI.modal({ title: I18N.t("prod.pickVolume") + " · " + esc(seriesName), content: c, wide: true });
+    c.addEventListener("click", function (e) {
+      var b = e.target.closest("[data-vol-idx]");
+      if (!b || b.disabled) return;
+      var row = rows[parseInt(b.getAttribute("data-vol-idx"), 10)];
+      if (!row) return;
+      STORE.cartAdd(mapProduct(row.cartSample));
+      // Confirma cuál tomo se eligió aunque en el carrito quede agrupado bajo
+      // la serie (un tomo virtual no tiene línea propia: comparte el stock).
+      UI.toast(I18N.t("prod.added") + (row.virtual ? ": " + row.name : ""), "ok");
+      // El modal NO se cierra: se puede seguir agregando varios tomos de la
+      // misma serie de un tirón. Se cierra con la ✕ o el fondo, como siempre.
+    });
   }
 
   function mapProduct(p) {

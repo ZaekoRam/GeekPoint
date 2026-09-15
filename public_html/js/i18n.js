@@ -207,6 +207,7 @@
       "pos.customer": "Cliente (opcional)", "pos.register": "Caja",
       "pos.done": "Venta registrada", "pos.lowWarn": "Stock bajo",
       "pos.outOfStock": "Sin stock", "pos.needPayment": "El efectivo recibido es menor que el total.",
+      "pos.pickVolumeHint": "Toca un tomo para agregarlo a la venta actual",
 
       "ticket.title": "COMPROBANTE DE VENTA", "ticket.thanks": "¡Gracias por tu compra!",
       "ticket.folio": "Folio", "ticket.branch": "Sucursal", "ticket.cashier": "Atendió",
@@ -465,6 +466,7 @@
       "pos.customer": "Customer (optional)", "pos.register": "Register",
       "pos.done": "Sale recorded", "pos.lowWarn": "Low stock",
       "pos.outOfStock": "Out of stock", "pos.needPayment": "Cash received is less than the total.",
+      "pos.pickVolumeHint": "Tap a volume to add it to the current sale",
 
       "ticket.title": "SALES RECEIPT", "ticket.thanks": "Thank you for your purchase!",
       "ticket.folio": "Folio", "ticket.branch": "Branch", "ticket.cashier": "Served by",
