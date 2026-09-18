@@ -208,6 +208,21 @@
     el.addEventListener("mouseout", function (e) { if (!el.contains(e.relatedTarget)) leave(); });
   }
 
+  /* ---------- tooltips (.tip[data-tip]) ---------- */
+  // Hover/foco ya los muestra por CSS (components.css); esto SOLO cubre el
+  // caso táctil: tocar el icono lo abre/cierra, tocar fuera lo cierra.
+  var tipsBound = false;
+  function bindTips() {
+    if (tipsBound) return;
+    tipsBound = true;
+    document.addEventListener("click", function (e) {
+      var tip = e.target.closest && e.target.closest(".tip");
+      $$(".tip.is-open").forEach(function (t) { if (t !== tip) t.classList.remove("is-open"); });
+      if (tip) { e.preventDefault(); tip.classList.toggle("is-open"); }
+    });
+  }
+  bindTips();
+
   window.UI = {
     $: $, $$: $$, escHTML: escHTML, safe: safe, debounce: debounce,
     money: money, num: num, fmtDate: fmtDate,

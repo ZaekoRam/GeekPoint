@@ -1,13 +1,16 @@
 <?php
 /**
  * Apartados / reservas.
- * El cliente crea un apartado desde el carrito de la tienda pública (sin auth);
- * el personal lo consulta por folio y lo cobra/cancela desde el POS.
+ * El cliente crea un apartado desde el carrito de la tienda pública (sin auth,
+ * pero si hay sesión de cliente activa el apartado queda vinculado a su cuenta
+ * para "Mis pedidos"); el personal lo consulta por folio y lo prepara/cobra/
+ * cancela desde el POS.
  *
  *   POST   /reservations                 (público)  crea el apartado -> folio GP-XXXX
  *   GET    /reservations                 (staff)    lista (filtros ?status= &branch_id=)
+ *   GET    /reservations/mine            (cliente)  los apartados del usuario autenticado
  *   GET    /reservations/{folio}          (staff)    detalle por folio (para el POS)
- *   PATCH  /reservations/{folio}/status   (staff)    { status: cobrada|cancelada, sale_id? }
+ *   PATCH  /reservations/{folio}/status   (staff)    { status: lista|cobrada|cancelada, sale_id? }
  */
 class ReservationController extends Controller
 {
@@ -15,6 +18,9 @@ class ReservationController extends Controller
     public function store()
     {
         $d = $this->req->all();
+        // No aborta si no hay sesión: el apartado sigue funcionando para
+        // invitados. Si SÍ hay una sesión de cliente activa, se vincula.
+        $authUser = Auth::attempt($this->req);
 
         Validator::make($d)
             ->required('customer_name', 'El nombre del cliente')
@@ -53,6 +59,7 @@ class ReservationController extends Controller
                 $unitDiscount = $pricing['unit_savings'];
                 $title = $local['name'];
                 $binding = true;
+                $isPreventa = $this->isPreventaProduct($local);
             } else {
                 if ($productId > 0 || $this->isLocalRef($ref)) {
                     Response::error(409, 'product_unavailable', 'Un producto local ya no está disponible.', ['product_ref' => $ref]);
@@ -64,6 +71,7 @@ class ReservationController extends Controller
                 $unitDiscount = 0.0;
                 $title = mb_substr((string) ($it['title'] ?? 'Producto'), 0, 200);
                 $binding = false;
+                $isPreventa = false;
             }
             $line = round($price * $qty, 2);
             $clean[] = [
@@ -76,6 +84,7 @@ class ReservationController extends Controller
                 'qty'   => $qty,
                 'line'  => $line,
                 'binding' => $binding,
+                'is_preventa' => $isPreventa,
             ];
             $total += $line;
         }
@@ -98,10 +107,10 @@ class ReservationController extends Controller
         try {
             Database::run(
                 'INSERT INTO reservations
-                   (folio, branch_id, customer_name, customer_email, customer_phone, subtotal, tax, total, status, note)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, "pendiente", ?)',
+                   (folio, branch_id, user_id, customer_name, customer_email, customer_phone, subtotal, tax, total, status, note)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, "pendiente", ?)',
                 [
-                    $folio, $branchId,
+                    $folio, $branchId, $authUser ? (int) $authUser['id'] : null,
                     mb_substr(trim($d['customer_name']), 0, 120),
                     mb_substr(trim((string) ($d['customer_email'] ?? '')), 0, 160),
                     mb_substr(trim((string) ($d['customer_phone'] ?? '')), 0, 40),
@@ -113,10 +122,10 @@ class ReservationController extends Controller
             foreach ($clean as $c) {
                 Database::run(
                     'INSERT INTO reservation_items
-                       (reservation_id, product_ref, title, list_unit_price, discount_percent,
+                       (reservation_id, product_ref, is_preventa, title, list_unit_price, discount_percent,
                         unit_discount, unit_price, quantity, line_total)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                    [$rid, $c['ref'], $c['title'], $c['list_price'], $c['discount_percent'],
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    [$rid, $c['ref'], $c['is_preventa'] ? 1 : 0, $c['title'], $c['list_price'], $c['discount_percent'],
                      $c['unit_discount'], $c['price'], $c['qty'], $c['line']]
                 );
             }
@@ -137,7 +146,10 @@ class ReservationController extends Controller
         $params = [];
 
         $status = $this->query('status', '');
-        if (in_array($status, ['pendiente', 'cobrada', 'cancelada'], true)) {
+        if ($status === 'activos') {
+            // Pseudo-filtro para el POS: lo que todavía requiere acción en tienda.
+            $where[] = "r.status IN ('pendiente', 'lista')";
+        } elseif (in_array($status, ['pendiente', 'lista', 'cobrada', 'cancelada'], true)) {
             $where[] = 'r.status = ?';
             $params[] = $status;
         }
@@ -167,6 +179,26 @@ class ReservationController extends Controller
         }, $rows ?: [])]);
     }
 
+    /** GET /reservations/mine — apartados del cliente autenticado (cualquier rol con cuenta) */
+    public function mine()
+    {
+        $user = $this->auth();
+        $rows = Database::all(
+            'SELECT r.*, b.name AS branch_name, b.code AS branch_code
+             FROM reservations r
+             LEFT JOIN branches b ON b.id = r.branch_id
+             WHERE r.user_id = ?
+             ORDER BY r.created_at DESC
+             LIMIT 200',
+            [(int) $user['id']]
+        );
+        $out = [];
+        foreach (($rows ?: []) as $r) {
+            $out[] = $this->hydrate($r);
+        }
+        Response::ok(['reservations' => $out]);
+    }
+
     /** GET /reservations/{folio} */
     public function show($folio)
     {
@@ -185,20 +217,25 @@ class ReservationController extends Controller
         if (!$row) Response::notFound('Apartado no encontrado.');
         if ($row['branch_id'] !== null) Auth::assertBranchAccess($user, (int) $row['branch_id']);
 
-        $status = $this->pickEnum($this->body('status', ''), ['cobrada', 'cancelada'], '');
+        $status = $this->pickEnum($this->body('status', ''), ['lista', 'cobrada', 'cancelada'], '');
         if ($status === '') {
-            Response::validation(['status' => ['Estado no válido (cobrada | cancelada).']]);
+            Response::validation(['status' => ['Estado no válido (lista | cobrada | cancelada).']]);
         }
-        if ($row['status'] !== 'pendiente') {
-            Response::error(409, 'not_pending', 'El apartado ya está ' . $row['status'] . '.');
+        // "lista" solo desde pendiente; cobrada/cancelada desde pendiente o lista.
+        $allowedFrom = ['lista' => ['pendiente'], 'cobrada' => ['pendiente', 'lista'], 'cancelada' => ['pendiente', 'lista']];
+        if (!in_array($row['status'], $allowedFrom[$status], true)) {
+            Response::error(409, 'invalid_transition', 'El apartado está "' . $row['status'] . '" y no puede pasar a "' . $status . '".');
         }
 
-        $saleId = $this->intOrNull($this->body('sale_id'));
-
-        Database::run(
-            'UPDATE reservations SET status = ?, sale_id = ?, resolved_by = ?, resolved_at = NOW() WHERE id = ?',
-            [$status, $saleId, $user['id'], (int) $row['id']]
-        );
+        if ($status === 'lista') {
+            Database::run('UPDATE reservations SET status = ?, ready_at = NOW() WHERE id = ?', [$status, (int) $row['id']]);
+        } else {
+            $saleId = $this->intOrNull($this->body('sale_id'));
+            Database::run(
+                'UPDATE reservations SET status = ?, sale_id = ?, resolved_by = ?, resolved_at = NOW() WHERE id = ?',
+                [$status, $saleId, $user['id'], (int) $row['id']]
+            );
+        }
 
         Response::ok($this->hydrate($this->findByFolio($folio)));
     }
@@ -232,7 +269,7 @@ class ReservationController extends Controller
     {
         if (!$row) return null;
         $items = Database::all(
-            'SELECT id, product_ref, title, list_unit_price, discount_percent, unit_discount,
+            'SELECT id, product_ref, is_preventa, title, list_unit_price, discount_percent, unit_discount,
                     unit_price, quantity, line_total
              FROM reservation_items WHERE reservation_id = ? ORDER BY id',
             [(int) $row['id']]
@@ -242,6 +279,7 @@ class ReservationController extends Controller
             return [
                 'id'         => (int) $it['id'],
                 'product_ref' => $it['product_ref'],
+                'is_preventa' => (bool) $it['is_preventa'],
                 'title'      => $it['title'],
                 'list_unit_price' => (float) $it['list_unit_price'],
                 'discount_percent' => (float) $it['discount_percent'],
@@ -252,6 +290,10 @@ class ReservationController extends Controller
                 'binding'    => $this->isBindingRef($it['product_ref']),
             ];
         }, $items ?: []);
+        $data['is_preventa'] = false;
+        foreach ($data['items'] as $it) {
+            if ($it['is_preventa']) { $data['is_preventa'] = true; break; }
+        }
         return $data;
     }
 
@@ -265,6 +307,14 @@ class ReservationController extends Controller
         return $this->isLocalRef($ref) || preg_match('/^product-\d+$/', (string) $ref);
     }
 
+    /** Mismo criterio que el catálogo público (catalog.js): categoría "preventa" o tag "preventa". */
+    private function isPreventaProduct($product)
+    {
+        if (($product['category_slug'] ?? null) === 'preventa') return true;
+        $tags = array_map('trim', explode(',', strtolower((string) ($product['tags'] ?? ''))));
+        return in_array('preventa', $tags, true);
+    }
+
     private function localProductById($productId, $branchId, $qty)
     {
         $params = [(int) $productId, (int) $qty];
@@ -273,7 +323,12 @@ class ReservationController extends Controller
             $where .= ' AND p.branch_id = ?';
             $params[] = (int) $branchId;
         }
-        return Database::one('SELECT p.* FROM products p WHERE ' . $where . ' LIMIT 1', $params);
+        return Database::one(
+            'SELECT p.*, c.slug AS category_slug FROM products p
+             LEFT JOIN categories c ON c.id = p.category_id
+             WHERE ' . $where . ' LIMIT 1',
+            $params
+        );
     }
 
     private function localProductForRef($ref, $branchId, $qty)
@@ -289,7 +344,9 @@ class ReservationController extends Controller
             $params[] = (int) $branchId;
         }
         $rows = Database::all(
-            'SELECT p.* FROM products p WHERE ' . $where . ' ORDER BY p.id',
+            'SELECT p.*, c.slug AS category_slug FROM products p
+             LEFT JOIN categories c ON c.id = p.category_id
+             WHERE ' . $where . ' ORDER BY p.id',
             $params
         );
         $best = null;
@@ -312,6 +369,7 @@ class ReservationController extends Controller
             'branch_id'      => $r['branch_id'] !== null ? (int) $r['branch_id'] : null,
             'branch_name'    => $r['branch_name'] ?? null,
             'branch_code'    => $r['branch_code'] ?? null,
+            'user_id'        => isset($r['user_id']) && $r['user_id'] !== null ? (int) $r['user_id'] : null,
             'customer_name'  => $r['customer_name'],
             'customer_email' => $r['customer_email'],
             'customer_phone' => $r['customer_phone'],
@@ -321,6 +379,7 @@ class ReservationController extends Controller
             'status'         => $r['status'],
             'note'           => $r['note'],
             'sale_id'        => $r['sale_id'] !== null ? (int) $r['sale_id'] : null,
+            'ready_at'       => $r['ready_at'] ?? null,
             'resolved_at'    => $r['resolved_at'] ?? null,
             'created_at'     => $r['created_at'],
         ];

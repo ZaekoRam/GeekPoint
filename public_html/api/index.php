@@ -146,9 +146,12 @@ $router->get('health', function () {
 });
 
 // --- Auth ---
-$router->post('auth/login',  function () use ($request) { (new AuthController($request))->login(); });
+$router->post('auth/login',    function () use ($request) { (new AuthController($request))->login(); });
+$router->post('auth/register', function () use ($request) { (new AuthController($request))->register(); });
 $router->post('auth/logout', function () use ($request) { (new AuthController($request))->logout(); });
 $router->get('auth/me',      function () use ($request) { (new AuthController($request))->me(); });
+$router->put('auth/me',      function () use ($request) { (new AuthController($request))->updateMe(); });
+$router->patch('auth/password', function () use ($request) { (new AuthController($request))->changePassword(); });
 
 // --- Sucursales ---
 $router->get('branches',            function () use ($request) { (new BranchController($request))->index(); });
@@ -205,6 +208,9 @@ $router->get('inventory/movements', function () use ($request) { (new InventoryC
 // --- Apartados / reservas ---
 $router->post('reservations',                 function () use ($request) { (new ReservationController($request))->store(); });
 $router->get('reservations',                  function () use ($request) { (new ReservationController($request))->index(); });
+// "mine" debe registrarse ANTES de reservations/{folio}: el router hace match
+// en orden de registro y {folio} es un comodín que también atraparía "mine".
+$router->get('reservations/mine',             function () use ($request) { (new ReservationController($request))->mine(); });
 $router->get('reservations/{folio}',          function ($p) use ($request) { (new ReservationController($request))->show($p['folio']); });
 $router->patch('reservations/{folio}/status', function ($p) use ($request) { (new ReservationController($request))->resolve($p['folio']); });
 

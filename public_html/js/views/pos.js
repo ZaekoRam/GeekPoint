@@ -566,7 +566,7 @@
       var prods = r.items_summary || (r.items || []).map(function (it) { return it.quantity + "× " + it.title; }).join(" · ");
       return '<div class="resv-item" data-folio="' + esc(r.folio) + '">' +
         '<div class="resv-item__main">' +
-          '<div class="resv-item__folio">' + esc(r.folio) + '</div>' +
+          '<div class="resv-item__folio">' + esc(r.folio) + ' · <span class="badge">' + esc(I18N.t("resv.status." + r.status)) + '</span></div>' +
           '<div class="resv-item__meta">' + esc(r.customer_name) +
             (r.customer_phone ? ' · ☎ ' + esc(r.customer_phone) : '') +
             (r.branch_name ? ' · ' + esc(r.branch_name) : '') + '</div>' +
@@ -574,6 +574,7 @@
         '</div>' +
         '<div class="resv-item__side">' +
           '<div class="resv-item__total mono">' + UI.money(r.total) + '</div>' +
+          (r.status === "pendiente" ? '<button class="btn btn--ghost btn--sm" data-resv-ready="' + esc(r.folio) + '">' + esc(I18N.t("resv.markReady")) + '</button>' : '') +
           '<button class="btn btn--neon btn--sm" data-resv-charge="' + esc(r.folio) + '">' + esc(I18N.t("resv.chargeAtRegister")) + '</button>' +
           '<button class="btn btn--ghost btn--sm" data-resv-cancel="' + esc(r.folio) + '">' + esc(I18N.t("btn.cancel")) + '</button>' +
         '</div>' +
@@ -582,7 +583,7 @@
 
     function loadList() {
       listEl.innerHTML = V._loading();
-      API.get("reservations?status=pendiente" + (ctx.branchId ? "&branch_id=" + ctx.branchId : "")).then(function (d) {
+      API.get("reservations?status=activos" + (ctx.branchId ? "&branch_id=" + ctx.branchId : "")).then(function (d) {
         var rs = d.reservations || [];
         listEl.innerHTML = rs.length ? rs.map(rowHTML).join("")
           : '<p class="muted">' + esc(I18N.t("resv.none")) + '</p>';
@@ -591,7 +592,7 @@
     loadList();
 
     function showDetail(r) {
-      var pending = r.status === "pendiente";
+      var actionable = r.status === "pendiente" || r.status === "lista";
       detailEl.innerHTML =
         '<div class="card" style="margin-top:1rem;padding:1rem">' +
           '<h3 style="font-size:1rem">' + esc(r.folio) + ' · <span class="badge">' + esc(I18N.t("resv.status." + r.status)) + '</span></h3>' +
@@ -604,7 +605,8 @@
           }).join("") + '</div>' +
           '<div style="display:flex;justify-content:space-between;margin-top:.6rem;font-weight:700">' +
             '<span>' + esc(I18N.t("pos.total")) + '</span><span class="mono">' + UI.money(r.total) + '</span></div>' +
-          (pending ? '<div style="display:flex;gap:.6rem;margin-top:1rem;flex-wrap:wrap">' +
+          (actionable ? '<div style="display:flex;gap:.6rem;margin-top:1rem;flex-wrap:wrap">' +
+            (r.status === "pendiente" ? '<button class="btn btn--ghost btn--sm" data-resv-ready="' + esc(r.folio) + '">' + esc(I18N.t("resv.markReady")) + '</button>' : '') +
             '<button class="btn btn--ghost btn--sm" data-resv-cancel="' + esc(r.folio) + '">' + esc(I18N.t("resv.cancelBtn")) + '</button>' +
             '<button class="btn btn--neon" data-resv-charge="' + esc(r.folio) + '">' + esc(I18N.t("resv.charge")) + '</button>' +
           '</div>' : '') +
@@ -655,12 +657,27 @@
       }).catch(function (err) { UI.toast((err && err.message) || I18N.t("toast.error"), "error"); });
     }
 
+    function markReadyReservation(folio) {
+      var btn = wrap.querySelector('[data-resv-ready="' + folio + '"]');
+      if (btn) btn.classList.add("is-loading");
+      API.patch("reservations/" + encodeURIComponent(folio) + "/status", { status: "lista" }).then(function (r) {
+        UI.toast(I18N.t("resv.readyMsg"), "ok");
+        if (detailEl.innerHTML) showDetail(r);
+        loadList();
+      }).catch(function (err) {
+        if (btn) btn.classList.remove("is-loading");
+        UI.toast((err && err.message) || I18N.t("toast.error"), "error");
+      });
+    }
+
     wrap.addEventListener("click", function (e) {
       // Botones primero: no deben disparar el detalle de la fila.
       var chg = e.target.closest("[data-resv-charge]");
       if (chg) return chargeReservation(chg.getAttribute("data-resv-charge"));
       var can = e.target.closest("[data-resv-cancel]");
       if (can) return cancelReservation(can.getAttribute("data-resv-cancel"));
+      var rdy = e.target.closest("[data-resv-ready]");
+      if (rdy) return markReadyReservation(rdy.getAttribute("data-resv-ready"));
       if (e.target.closest("[data-resv-find]")) {
         var f = folioEl.value.trim().toUpperCase();
         return f && fetchFolio(f);

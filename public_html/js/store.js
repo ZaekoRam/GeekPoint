@@ -74,7 +74,7 @@
       if (r === "admin") return "#/admin";
       if (r === "manager") return "#/manager";
       if (r === "cashier") return "#/pos";
-      return "#/";   // cliente: su "panel" es la propia tienda / catálogo
+      return "#/cuenta";   // cliente: su panel es "Mi cuenta" (info + pedidos)
     },
 
     /* ---------- carrito POS ---------- */

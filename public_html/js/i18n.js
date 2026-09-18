@@ -7,7 +7,7 @@
   var DICT = {
     es: {
       "nav.showroom": "Showroom", "nav.roles": "Roles", "nav.flow": "Flujo POS", "nav.stack": "Arquitectura",
-      "cta.login": "Iniciar sesión", "cta.access": "Acceder al panel", "cta.openpos": "Abrir POS",
+      "cta.login": "Iniciar sesión / Registrarse", "cta.access": "Acceder al panel", "cta.openpos": "Abrir POS",
       "cta.explore": "Explorar catálogo 3D", "cta.logout": "Cerrar sesión",
 
       "hero.kicker": "Punto de venta · Inventario · Multi-sede",
@@ -140,6 +140,7 @@
       "resv.title": "Apartar productos",
       "resv.intro": "Genera un folio para recoger y pagar en la sucursal.",
       "resv.name": "Nombre", "resv.email": "Correo (opcional)", "resv.phone": "Teléfono (opcional)",
+      "resv.emailTip": "Al ingresar tu correo podemos mandarte la información de tu pedido.",
       "resv.branch": "Sucursal para recoger", "resv.pickAny": "Cualquier sucursal",
       "resv.submit": "Generar apartado", "resv.created": "Apartado creado",
       "resv.ticketKicker": "APARTADO",
@@ -157,7 +158,8 @@
       "resv.cobradaMsg": "Apartado marcado como cobrado.",
       "resv.canceladaMsg": "Apartado cancelado.",
       "resv.confirmCancel": "¿Cancelar el apartado {folio}? No se puede deshacer.",
-      "resv.status.pendiente": "Pendiente", "resv.status.cobrada": "Cobrada", "resv.status.cancelada": "Cancelada",
+      "resv.status.pendiente": "Pendiente", "resv.status.lista": "Lista", "resv.status.cobrada": "Cobrada", "resv.status.cancelada": "Cancelada",
+      "resv.markReady": "Marcar lista", "resv.readyMsg": "Apartado marcado como listo para recoger.",
 
       "login.title": "Bienvenido de vuelta",
       "login.sub": "Ingresa con tu cuenta de GeekPoint POS.",
@@ -165,6 +167,38 @@
       "login.demo": "Cuentas de demostración (contraseña: password)",
       "login.badcreds": "Correo o contraseña incorrectos.",
       "login.noapi": "No hay conexión con la API. Revisa que el servidor PHP y MySQL estén activos.",
+      "login.noAccount": "¿No tienes cuenta?", "login.toRegister": "Regístrate",
+
+      "register.title": "Registrarse",
+      "register.sub": "Crea tu cuenta de cliente GeekPoint para comprar y apartar productos.",
+      "register.name": "Nombre completo", "register.email": "Correo",
+      "register.password": "Contraseña", "register.confirm": "Confirmar contraseña",
+      "register.submit": "Registrarse",
+      "register.haveAccount": "¿Ya tienes cuenta?", "register.toLogin": "Inicia sesión",
+      "register.mismatch": "Las contraseñas no coinciden.",
+      "register.success": "Cuenta creada. ¡Bienvenido a GeekPoint!",
+
+      "account.title": "Mi cuenta",
+      "account.tab.info": "Información personal", "account.tab.orders": "Mis pedidos", "account.tab.security": "Seguridad",
+      "account.name": "Nombre", "account.email": "Correo electrónico", "account.memberSince": "Fecha de registro",
+      "account.editBtn": "Editar datos", "account.saveBtn": "Guardar cambios", "account.cancelEdit": "Cancelar",
+      "account.updateOk": "Datos actualizados.",
+      "account.security.title": "Cambiar contraseña",
+      "account.security.current": "Contraseña actual", "account.security.new": "Nueva contraseña",
+      "account.security.confirm": "Confirmar nueva contraseña", "account.security.submit": "Actualizar contraseña",
+      "account.security.ok": "Contraseña actualizada.",
+
+      "myorders.empty": "Todavía no tienes pedidos ni apartados.",
+      "myorders.filter.all": "Todos", "myorders.filter.active": "Activos", "myorders.filter.preventa": "Preventas",
+      "myorders.filter.ready": "Listos para recoger", "myorders.filter.pickedUp": "Recogidos", "myorders.filter.cancelled": "Cancelados",
+      "myorders.folio": "Pedido", "myorders.date": "Fecha", "myorders.qty": "Cantidad",
+      "myorders.total": "Total a pagar en tienda", "myorders.viewDetails": "Ver detalles", "myorders.items": "Producto(s)",
+      "myorders.status.preventa": "Preventa", "myorders.status.confirmed": "Apartado confirmado",
+      "myorders.status.ready": "Listo para recoger", "myorders.status.pickedUp": "Recogido", "myorders.status.cancelled": "Cancelado",
+      "myorders.detail.title": "Detalle del pedido", "myorders.detail.code": "Código de reserva",
+      "myorders.detail.barcode": "Código de barras", "myorders.detail.subtotal": "Subtotal", "myorders.detail.history": "Historial",
+      "myorders.history.created": "Apartado registrado", "myorders.history.createdPreventa": "Preventa registrada",
+      "myorders.history.ready": "Listo para recoger", "myorders.history.pickedUp": "Recogido", "myorders.history.cancelled": "Cancelado",
 
       "nav.overview": "Resumen", "nav.branches": "Sucursales", "nav.users": "Usuarios",
       "nav.inventory": "Inventario", "nav.products": "Productos", "nav.registers": "Cajas",
@@ -190,7 +224,7 @@
       "col.register": "Caja", "col.top": "Más vendidos",
 
       "status.active": "Activa", "status.inactive": "Inactiva",
-      "role.admin": "Administrador", "role.manager": "Gerente", "role.cashier": "Cajero",
+      "role.admin": "Administrador", "role.manager": "Gerente", "role.cashier": "Cajero", "role.customer": "Cliente",
       "method.cash": "Efectivo", "method.card": "Tarjeta", "method.transfer": "Transferencia",
 
       "btn.new": "Nuevo", "btn.newBranch": "Nueva sucursal", "btn.newUser": "Nuevo usuario",
@@ -266,7 +300,7 @@
 
     en: {
       "nav.showroom": "Showroom", "nav.roles": "Roles", "nav.flow": "POS Flow", "nav.stack": "Architecture",
-      "cta.login": "Sign in", "cta.access": "Open the panel", "cta.openpos": "Open POS",
+      "cta.login": "Sign in / Sign up", "cta.access": "Open the panel", "cta.openpos": "Open POS",
       "cta.explore": "Explore 3D catalog", "cta.logout": "Sign out",
 
       "hero.kicker": "Point of sale · Inventory · Multi-branch",
@@ -399,6 +433,7 @@
       "resv.title": "Reserve items",
       "resv.intro": "Generate a folio to pick up and pay at the store.",
       "resv.name": "Name", "resv.email": "Email (optional)", "resv.phone": "Phone (optional)",
+      "resv.emailTip": "If you give us your email we can send you your order information.",
       "resv.branch": "Pickup branch", "resv.pickAny": "Any branch",
       "resv.submit": "Create reservation", "resv.created": "Reservation created",
       "resv.ticketKicker": "RESERVATION",
@@ -416,7 +451,8 @@
       "resv.cobradaMsg": "Reservation marked as charged.",
       "resv.canceladaMsg": "Reservation cancelled.",
       "resv.confirmCancel": "Cancel reservation {folio}? This cannot be undone.",
-      "resv.status.pendiente": "Pending", "resv.status.cobrada": "Charged", "resv.status.cancelada": "Cancelled",
+      "resv.status.pendiente": "Pending", "resv.status.lista": "Ready", "resv.status.cobrada": "Charged", "resv.status.cancelada": "Cancelled",
+      "resv.markReady": "Mark ready", "resv.readyMsg": "Reservation marked ready for pickup.",
 
       "login.title": "Welcome back",
       "login.sub": "Sign in with your GeekPoint POS account.",
@@ -424,6 +460,38 @@
       "login.demo": "Demo accounts (password: password)",
       "login.badcreds": "Wrong email or password.",
       "login.noapi": "No API connection. Check that the PHP server and MySQL are running.",
+      "login.noAccount": "Don't have an account?", "login.toRegister": "Sign up",
+
+      "register.title": "Sign up",
+      "register.sub": "Create your GeekPoint customer account to buy and reserve products.",
+      "register.name": "Full name", "register.email": "Email",
+      "register.password": "Password", "register.confirm": "Confirm password",
+      "register.submit": "Sign up",
+      "register.haveAccount": "Already have an account?", "register.toLogin": "Sign in",
+      "register.mismatch": "Passwords don't match.",
+      "register.success": "Account created. Welcome to GeekPoint!",
+
+      "account.title": "My account",
+      "account.tab.info": "Personal information", "account.tab.orders": "My orders", "account.tab.security": "Security",
+      "account.name": "Name", "account.email": "Email address", "account.memberSince": "Member since",
+      "account.editBtn": "Edit info", "account.saveBtn": "Save changes", "account.cancelEdit": "Cancel",
+      "account.updateOk": "Info updated.",
+      "account.security.title": "Change password",
+      "account.security.current": "Current password", "account.security.new": "New password",
+      "account.security.confirm": "Confirm new password", "account.security.submit": "Update password",
+      "account.security.ok": "Password updated.",
+
+      "myorders.empty": "You don't have any orders or reservations yet.",
+      "myorders.filter.all": "All", "myorders.filter.active": "Active", "myorders.filter.preventa": "Pre-orders",
+      "myorders.filter.ready": "Ready for pickup", "myorders.filter.pickedUp": "Picked up", "myorders.filter.cancelled": "Cancelled",
+      "myorders.folio": "Order", "myorders.date": "Date", "myorders.qty": "Quantity",
+      "myorders.total": "Total to pay in-store", "myorders.viewDetails": "View details", "myorders.items": "Product(s)",
+      "myorders.status.preventa": "Pre-order", "myorders.status.confirmed": "Reservation confirmed",
+      "myorders.status.ready": "Ready for pickup", "myorders.status.pickedUp": "Picked up", "myorders.status.cancelled": "Cancelled",
+      "myorders.detail.title": "Order details", "myorders.detail.code": "Reservation code",
+      "myorders.detail.barcode": "Barcode", "myorders.detail.subtotal": "Subtotal", "myorders.detail.history": "History",
+      "myorders.history.created": "Reservation registered", "myorders.history.createdPreventa": "Pre-order registered",
+      "myorders.history.ready": "Ready for pickup", "myorders.history.pickedUp": "Picked up", "myorders.history.cancelled": "Cancelled",
 
       "nav.overview": "Overview", "nav.branches": "Branches", "nav.users": "Users",
       "nav.inventory": "Inventory", "nav.products": "Products", "nav.registers": "Registers",
@@ -449,7 +517,7 @@
       "col.register": "Register", "col.top": "Best sellers",
 
       "status.active": "Active", "status.inactive": "Inactive",
-      "role.admin": "Administrator", "role.manager": "Manager", "role.cashier": "Cashier",
+      "role.admin": "Administrator", "role.manager": "Manager", "role.cashier": "Cashier", "role.customer": "Customer",
       "method.cash": "Cash", "method.card": "Card", "method.transfer": "Transfer",
 
       "btn.new": "New", "btn.newBranch": "New branch", "btn.newUser": "New user",

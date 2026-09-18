@@ -32,7 +32,7 @@ CREATE TABLE `branches` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------
---  Usuarios (admin general, gerentes, cajeros)
+--  Usuarios (admin general, gerentes, cajeros, clientes)
 -- ---------------------------------------------------------------------
 DROP TABLE IF EXISTS `users`;
 CREATE TABLE `users` (
@@ -40,7 +40,7 @@ CREATE TABLE `users` (
   `name`          VARCHAR(120) NOT NULL,
   `email`         VARCHAR(160) NOT NULL,
   `password_hash` VARCHAR(255) NOT NULL,
-  `role`          ENUM('admin','manager','cashier') NOT NULL,
+  `role`          ENUM('admin','manager','cashier','customer') NOT NULL,
   `branch_id`     INT UNSIGNED NULL,
   `status`        ENUM('active','inactive') NOT NULL DEFAULT 'active',
   `last_login_at` DATETIME NULL,
@@ -227,7 +227,10 @@ CREATE TABLE `stock_movements` (
 
 -- ---------------------------------------------------------------------
 --  Apartados / reservas  (carrito de la tienda pública -> cobro en POS)
---  Folios GP-XXXX · estados: pendiente | cobrada | cancelada
+--  Folios GP-XXXX · estados: pendiente | lista | cobrada | cancelada
+--  user_id: cliente autenticado dueño del apartado (NULL = invitado, se
+--  siguió pudiendo apartar sin cuenta). "lista" = ya se preparó en tienda
+--  y espera que el cliente pase a recogerla/pagarla (ver ready_at).
 -- ---------------------------------------------------------------------
 DROP TABLE IF EXISTS `reservation_items`;
 DROP TABLE IF EXISTS `reservations`;
@@ -236,16 +239,18 @@ CREATE TABLE `reservations` (
   `id`             INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `folio`          VARCHAR(16)  NOT NULL,
   `branch_id`      INT UNSIGNED NULL,
+  `user_id`        INT UNSIGNED NULL,
   `customer_name`  VARCHAR(120) NOT NULL,
   `customer_email` VARCHAR(160) NOT NULL DEFAULT '',
   `customer_phone` VARCHAR(40)  NOT NULL DEFAULT '',
   `subtotal`       DECIMAL(10,2) NOT NULL DEFAULT 0.00,
   `tax`            DECIMAL(10,2) NOT NULL DEFAULT 0.00,
   `total`          DECIMAL(10,2) NOT NULL DEFAULT 0.00,
-  `status`         ENUM('pendiente','cobrada','cancelada') NOT NULL DEFAULT 'pendiente',
+  `status`         ENUM('pendiente','lista','cobrada','cancelada') NOT NULL DEFAULT 'pendiente',
   `note`           VARCHAR(255) NOT NULL DEFAULT '',
   `sale_id`        BIGINT UNSIGNED NULL,
   `resolved_by`    INT UNSIGNED NULL,
+  `ready_at`       DATETIME NULL,
   `resolved_at`    DATETIME NULL,
   `created_at`     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at`     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -253,11 +258,14 @@ CREATE TABLE `reservations` (
   UNIQUE KEY `uq_reservations_folio` (`folio`),
   KEY `ix_reservations_status` (`status`),
   KEY `ix_reservations_branch` (`branch_id`),
+  KEY `ix_reservations_user` (`user_id`),
   CONSTRAINT `fk_reservations_branch` FOREIGN KEY (`branch_id`)
     REFERENCES `branches` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT `fk_reservations_sale` FOREIGN KEY (`sale_id`)
     REFERENCES `sales` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT `fk_reservations_user` FOREIGN KEY (`resolved_by`)
+    REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `fk_reservations_customer` FOREIGN KEY (`user_id`)
     REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -265,6 +273,7 @@ CREATE TABLE `reservation_items` (
   `id`             INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `reservation_id` INT UNSIGNED NOT NULL,
   `product_ref`    VARCHAR(64)  NOT NULL DEFAULT '',
+  `is_preventa`    TINYINT(1)   NOT NULL DEFAULT 0,
   `title`          VARCHAR(200) NOT NULL,
   `list_unit_price` DECIMAL(10,2) NOT NULL,
   `discount_percent` DECIMAL(5,2) NOT NULL DEFAULT 0.00,

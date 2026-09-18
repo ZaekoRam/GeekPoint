@@ -205,6 +205,64 @@ body.in-app .input:focus, body.in-app .select:focus, body.in-app .textarea:focus
 .field__error { font-size: .74rem; color: var(--danger); font-weight: 600; }
 .field.has-error .input, .field.has-error .select { border-color: var(--danger); box-shadow: 3px 3px 0 var(--danger); }
 
+/* ---------- Tooltip informativo (icono "i" junto a un label) ----------
+   Solo necesita el botón <button class="tip" data-tip="texto…">i</button> —
+   la burbuja se pinta con ::after/::before (contenido = data-tip + flechita),
+   sin nodos extra. Estética "brutal" (inspirada en un botón de Uiverse.io de
+   ratue1256) hecha con los tokens de siempre: mismo golpe duro y el mismo
+   translate al pasar el mouse que ya usa .btn, nada nuevo que aprender.
+   Hover/foco de teclado la muestran por CSS solo; en táctil, UI.bindTips()
+   (ui.js) agrega toggle al tocar el icono y cierre al tocar fuera. */
+.tip {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 17px; height: 17px; margin-left: .35rem; vertical-align: middle;
+  border-radius: 0; border: 2px solid var(--ink); background: var(--panini);
+  color: var(--ink); font: 800 .64rem/1 var(--mono); text-transform: none;
+  letter-spacing: 0; cursor: help; position: relative; flex: 0 0 auto;
+  box-shadow: 2px 2px 0 var(--ink);
+  transition: transform .12s var(--ease-out), box-shadow .12s var(--ease-out);
+}
+body.in-app .tip {
+  border-radius: 50%; border-color: transparent; background: var(--surface-2);
+  color: var(--faint); box-shadow: var(--nm-out-sm);
+}
+.tip:hover, .tip:focus-visible, .tip.is-open { transform: translate(-1px,-1px); box-shadow: 3px 3px 0 var(--ink); }
+.tip:active { transform: translate(1px,1px); box-shadow: 0 0 0 var(--ink); }
+body.in-app .tip:hover, body.in-app .tip:focus-visible, body.in-app .tip.is-open { transform: translateY(-1px); box-shadow: var(--nm-out); }
+body.in-app .tip:active { transform: translateY(0); box-shadow: var(--nm-in-sm); }
+
+.tip::after {
+  content: attr(data-tip);
+  position: absolute; left: 50%; bottom: calc(100% + 13px); transform: translate(-50%, 6px) scale(.92);
+  width: max-content; max-width: 230px; padding: .6rem .75rem; border-radius: 0;
+  background: var(--ink); color: var(--paper-2); border: 2px solid var(--neon-cyan);
+  font: 700 .7rem/1.4 var(--sans); text-transform: none; letter-spacing: normal; text-align: left;
+  box-shadow: 4px 4px 0 var(--ink); opacity: 0; visibility: hidden; pointer-events: none;
+  transform-origin: bottom center; z-index: 20;
+  transition: opacity .18s var(--ease-out), transform .2s var(--ease-bounce), visibility 0s linear .2s;
+}
+.tip::before {
+  content: ""; position: absolute; left: 50%; bottom: calc(100% + 7px); transform: translateX(-50%);
+  border: 6px solid transparent; border-top-color: var(--ink);
+  opacity: 0; visibility: hidden; pointer-events: none; z-index: 21;
+  transition: opacity .18s var(--ease-out), visibility 0s linear .2s;
+}
+body.in-app .tip::after { border-radius: var(--radius-sm); border-color: var(--accent-2); box-shadow: var(--nm-out); }
+.tip:hover::after, .tip:focus-visible::after, .tip.is-open::after,
+.tip:hover::before, .tip:focus-visible::before, .tip.is-open::before {
+  opacity: 1; visibility: visible; transition-delay: 0s;
+}
+.tip:hover::after, .tip:focus-visible::after, .tip.is-open::after { transform: translate(-50%, 0) scale(1); }
+@media (prefers-reduced-motion: reduce) {
+  .tip, .tip::after { transition: opacity .12s linear; }
+  .tip:hover, .tip:focus-visible, .tip.is-open, .tip:active { transform: none; }
+}
+@media (max-width: 480px) {
+  .tip::after { left: auto; right: -.5rem; transform: translateY(6px) scale(.92); }
+  .tip::before { left: auto; right: .55rem; transform: none; }
+  .tip:hover::after, .tip:focus-visible::after, .tip.is-open::after { transform: translateY(0) scale(1); }
+}
+
 /* ---------- Badges / chips ---------- */
 .badge {
   display: inline-flex; align-items: center; gap: .35rem;

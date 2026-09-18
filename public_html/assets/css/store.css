@@ -587,7 +587,7 @@ body:not(.in-app) .btn--panini.is-pop { animation: ctaPop .4s var(--ease-bounce)
 }
 .price-stack { display: inline-flex; flex-direction: column; align-items: flex-start; gap: .04rem; }
 .price-stack del, .price-old, .dr-item__price del { color: var(--muted); font-size: .72em; font-weight: 500; }
-.price-stack strong { color: var(--panini); font-size: 1.08em; }
+.price-stack strong { color: var(--ink); font-size: 1.08em; }
 .price-stack small { font-size: .58em; color: var(--muted); text-transform: uppercase; }
 .dr-item__price { display: flex; align-items: center; gap: .3rem; flex-wrap: wrap; }
 .dr-item__price .promo-badge { font-size: .62rem; }

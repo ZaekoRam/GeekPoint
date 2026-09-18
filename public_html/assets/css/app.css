@@ -11,21 +11,170 @@ body.in-app [data-static-store] { display: none !important; }
 
 /* ---------- Login ---------- */
 .auth {
+  /* 608×400 = 760×500 escalados ×0.8 — MISMA relación de aspecto (1.52),
+     solo el contenedor completo más pequeño (ver comentario de abajo: todo
+     el contenido interno se escaló por el mismo factor, no solo esto). */
+  --auth-w: min(608px, 94vw);
+  --auth-h: min(400px, 82vh);
+  position: relative;
   min-height: calc(100svh - var(--topbar-h));
   display: grid; place-items: center; padding: 2rem var(--gutter);
 }
 .auth__card {
-  width: min(420px, 100%); padding: 2rem;
+  position: relative;
+  width: var(--auth-w); padding: .95rem 1.6rem;
   background: var(--surface); border-radius: var(--radius-lg);
   box-shadow: var(--nm-out), var(--glow-violet);
+  transform-origin: center; will-change: transform, opacity;
 }
-.auth__card h1 { font-size: 1.5rem; margin-bottom: .3rem; }
-.auth__sub { color: var(--muted); font-size: .9rem; margin-bottom: 1.6rem; }
-.auth__demo { margin-top: 1.4rem; padding-top: 1.2rem; border-top: 1px dashed var(--line); }
-.auth__demo p { font-size: .74rem; color: var(--faint); margin-bottom: .6rem; letter-spacing: .04em; text-transform: uppercase; font-family: var(--mono); }
-.auth__demo .demo-row { display: flex; flex-wrap: wrap; gap: .4rem; }
-.demo-chip { font-size: .74rem; padding: .35rem .6rem; border-radius: 8px; background: var(--surface-2); box-shadow: var(--nm-out-sm); font-family: var(--mono); color: var(--muted); }
+/* Tarjeta apaisada (ancho > alto) de tamaño FIJO — mismas dimensiones en
+   Login y Registro, sin importar cuál tenga más campos; si el contenido no
+   cabe, se desplaza dentro de la tarjeta en vez de estirarla. Solo desde
+   ~640px: en móvil una caja apaisada de este tamaño no cabría, así que ahí
+   se deja la altura automática de siempre (una sola columna, ya angosta). */
+@media (min-width: 640px) {
+  .auth__card { height: var(--auth-h); overflow-y: auto; }
+}
+/* Contenido escalado ×0.8 junto con el contenedor (mismo factor que
+   --auth-w/--auth-h de arriba): el modal completo es una versión más
+   pequeña y compacta del mismo diseño, no un contenedor grande con
+   contenido chico adentro. Todo aquí va scoped a .auth__card / clases
+   exclusivas de este formulario — no toca .field/.input/.btn en el resto
+   del sitio. */
+.auth__card h1 { font-size: 1rem; margin-bottom: .1rem; }
+.auth__sub { color: var(--muted); font-size: .66rem; margin-bottom: .5rem; line-height: 1.3; }
+.auth__switch { font-size: .64rem; color: var(--muted); text-align: center; margin-top: .3rem; }
+.auth__switch a { color: var(--neon-cyan); font-weight: 700; margin-left: .25rem; }
+.auth__demo { margin-top: .5rem; padding-top: .42rem; border-top: 1px dashed var(--line); }
+.auth__demo p { font-size: .54rem; color: var(--faint); margin-bottom: .3rem; letter-spacing: .04em; text-transform: uppercase; font-family: var(--mono); }
+.auth__demo .demo-row { display: flex; flex-wrap: wrap; gap: .28rem; }
+.demo-chip { font-size: .56rem; padding: .22rem .44rem; border-radius: 8px; background: var(--surface-2); box-shadow: var(--nm-out-sm); font-family: var(--mono); color: var(--muted); }
 .demo-chip:hover { color: var(--neon-cyan); }
+.auth__card .field { margin-bottom: .28rem; gap: .14rem; }
+.auth__card .field > label { font-size: .54rem; }
+.auth__card .input { padding: .32rem .6rem; }
+.auth__card .btn--lg { padding: .42rem 1.2rem; font-size: .76rem; }
+
+/* ---------- Transición Login ⇄ Registro: pellizco diagonal a esquinas ----------
+   transform-origin: center (declarado arriba en .auth__card) + `scale()`
+   UNIFORME (misma proporción en X y en Y, NO scaleY solo) es justo lo que
+   hace que las 4 esquinas viajen en línea recta hacia el centro: la
+   esquina superior-izquierda se mueve en diagonal ↘ y la inferior-derecha
+   en diagonal ↖ (y las otras dos igual) — es geometría pura de un scale
+   centrado con AMBOS ejes moviéndose juntos, no un scaleY vertical ni un
+   cambio de width/height.
+     1. .is-closing  → scale 1 → .01 (las esquinas se "pellizcan" hacia el
+        centro hasta quedar prácticamente en un punto — no un rectángulo
+        chico, casi nada)
+     2. .is-squashed → se mantiene en ese punto ~1s (SIN animación: clase
+        estática) mientras switchTo() en login.js repinta el otro
+        formulario por debajo, invisible de lo diminuto que quedó
+     3. .is-opening  → scale .01 → 1 (se expande otra vez hacia las
+        esquinas, revelando el contenido ya repintado)
+   Ver switchTo() en login.js, que encadena estas 3 clases con setTimeout
+   para la pausa. */
+.auth__card.is-closing { animation: authCardPinch .22s linear forwards; }
+.auth__card.is-squashed { transform: scale(.01); }
+.auth__card.is-opening { animation: authCardUnpinch .26s linear forwards; }
+@keyframes authCardPinch {
+  from { transform: scale(1); }
+  to   { transform: scale(.01); }
+}
+@keyframes authCardUnpinch {
+  from { transform: scale(.01); }
+  to   { transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .auth__card.is-closing, .auth__card.is-squashed, .auth__card.is-opening { animation: none; transform: none; }
+}
+
+/* ---------- Stage: envuelve la tarjeta 1:1 ----------
+   inline-block → siempre mide EXACTAMENTE el tamaño real renderizado de
+   .auth__card (fijo vía --auth-h desde 640px, automático/por-contenido
+   debajo de eso). Los triángulos usan esto para posicionarse sin
+   necesitar --auth-w/--auth-h ni ningún cálculo propio (ver abajo). */
+.auth__stage { position: relative; display: inline-block; }
+
+/* ---------- Triángulos de esquina ----------
+   EXACTAMENTE DOS (arriba-izquierda y abajo-derecha) — permanentes: nunca
+   display:none ni ocultos por media query, visibles en cualquier
+   resolución. Cada uno es una caja que cubre TODO .auth__stage
+   (inset: 0 → mismo tamaño que la tarjeta en cada momento, fijo o
+   automático), y dentro de ella el triángulo real vive en un ::before de
+   32x32 FIJO (ver más abajo) — así nunca cambia de tamaño/forma sea cual
+   sea el tamaño de pantalla o del modal. Para el pellizco, se trasladan
+   con transform: translate(): un porcentaje ahí es relativo al tamaño de
+   la PROPIA caja (= tamaño real de .auth__stage en ese instante), así que
+   sin importar si la tarjeta mide 500px fijos o una altura automática en
+   móvil, el destino siempre es exacto — sin calc() sobre --auth-w/--auth-h.
+   Reaccionan solo por CSS (:has()) a las mismas clases is-closing/
+   is-squashed/is-opening que ya pone switchTo() en login.js — esa lógica
+   no se tocó, igual que su duración/curva.
+
+   El destino (--tx/--ty) no es "mover cada triángulo hasta el centro"
+   (eso los deja tocándose solo por la punta, como un moño, con dos huecos
+   vacíos) sino "mover cada caja de 32x32 hasta que las DOS queden
+   exactamente superpuestas" — por eso llevan un ajuste fijo de 16px (la
+   mitad de 32px) además del 50%. Como --tl y --br ya usan la MISMA
+   diagonal (ver los clip-path del ::before: ambos cortan de la esquina
+   superior-derecha a la inferior-izquierda de su propia caja, sin rotar
+   nada), al superponerse sus dos mitades encajan perfecto y forman un
+   cuadrado sólido pegado por esa diagonal — como pediste, "como si fueran
+   un cubo": nada de puntas sueltas ni huecos. */
+.auth__corner {
+  --tx: 0%; --ty: 0%;
+  position: absolute; inset: 0;
+  pointer-events: none; z-index: 2;
+  transform: translate(0, 0);
+}
+/* El triángulo visible vive en un ::before de 32x32 FIJO (no en la caja
+   gigante de arriba) — así el borde nunca dibuja "patas" largas hasta el
+   borde del modal que luego viajen sueltas hacia el centro durante el
+   pellizco (eso era lo que producía el efecto "aspa/pinwheel" al
+   comprimirse). Al ser un elemento pequeño y autocontenido, el borde
+   queda siempre pegado a sus propios 32px, sin importar dónde esté. */
+.auth__corner::before {
+  content: "";
+  position: absolute; width: 32px; height: 32px;
+  background: var(--panini); border: 2px solid var(--ink);
+}
+.auth__corner--tl {
+  --tx: calc(50% - 16px); --ty: calc(50% - 16px);
+}
+.auth__corner--tl::before {
+  top: 0; left: 0;
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+}
+.auth__corner--br {
+  --tx: calc(-50% + 16px); --ty: calc(-50% + 16px);
+}
+.auth__corner--br::before {
+  bottom: 0; right: 0;
+  clip-path: polygon(100% 100%, 0 100%, 100% 0);
+}
+.auth:has(.auth__card.is-closing) .auth__corner { animation: authCornerIn .22s linear forwards; }
+.auth:has(.auth__card.is-squashed) .auth__corner { transform: translate(var(--tx), var(--ty)); }
+.auth:has(.auth__card.is-opening) .auth__corner { animation: authCornerOut .26s linear forwards; }
+@keyframes authCornerIn {
+  from { transform: translate(0, 0); }
+  to   { transform: translate(var(--tx), var(--ty)); }
+}
+@keyframes authCornerOut {
+  from { transform: translate(var(--tx), var(--ty)); }
+  to   { transform: translate(0, 0); }
+}
+
+/* ---------- Espacio reservado: personaje animado ----------
+   Sin asset todavía. El personaje futuro se integra aquí: se posiciona
+   junto a la esquina de la tarjeta y reacciona a los eventos que dispara
+   login.js en `window` — "auth:closing" (empuja/cierra la tarjeta),
+   "auth:opening" (la tarjeta ya se repintó y empieza a abrirse) y
+   "auth:opened" (terminó). No se necesita tocar la animación de la
+   tarjeta para conectar el personaje: solo escuchar esos 3 eventos. */
+.auth__mascot {
+  position: absolute; top: -45px; right: -13px; width: 96px; height: 96px;
+  pointer-events: none;
+}
 
 /* ---------- App shell ---------- */
 .shell { display: grid; grid-template-columns: 1fr; min-height: calc(100svh - var(--topbar-h)); }
@@ -371,3 +520,82 @@ a.kpi--link:hover .kpi__go { opacity: 1; transform: translateX(0); }
 .right { text-align: right; }
 .center { text-align: center; }
 .mt { margin-top: 1.2rem; }
+
+/* ---------- Mi cuenta (cliente) ----------
+   Info personal + Mis pedidos + Seguridad. Vista != "store" -> router.js
+   agrega body.in-app, así que reutiliza los mismos tokens/--nm-out/.card
+   que ya usan admin/manager/pos (mismo lenguaje visual que login/registro,
+   que también corre bajo in-app). */
+.account { max-width: 880px; margin: 0 auto; padding: 2rem var(--gutter) 3rem; }
+.account__head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.2rem; flex-wrap: wrap; }
+.account__head h1 { font-size: 1.4rem; }
+.account__back { font-size: .72rem; letter-spacing: .1em; color: var(--muted); white-space: nowrap; }
+
+.account__tabs { display: flex; gap: .4rem; margin-bottom: 1rem; flex-wrap: wrap; border-bottom: 1px solid var(--line-soft); padding-bottom: .6rem; }
+.account__tab {
+  font: inherit; font-size: .82rem; font-weight: 600; padding: .5rem .9rem; border-radius: var(--radius-sm);
+  border: 1px solid transparent; background: none; color: var(--muted); cursor: pointer;
+  transition: background .12s var(--ease-out), color .12s var(--ease-out);
+}
+.account__tab:hover { color: var(--text); }
+.account__tab.is-active { background: var(--surface-2); color: var(--accent); box-shadow: var(--nm-out-sm); }
+.account__tab--logout { margin-left: auto; color: var(--danger); }
+
+.account__row { display: flex; justify-content: space-between; gap: 1rem; padding: .55rem 0; border-bottom: 1px dashed var(--line-soft); font-size: .88rem; }
+.account__row:last-of-type { border-bottom: 0; }
+.account__row-label { color: var(--muted); }
+.account__row-value { font-weight: 600; text-align: right; }
+.account__edit .field { margin-bottom: .7rem; }
+
+.myorders__filters { display: flex; gap: .4rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.myorders__filter {
+  font: inherit; font-size: .7rem; font-weight: 700; letter-spacing: .03em; text-transform: uppercase;
+  padding: .35rem .7rem; border-radius: 999px; border: 1px solid var(--line-soft);
+  background: var(--surface-2); color: var(--muted); cursor: pointer;
+}
+.myorders__filter.is-active { background: var(--accent); color: var(--ink); border-color: var(--accent); }
+.myorders__list { display: flex; flex-direction: column; gap: .8rem; }
+
+/* Badge de estado de pedido — clase PROPIA (no ".badge") a propósito: la
+   regla compartida "body.in-app .badge" (2 clases) le gana en especificidad
+   a cualquier ".badge--color" (1 clase) y aplasta el color a gris siempre
+   que se usan juntas bajo in-app, así que un modificador de color sobre
+   ".badge" no se vería aquí. Aislarlo evita ese problema sin tocar el
+   sistema ".badge" compartido con admin/manager/pos. */
+.ordbadge { display: inline-flex; align-items: center; padding: .16rem .55rem; border-radius: 999px; font-size: .7rem; font-weight: 700; letter-spacing: .02em; white-space: nowrap; }
+.ordbadge--preventa { background: var(--neon-magenta); color: #fff; }
+.ordbadge--confirmed { background: var(--neon-cyan); color: var(--ink); }
+.ordbadge--ready { background: var(--warning); color: #fff; }
+.ordbadge--pickedUp { background: var(--success); color: #fff; }
+.ordbadge--cancelled { background: var(--danger); color: #fff; }
+
+.ordercard { border: 1px solid var(--line-soft); border-radius: var(--radius-sm); background: var(--surface-2); padding: .9rem 1rem; box-shadow: var(--nm-out-sm); }
+.ordercard__top { display: flex; align-items: center; justify-content: space-between; gap: .6rem; flex-wrap: wrap; }
+.ordercard__folio { font-weight: 700; font-size: .95rem; letter-spacing: .03em; }
+.ordercard__date { font-size: .74rem; margin-top: .15rem; }
+.ordercard__items { display: flex; flex-direction: column; gap: .5rem; margin-top: .7rem; }
+.ordercard__item { display: flex; align-items: center; gap: .6rem; }
+.ordercard__img { width: 40px; height: 40px; object-fit: cover; border-radius: 6px; flex: none; background: var(--surface-3); }
+.ordercard__img--ph { display: flex; align-items: center; justify-content: center; font-size: 1.1rem; }
+.ordercard__item-info { display: flex; justify-content: space-between; align-items: center; flex: 1; min-width: 0; gap: .5rem; font-size: .84rem; }
+.ordercard__item-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ordercard__item-qty { color: var(--muted); flex: none; }
+.ordercard__foot { display: flex; align-items: center; justify-content: space-between; gap: .6rem; margin-top: .8rem; padding-top: .7rem; border-top: 1px dashed var(--line-soft); flex-wrap: wrap; }
+.ordercard__total { font-weight: 700; font-size: .86rem; }
+
+.orderdetail__head { display: flex; align-items: center; justify-content: space-between; gap: .6rem; flex-wrap: wrap; }
+.orderdetail__folio { font-weight: 700; font-size: 1.05rem; }
+.orderdetail__items { display: flex; flex-direction: column; gap: .6rem; margin: .6rem 0; }
+.orderdetail__item { display: flex; align-items: center; gap: .7rem; }
+.orderdetail__item-info { flex: 1; min-width: 0; }
+.orderdetail__item-title { font-size: .88rem; font-weight: 600; }
+.orderdetail__code { margin-top: 1rem; padding-top: 1rem; border-top: 1px dashed var(--line-soft); text-align: center; }
+.orderdetail__history { display: flex; flex-direction: column; gap: .3rem; margin-top: .6rem; }
+.orderdetail__step { display: flex; align-items: center; gap: .6rem; font-size: .82rem; padding: .15rem 0; }
+.orderdetail__step-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); flex: none; }
+.orderdetail__step-label { flex: 1; }
+@media (max-width: 560px) {
+  .account__tab--logout { margin-left: 0; }
+  .ordercard__foot { flex-direction: column; align-items: stretch; }
+  .ordercard__foot .btn { width: 100%; }
+}

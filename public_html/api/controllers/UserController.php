@@ -6,7 +6,10 @@ class UserController extends Controller
     {
         $this->authRole(['admin']);
 
-        $where  = ['1=1'];
+        // Este listado es de PERSONAL (admin/gerente/cajero) — los clientes que
+        // se registran solos desde la tienda no son "usuarios" a administrar
+        // aquí (no tienen sucursal ni el resto de la ficha de personal).
+        $where  = ["u.role IN ('admin','manager','cashier')"];
         $params = [];
 
         if (($role = $this->query('role')) && in_array($role, ['admin', 'manager', 'cashier'], true)) {

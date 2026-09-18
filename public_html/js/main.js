@@ -214,7 +214,10 @@
         '<div class="field"><label>' + UI.escHTML(I18N.t("resv.name")) + '</label>' +
           '<input class="input" name="customer_name" required maxlength="120" autocomplete="name"></div>' +
         '<div class="resv-grid">' +
-          '<div class="field"><label>' + UI.escHTML(I18N.t("resv.email")) + '</label>' +
+          '<div class="field"><label>' + UI.escHTML(I18N.t("resv.email")) +
+              ' <button type="button" class="tip" data-tip="' + UI.escHTML(I18N.t("resv.emailTip")) + '" ' +
+                'aria-label="' + UI.escHTML(I18N.t("resv.emailTip")) + '">i</button>' +
+            '</label>' +
             '<input class="input" type="email" name="customer_email" maxlength="160" autocomplete="email"></div>' +
           '<div class="field"><label>' + UI.escHTML(I18N.t("resv.phone")) + '</label>' +
             '<input class="input" name="customer_phone" maxlength="40" autocomplete="tel"></div>' +

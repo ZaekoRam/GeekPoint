@@ -10,6 +10,8 @@
     { test: function (h) { return h.indexOf("/cat/") === 0; }, view: "store", params: function (h) { return { cat: h.split("/")[2] || "all" }; } },
     { test: function (h) { return h === "/acceso" || h === "/login"; }, view: "login", params: function () { return {}; } },
     { test: function (h) { return h === "/panel"; }, view: "_home", params: function () { return {}; } },
+    { test: function (h) { return h === "/cuenta" || h.indexOf("/cuenta/") === 0; }, view: "account",
+      params: function (h) { return { sub: h.replace(/^\/cuenta\/?/, "") }; } },
     { test: function (h) { return h === "/admin" || h.indexOf("/admin/") === 0; }, view: "admin",
       params: function (h) { return { sub: h.replace(/^\/admin\/?/, "") }; } },
     { test: function (h) { return h === "/manager" || h.indexOf("/manager/") === 0; }, view: "manager",

@@ -25,6 +25,36 @@ class Auth
             Response::error(403, 'user_inactive', 'Tu cuenta está desactivada. Contacta al administrador.');
         }
 
+        return self::createSession($user, $req);
+    }
+
+    /**
+     * Registro público. SIEMPRE crea la cuenta con role='customer' — el
+     * cliente que envíe la petición no puede elegir ni sobreescribir el rol
+     * (ese campo del body, si viene, se ignora por completo). Deja sesión
+     * iniciada de una vez, igual que login().
+     * @return array{token:string, user:array}
+     */
+    public static function register(array $data, Request $req)
+    {
+        $email = strtolower(trim($data['email']));
+        if (Database::scalar('SELECT id FROM users WHERE email = ?', [$email])) {
+            Response::error(409, 'duplicate', 'Ya existe una cuenta con ese correo.');
+        }
+
+        Database::run(
+            'INSERT INTO users (name, email, password_hash, role, branch_id, status)
+             VALUES (?, ?, ?, ?, NULL, ?)',
+            [trim($data['name']), $email, password_hash($data['password'], PASSWORD_DEFAULT), 'customer', 'active']
+        );
+        $user = Database::one('SELECT * FROM users WHERE id = ?', [Database::lastId()]);
+
+        return self::createSession($user, $req);
+    }
+
+    /** Crea la sesión (token Bearer) para un usuario ya validado/creado. */
+    private static function createSession(array $user, Request $req)
+    {
         $token = bin2hex(random_bytes(32));
         $hash  = hash('sha256', $token);
         $ttl   = (int) App::config('auth')['token_ttl_hours'];
@@ -127,11 +157,12 @@ class Auth
     public static function publicUser(array $u)
     {
         return [
-            'id'        => (int) $u['id'],
-            'name'      => $u['name'],
-            'email'     => $u['email'],
-            'role'      => $u['role'],
-            'branch_id' => $u['branch_id'] !== null ? (int) $u['branch_id'] : null,
+            'id'         => (int) $u['id'],
+            'name'       => $u['name'],
+            'email'      => $u['email'],
+            'role'       => $u['role'],
+            'branch_id'  => $u['branch_id'] !== null ? (int) $u['branch_id'] : null,
+            'created_at' => $u['created_at'] ?? null,
         ];
     }
 }
