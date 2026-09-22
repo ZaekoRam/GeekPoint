@@ -11,49 +11,42 @@ body.in-app [data-static-store] { display: none !important; }
 
 /* ---------- Login ---------- */
 .auth {
-  /* 608×400 = 760×500 escalados ×0.8 — MISMA relación de aspecto (1.52),
-     solo el contenedor completo más pequeño (ver comentario de abajo: todo
-     el contenido interno se escaló por el mismo factor, no solo esto). */
-  --auth-w: min(608px, 94vw);
-  --auth-h: min(400px, 82vh);
+  /* Tarjeta VERTICAL (alto > ancho) de ANCHO fijo pero alto AUTOMÁTICO —
+     antes el alto era también fijo (igual en Login y Registro, para que
+     cambiar de uno a otro no saltara de tamaño), pero con Login (2 campos)
+     esa altura dejaba un hueco vacío debajo de los chips de demo bien
+     notorio — y ese hueco solo va a crecer el día que esos chips de
+     demostración se quiten. Con alto automático la tarjeta siempre mide
+     justo lo que su contenido necesita, en cualquier modo: sin espacio
+     muerto y sin necesidad de tocar esto de nuevo si el contenido cambia.
+     El pequeño salto de tamaño al cambiar Login ⇄ Registro no se nota:
+     ocurre con la tarjeta ya encogida a un punto (.is-squashed, ver
+     abajo), invisible de lo chica que queda. */
+  --auth-w: min(530px, 92vw);
   position: relative;
   min-height: calc(100svh - var(--topbar-h));
   display: grid; place-items: center; padding: 2rem var(--gutter);
 }
 .auth__card {
   position: relative;
-  width: var(--auth-w); padding: .95rem 1.6rem;
+  width: var(--auth-w); padding: 1.5rem 1.7rem;
   background: var(--surface); border-radius: var(--radius-lg);
   box-shadow: var(--nm-out), var(--glow-violet);
   transform-origin: center; will-change: transform, opacity;
 }
-/* Tarjeta apaisada (ancho > alto) de tamaño FIJO — mismas dimensiones en
-   Login y Registro, sin importar cuál tenga más campos; si el contenido no
-   cabe, se desplaza dentro de la tarjeta en vez de estirarla. Solo desde
-   ~640px: en móvil una caja apaisada de este tamaño no cabría, así que ahí
-   se deja la altura automática de siempre (una sola columna, ya angosta). */
-@media (min-width: 640px) {
-  .auth__card { height: var(--auth-h); overflow-y: auto; }
-}
-/* Contenido escalado ×0.8 junto con el contenedor (mismo factor que
-   --auth-w/--auth-h de arriba): el modal completo es una versión más
-   pequeña y compacta del mismo diseño, no un contenedor grande con
-   contenido chico adentro. Todo aquí va scoped a .auth__card / clases
-   exclusivas de este formulario — no toca .field/.input/.btn en el resto
-   del sitio. */
-.auth__card h1 { font-size: 1rem; margin-bottom: .1rem; }
-.auth__sub { color: var(--muted); font-size: .66rem; margin-bottom: .5rem; line-height: 1.3; }
-.auth__switch { font-size: .64rem; color: var(--muted); text-align: center; margin-top: .3rem; }
+.auth__card h1 { font-size: 1.5rem; margin-bottom: .3rem; }
+.auth__sub { color: var(--muted); font-size: .86rem; margin-bottom: 1rem; line-height: 1.4; }
+.auth__switch { font-size: .82rem; color: var(--muted); text-align: center; margin-top: .6rem; }
 .auth__switch a { color: var(--accent-2-text); font-weight: 700; margin-left: .25rem; }
-.auth__demo { margin-top: .5rem; padding-top: .42rem; border-top: 1px dashed var(--line); }
-.auth__demo p { font-size: .54rem; color: var(--faint); margin-bottom: .3rem; letter-spacing: .04em; text-transform: uppercase; font-family: var(--mono); }
-.auth__demo .demo-row { display: flex; flex-wrap: wrap; gap: .28rem; }
-.demo-chip { font-size: .56rem; padding: .22rem .44rem; border-radius: 8px; background: var(--surface-2); box-shadow: var(--nm-out-sm); font-family: var(--mono); color: var(--muted); }
+.auth__demo { margin-top: .9rem; padding-top: .7rem; border-top: 1px dashed var(--line); }
+.auth__demo p { font-size: .68rem; color: var(--faint); margin-bottom: .45rem; letter-spacing: .04em; text-transform: uppercase; font-family: var(--mono); }
+.auth__demo .demo-row { display: flex; flex-wrap: wrap; gap: .4rem; }
+.demo-chip { font-size: .7rem; padding: .32rem .6rem; border-radius: 8px; background: var(--surface-2); box-shadow: var(--nm-out-sm); font-family: var(--mono); color: var(--muted); }
 .demo-chip:hover { color: var(--accent-2-text); }
-.auth__card .field { margin-bottom: .28rem; gap: .14rem; }
-.auth__card .field > label { font-size: .54rem; }
-.auth__card .input { padding: .32rem .6rem; }
-.auth__card .btn--lg { padding: .42rem 1.2rem; font-size: .76rem; }
+.auth__card .field { margin-bottom: .55rem; gap: .22rem; }
+.auth__card .field > label { font-size: .74rem; }
+.auth__card .input { padding: .55rem .75rem; font-size: .9rem; }
+.auth__card .btn--lg { padding: .7rem 1.4rem; font-size: .92rem; }
 
 /* ---------- Transición Login ⇄ Registro: pellizco diagonal a esquinas ----------
    transform-origin: center (declarado arriba en .auth__card) + `scale()`
@@ -208,6 +201,13 @@ body.in-app [data-static-store] { display: none !important; }
 .side__link.is-active { color: #05060b; background: linear-gradient(180deg, var(--neon-cyan), #16b6cc); font-weight: 600; }
 .side__link .ico { width: 18px; text-align: center; }
 .side__spacer { flex: 1; }
+/* "Cerrar sesión" es una ACCIÓN, no una ruta más del menú — mismo trato
+   "cómic" de la tienda (borde recto, relleno amarillo al hover) que ya
+   usan el topbar y la fila de acciones del POS, para que se distinga
+   claramente de Dashboard/Productos/etc. y de paso quede consistente en
+   todo el panel. */
+.side__link[data-logout] { border: 2px solid var(--line); margin-top: .4rem; }
+.side__link[data-logout]:hover { background: var(--panini); color: var(--ink-fixed); border-color: var(--ink-fixed); }
 @media (max-width: 899px) {
   .side { flex-direction: row; overflow-x: auto; gap: .5rem; padding: .7rem; }
   .side__user, .side__spacer { display: none; }
@@ -539,7 +539,8 @@ a.kpi--link:hover .kpi__go { opacity: 1; transform: translateX(0); }
 }
 .account__tab:hover { color: var(--text); }
 .account__tab.is-active { background: var(--surface-2); color: var(--accent-text); box-shadow: var(--nm-out-sm); }
-.account__tab--logout { margin-left: auto; color: var(--danger); }
+.account__tab--logout { margin-left: auto; color: var(--danger); border-radius: 0; border-color: var(--danger); text-transform: uppercase; font-weight: 700; }
+.account__tab--logout:hover { background: var(--danger); color: #fff; }
 
 .account__row { display: flex; justify-content: space-between; gap: 1rem; padding: .55rem 0; border-bottom: 1px dashed var(--line-soft); font-size: .88rem; }
 .account__row:last-of-type { border-bottom: 0; }

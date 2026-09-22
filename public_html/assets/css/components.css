@@ -388,6 +388,22 @@ body.in-app .btn--ghost { box-shadow: inset 0 0 0 1px var(--line); }
 body.in-app .btn--ghost:hover { background: transparent; box-shadow: inset 0 0 0 1px var(--accent); color: #fff; }
 .btn--danger { background: var(--danger); color: #fff; border-color: var(--ink); }
 
+/* Fila de acciones del POS (Apartados / Inicio / Cerrar sesión): mismo
+   trato "cómic" de la tienda que ya tiene el topbar (esquinas rectas,
+   borde visible, relleno amarillo al hover) en vez de los botones
+   fantasma redondeados y sin borde del resto del panel. Van sobre el
+   fondo suelto de la página (no una barra propia como el topbar), así
+   que usan --text/--line — que SÍ siguen el claro/oscuro del toggle
+   dentro de in-app — en vez de --ink/--paper-2 (fijos), para que
+   se sigan leyendo bien en ambos modos. Escopado a .pos-view para no
+   tocar los botones de admin/gerente que comparten .content__head. */
+body.in-app .pos-view .content__head .btn {
+  border-radius: 0; border-color: var(--line); text-transform: uppercase; font-size: .82rem;
+}
+body.in-app .pos-view .content__head .btn--ghost { background: transparent; box-shadow: none; color: var(--text); }
+body.in-app .pos-view .content__head .btn--ghost:hover { background: var(--panini); color: var(--ink-fixed); border-color: var(--ink-fixed); }
+body.in-app .pos-view .content__head .btn--ghost:active { transform: translate(1px,1px); }
+
 .btn[disabled], .btn.is-loading { opacity: .5; pointer-events: none; }
 .btn.is-loading::after {
   content: ""; width: 14px; height: 14px; border-radius: 50%;
@@ -592,6 +608,31 @@ html.modal-open, html.modal-open body { overflow: hidden; }
 }
 body.in-app .modal__card { border: 0; border-radius: var(--radius-lg); box-shadow: var(--nm-out), var(--glow-violet); }
 .modal__card--wide { width: min(920px, 100%); }
+
+/* El modal de "Cerrar sesión" (login.js/main.js lo marcan con la clase
+   .modal--logout al abrirlo, vía UI.confirm) es idéntico al de la tienda
+   en TODAS partes donde aparece — no solo el botón que lo dispara, que ya
+   quedó unificado antes. Cancela el mismo suavizado "cyber" que
+   body.in-app le da a .modal__card/.modal__close/.btn en general (usado
+   por el resto de confirmaciones del panel, que SÍ deben seguir con su
+   estilo propio) y repite el look "cómic" — borde de 3px, sombra dura,
+   esquinas rectas, botones en mayúsculas — con los mismos --surface/--ink
+   que usa la tienda en cada modo claro/oscuro. */
+body.in-app .modal--logout .modal__card {
+  --surface: var(--paper-2);
+  border: 3px solid var(--ink); border-radius: 0; box-shadow: 10px 10px 0 var(--ink);
+  color: var(--ink);
+}
+:root[data-theme="dark"] body.in-app .modal--logout .modal__card {
+  --surface: #1b1b24; --ink: #f2efe6;
+}
+body.in-app .modal--logout .modal__close {
+  background: var(--panini); color: var(--ink-fixed); border: 2px solid var(--ink-fixed);
+  border-radius: 0; box-shadow: none;
+}
+body.in-app .modal--logout .btn { border-radius: 0; border-color: var(--ink); text-transform: uppercase; font-size: .92rem; }
+body.in-app .modal--logout .btn--ghost { background: transparent; box-shadow: none; color: var(--ink); }
+body.in-app .modal--logout .btn--ghost:hover { background: var(--panini); color: var(--ink-fixed); }
 
 /* Animación de ENTRADA — inyectada por UI.openModal() como .is-entering */
 @keyframes modalScale {

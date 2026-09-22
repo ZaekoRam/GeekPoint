@@ -96,7 +96,7 @@
     $$(".modal").forEach(function (m) { m.remove(); });
     opts = opts || {};
     var wrap = document.createElement("div");
-    wrap.className = "modal";
+    wrap.className = "modal" + (opts.className ? " " + opts.className : "");
     wrap.innerHTML =
       '<div class="modal__backdrop" data-close></div>' +
       '<div class="modal__card' + (opts.wide ? " modal__card--wide" : "") + '" role="dialog" aria-modal="true">' +
@@ -182,7 +182,7 @@
         '<button class="btn btn--ghost" data-no>' + escHTML(opts.no || (I18N ? I18N.t("btn.cancel") : "Cancelar")) + '</button>' +
         '<button class="btn ' + (opts.danger ? "btn--danger" : "btn--neon") + '" data-yes>' + escHTML(opts.yes || (I18N ? I18N.t("btn.delete") : "Eliminar")) + '</button>' +
       '</div>';
-    var m = modal({ title: opts.title || "", content: c });
+    var m = modal({ title: opts.title || "", content: c, className: opts.className });
     c.querySelector("[data-no]").addEventListener("click", closeModal);
     c.querySelector("[data-yes]").addEventListener("click", function () {
       closeModal();

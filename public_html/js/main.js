@@ -409,7 +409,7 @@
         };
         if (window.API && API.base) API.post("auth/logout").then(done).catch(done);
         else done();
-      }, { title: I18N.t("confirm.logoutTitle"), yes: I18N.t("cta.logout"), no: I18N.t("btn.cancel"), danger: true });
+      }, { title: I18N.t("confirm.logoutTitle"), yes: I18N.t("cta.logout"), no: I18N.t("btn.cancel"), danger: true, className: "modal--logout" });
     });
   }
 
