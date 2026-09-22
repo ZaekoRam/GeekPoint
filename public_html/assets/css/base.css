@@ -27,8 +27,18 @@ body {
   overflow-x: clip;
   overscroll-behavior-y: none;
   min-height: 100vh;
+  /* Pie de página pegado abajo: sin esto, una vista con poco contenido
+     (p. ej. "Mi cuenta") deja el .foot colgando a media pantalla y todo
+     lo que sobra hasta el 100vh de arriba queda como una franja vacía
+     DEBAJO del pie — se ve como si la página estuviera rota. El root de
+     la SPA (.app-root) es el único que necesita crecer: las vistas que sí
+     llenan la pantalla (tienda, POS, admin) ya reservan su propio alto
+     mínimo, así que no cambian; solo las cortas ahora empujan el pie
+     hasta el fondo real del viewport en vez de dejarlo a la mitad. */
+  display: flex; flex-direction: column;
   transition: background-color .4s var(--ease-out), color .4s var(--ease-out);
 }
+.app-root { flex: 1 0 auto; }
 body.in-app {
   background-image:
     radial-gradient(1200px 700px at 12% -10%, rgba(255,212,0,.10), transparent 60%),
