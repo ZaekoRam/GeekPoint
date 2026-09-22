@@ -287,6 +287,7 @@
 
       "empty.none": "Sin registros todavía.",
       "confirm.delete": "¿Eliminar «{name}»? Esta acción no se puede deshacer.",
+      "confirm.logout": "¿Desea cerrar su sesión?", "confirm.logoutTitle": "Cerrar sesión",
       "toast.saved": "Cambios guardados.", "toast.deleted": "Registro eliminado.",
       "toast.created": "Registro creado.", "toast.error": "Ocurrió un error.",
       "toast.stockAdjusted": "Stock actualizado.", "toast.sessionEnd": "Sesión cerrada.",
@@ -580,6 +581,7 @@
 
       "empty.none": "No records yet.",
       "confirm.delete": "Delete “{name}”? This cannot be undone.",
+      "confirm.logout": "Do you want to sign out?", "confirm.logoutTitle": "Sign out",
       "toast.saved": "Changes saved.", "toast.deleted": "Record deleted.",
       "toast.created": "Record created.", "toast.error": "Something went wrong.",
       "toast.stockAdjusted": "Stock updated.", "toast.sessionEnd": "Signed out.",
@@ -620,6 +622,9 @@
     });
     root.querySelectorAll("[data-i18n-title]").forEach(function (el) {
       el.setAttribute("title", t(el.getAttribute("data-i18n-title")));
+    });
+    root.querySelectorAll("[data-i18n-tip]").forEach(function (el) {
+      el.setAttribute("data-tip", t(el.getAttribute("data-i18n-tip")));
     });
   }
 

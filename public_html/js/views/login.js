@@ -9,7 +9,8 @@
   var DEMO = [
     { email: "admin@geekpoint.mx", label: "Administrador" },
     { email: "gerente.cdmx@geekpoint.mx", label: "Gerente CDMX" },
-    { email: "caja.cdmx@geekpoint.mx", label: "Cajero CDMX" }
+    { email: "caja.cdmx@geekpoint.mx", label: "Cajero CDMX" },
+    { email: "cliente@geekpoint.mx", label: "Cliente" }
   ];
 
   function backLinkHTML() {

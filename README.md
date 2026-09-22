@@ -119,6 +119,7 @@ Contraseña de todas: **`password`**
 | Cajero CDMX | `caja.cdmx@geekpoint.mx` | Módulo POS de la sucursal Reforma |
 | Cajero GDL | `caja.gdl@geekpoint.mx` | Módulo POS de la sucursal Chapultepec |
 | Cajero MTY | `caja.mty@geekpoint.mx` | Módulo POS de la sucursal Valle |
+| Cliente | `cliente@geekpoint.mx` | Cuenta de cliente: perfil, pedidos y reservas |
 
 > **Producción:** cambia estas contraseñas. Genera un hash nuevo con
 > `http://localhost/api/tools/hash.php?p=TuNuevaClave` y pégalo en

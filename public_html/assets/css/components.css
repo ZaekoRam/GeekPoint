@@ -13,7 +13,7 @@
 .splash.is-out { opacity: 0; visibility: hidden; pointer-events: none; }
 @keyframes splashSafety { to { opacity: 0; visibility: hidden; pointer-events: none; } }
 .splash__mark { font-family: var(--comic); font-size: clamp(2.4rem, 9vw, 4rem); letter-spacing: .04em; color: var(--ink); display: flex; align-items: center; gap: .5rem; }
-.splash__mark b { color: var(--ink); -webkit-text-stroke: 2px var(--ink); background: var(--panini); padding: 0 .25em; box-shadow: var(--shadow-hard-sm); }
+.splash__mark b { color: var(--ink-fixed); -webkit-text-stroke: 2px var(--ink-fixed); background: var(--panini); padding: 0 .25em; box-shadow: var(--shadow-hard-sm); }
 .splash__bar { width: 220px; height: 8px; border: 2px solid var(--ink); overflow: hidden; }
 .splash__bar i { display: block; height: 100%; width: 38%; background: var(--ink); animation: load 1s var(--ease-soft) infinite; }
 @keyframes load { 0% { transform: translateX(-110%); } 100% { transform: translateX(360%); } }
@@ -28,12 +28,59 @@
   background: var(--paper-2);
   border-bottom: 3px solid var(--ink);
 }
-body.in-app .topbar { background: var(--surface); border-bottom: 1px solid var(--line); }
+/* Dentro de login/POS/admin (tema cyber oscuro) el topbar sigue viéndose
+   igual que en la tienda (fondo claro fijo, arriba) — así que su texto e
+   iconos también deben resolver a los tokens CLAROS de la tienda aquí
+   dentro, no a los --text/--faint/--line oscuros de body.in-app (que
+   quedarían casi invisibles sobre un fondo blanco). Mismo patrón que la
+   "isla" del .hero en tokens.css: re-tematizado local, sin tocar el resto
+   del panel. */
+body.in-app .topbar {
+  --text: var(--ink);
+  --muted: #63636d;
+  --faint: #8a8a93;
+  --surface-2: var(--paper-3);
+  --line: var(--ink);
+}
+/* El selector/idioma y "Mi panel" también tienen versión "cyber" (píldoras
+   redondeadas, sin borde) para el resto de login/POS/admin — dentro del
+   topbar se cancela esa variante y se repite el estilo "cómic" exacto de
+   la tienda (esquinas rectas, borde de 2px, sombra dura), en vez de
+   duplicar los mismos botones con clases nuevas. */
+body.in-app .topbar .lang-toggle { border-color: var(--ink); background: var(--paper-2); border-radius: 0; box-shadow: 3px 3px 0 var(--ink); }
+body.in-app .topbar .lang-toggle button { border-radius: 0; }
+body.in-app .topbar .lang-toggle button.is-active {
+  color: var(--neon-cyan); background: var(--ink-fixed); border-color: var(--ink-fixed); box-shadow: 3px 3px 0 var(--neon-cyan);
+}
+body.in-app .topbar .btn {
+  border-radius: 0; border-color: var(--ink); text-transform: uppercase; font-size: .92rem;
+  background: var(--paper-2); color: var(--ink); box-shadow: var(--shadow-hard-sm);
+}
+body.in-app .topbar .btn:hover { transform: translate(-2px,-2px); box-shadow: 6px 6px 0 var(--ink); }
+body.in-app .topbar .btn:active { transform: translate(1px,1px); box-shadow: none; }
+body.in-app .topbar .btn--panini { background: var(--panini); color: var(--ink-fixed); border-color: var(--ink-fixed); }
+body.in-app .topbar .btn--ink { background: var(--ink); color: var(--paper-2); border-color: var(--ink); }
+/* El toggle claro/oscuro de la tienda también debe voltear el topbar
+   dentro de login/POS/admin (antes se quedaba fijo en claro). Mismos
+   valores que usa la tienda en :root[data-theme=dark] body:not(.in-app)
+   arriba en tokens.css — --paper-2/--ink son los que de verdad pintan el
+   fondo/borde/sombra del topbar y sus botones (ver reglas de arriba), así
+   que redefinirlos aquí basta para que todo el bloque se re-tiña. */
+:root[data-theme="dark"] body.in-app .topbar {
+  --paper-2: #1b1b24;
+  --paper-3: #23232f;
+  --ink: #f2efe6;
+  --text: #f2efe6;
+  --muted: #a4a1af;
+  --faint: #77757f;
+  --surface-2: #23232f;
+  --line: #3b3b49;
+}
 
 .brand { display: flex; align-items: center; gap: .5rem; font-family: var(--comic); font-size: 1.7rem; letter-spacing: .03em; color: var(--text); line-height: 1; }
 .brand__glyph {
   display: inline-grid; place-items: center; width: 1.5em; height: 1.5em;
-  background: var(--panini); color: var(--ink); border: 2px solid var(--ink);
+  background: var(--panini); color: var(--ink-fixed); border: 2px solid var(--ink-fixed);
   font-family: var(--display); font-size: .7em; transform: rotate(-4deg);
 }
 body.in-app .brand__glyph { background: var(--accent); }
@@ -70,8 +117,8 @@ body.in-app .topbar__nav { display: none; }
 .lang-toggle button:hover .lang-toggle__flag { transform: scale(1.18); filter: none; }
 .lang-toggle button:active { transform: translateY(0) scale(.98); }
 .lang-toggle button.is-active {
-  color: var(--neon-cyan); background: var(--ink);
-  border-color: var(--ink); box-shadow: 3px 3px 0 var(--neon-cyan);
+  color: var(--neon-cyan); background: var(--ink-fixed);
+  border-color: var(--ink-fixed); box-shadow: 3px 3px 0 var(--neon-cyan);
 }
 .lang-toggle button.is-active .lang-toggle__flag { filter: none; }
 
@@ -97,10 +144,174 @@ body.in-app .lang-toggle button.is-active {
   min-width: 1.5em; height: 1.5em; padding: 0 .32em;
   display: inline-flex; align-items: center; justify-content: center;
   line-height: 1; text-align: center;
-  background: var(--panini); color: var(--ink); border: 2px solid var(--ink);
+  background: var(--panini); color: var(--ink-fixed); border: 2px solid var(--ink-fixed);
   font-family: var(--mono); font-size: .68rem; font-weight: 700; font-variant-numeric: tabular-nums;
 }
 .cartbtn__count:empty, .cartbtn__count[data-count="0"] { display: none; }
+
+/* ---------- Nav sign: pictograma "señal de evacuación" (entrada / salida) ----------
+   .navsign es la base compartida por el link de acceso (.navsign--enter,
+   además .btn) y el botón de logout (.navsign--exit, sin chrome de botón).
+   Contención: TODA la escena (puerta + figura) vive dentro de
+   .navsign__stage, una caja de tamaño FIJO con overflow:hidden — el
+   personaje solo se traduce unos px dentro de esa caja, así que
+   estructuralmente no puede desbordar el botón ni superponerse al texto
+   (que es un elemento hermano, .navsign__label). El stage nunca cambia de
+   tamaño con el hover, así que el botón tampoco.
+   Estilo pictograma: placa amarilla (--panini) con puerta y figura en
+   negro (--ink) — mismo lenguaje que un pictograma de señalización
+   (icono oscuro sobre fondo de contraste), usando solo los tokens de
+   marca ya existentes. La figura es un SVG hecho con formas geométricas
+   simples (círculo + rectángulos angulados) a propósito: es un
+   placeholder fácil de sustituir — reemplaza solo el <svg> dentro de
+   .navsign__figure; toda la animación (transform/opacity) está declarada
+   sobre esa clase contenedora, no sobre el SVG, así que un sprite/imagen
+   futuro la hereda sin tocar una sola línea de CSS.
+   Disparo: :hover, :focus-visible (teclado) y .is-touched (tap en
+   táctil — ver initNavFx en main.js; usa touchstart SIN preventDefault
+   para no bloquear el clic real). Todo por `transition`, no `animation`:
+   si el mouse sale a medio camino, revierte suave desde el punto actual
+   en vez de saltar o reiniciarse. */
+.navsign { position: relative; }
+.navsign__label { white-space: nowrap; }
+.navsign__stage {
+  position: relative; overflow: hidden; flex: 0 0 auto;
+  width: 30px; height: 26px;
+  background: var(--panini); border: 2px solid var(--ink);
+}
+.navsign__door { position: absolute; top: 1px; width: 11px; height: 24px; perspective: 140px; }
+.navsign__frame { position: absolute; inset: 0; border: 1.5px solid var(--ink-fixed); background: var(--paper-fixed); }
+.navsign__leaf {
+  position: absolute; inset: 0; background: var(--ink-fixed);
+  transform-style: preserve-3d;
+  transition: transform .34s var(--ease-bounce);
+}
+/* Chispazo de impacto: un anillo que se expande y se desvanece pegado al
+   marco de la puerta, igual que el "destello" que se ve en el momento en
+   que la puerta se cierra/abre de golpe en el video de referencia. Vive
+   DENTRO de .navsign__stage (que ya recorta con overflow:hidden), así que
+   por más que crezca nunca sale del botón. */
+.navsign__door::after {
+  content: ""; position: absolute; inset: -1px;
+  box-shadow: 0 0 0 0 var(--ink); opacity: 0; pointer-events: none;
+}
+@keyframes navsignPing {
+  0%   { box-shadow: 0 0 0 0 var(--ink); opacity: .55; }
+  100% { box-shadow: 0 0 0 5px var(--ink); opacity: 0; }
+}
+.navsign__figure {
+  position: absolute; bottom: 1px; width: 13px; height: 19px; color: var(--ink-fixed);
+  transition: transform .26s cubic-bezier(.4,0,.2,1), opacity .16s ease;
+}
+
+/* Sacudida de impacto: la placa entera (puerta + figura, ya contenidas en
+   .navsign__stage) da un golpecito de rotación justo cuando termina el
+   paso por la puerta — como si la puerta acabara de azotarse. Es una
+   animación de un solo disparo (no infinite): CSS solo la reproduce
+   mientras dura el estado :hover/:focus-visible/.is-touched, así que
+   quitar el mouse a medio bamboleo simplemente la corta ahí, sin dejarla
+   "colgada" a mitad de un giro (transform vuelve a rotate(0) por la regla
+   base de .navsign__stage, ver abajo). El delay hace que arranque justo
+   cuando la figura ya casi terminó de desvanecerse/aparecer. */
+@keyframes navsignShake {
+  0%   { transform: rotate(0deg); }
+  25%  { transform: rotate(-3deg); }
+  55%  { transform: rotate(2.5deg); }
+  80%  { transform: rotate(-1deg); }
+  100% { transform: rotate(0deg); }
+}
+.navsign__stage { transform: rotate(0deg); }
+
+/* Entrada: puerta a la derecha, la figura arranca visible a la izquierda
+   y camina HACIA la puerta, encogiéndose/desvaneciendo al "entrar". */
+.navsign--enter .navsign__door { right: 1px; transform-origin: left center; }
+.navsign--enter .navsign__figure { left: 2px; transform: translateX(0) scale(1); opacity: 1; }
+.navsign--enter:hover .navsign__leaf,
+.navsign--enter:focus-visible .navsign__leaf,
+.navsign--enter.is-touched .navsign__leaf { transform: rotateY(-98deg); }
+.navsign--enter:hover .navsign__figure,
+.navsign--enter:focus-visible .navsign__figure,
+.navsign--enter.is-touched .navsign__figure {
+  transform: translateX(8px) scale(.5); opacity: 0;
+  transition-delay: .04s, 0s;
+}
+.navsign--enter:hover .navsign__stage,
+.navsign--enter:focus-visible .navsign__stage,
+.navsign--enter.is-touched .navsign__stage { animation: navsignShake .3s ease-in-out .18s 1; }
+.navsign--enter:hover .navsign__door::after,
+.navsign--enter:focus-visible .navsign__door::after,
+.navsign--enter.is-touched .navsign__door::after { animation: navsignPing .38s ease-out .16s 1; }
+
+/* Salida: puerta a la izquierda, la figura arranca oculta junto a la
+   puerta y aparece/se aleja hacia la derecha — dirección y estado de
+   reposo invertidos respecto a la entrada, mismo lenguaje visual. */
+.navsign--exit .navsign__door { left: 1px; transform-origin: right center; }
+.navsign--exit .navsign__figure { right: 2px; transform: translateX(-8px) scale(.5); opacity: 0; }
+.navsign--exit:hover .navsign__leaf,
+.navsign--exit:focus-visible .navsign__leaf,
+.navsign--exit.is-touched .navsign__leaf { transform: rotateY(98deg); }
+.navsign--exit:hover .navsign__figure,
+.navsign--exit:focus-visible .navsign__figure,
+.navsign--exit.is-touched .navsign__figure {
+  transform: translateX(0) scale(1); opacity: 1;
+  transition-delay: .06s, .06s;
+}
+.navsign--exit:hover .navsign__stage,
+.navsign--exit:focus-visible .navsign__stage,
+.navsign--exit.is-touched .navsign__stage { animation: navsignShake .3s ease-in-out .18s 1; }
+.navsign--exit:hover .navsign__door::after,
+.navsign--exit:focus-visible .navsign__door::after,
+.navsign--exit.is-touched .navsign__door::after { animation: navsignPing .38s ease-out .16s 1; }
+
+/* .navsign--enter reutiliza .btn (borde, sombra, mismo hover que el resto
+   de la navegación). .navsign--exit es deliberadamente SIN contorno de
+   botón: solo la placa/figura son el elemento interactivo, con área de
+   clic ampliada por el padding. */
+.navsign--exit {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: .3rem; flex: 0 0 auto;
+  background: transparent; border: 0; box-shadow: none; cursor: pointer;
+}
+
+/* ---------- Tooltip de los signos de nav ----------
+   Mismo lenguaje visual que el tooltip existente (.tip::after en este
+   archivo: burbuja + flecha, activado por :hover/:focus-visible), pero
+   anclado hacia ABAJO (estos elementos están pegados arriba, en la
+   topbar) y alineado al borde derecho (están pegados al borde derecho de
+   la página, centrado se saldría del viewport). No reutiliza el toggle
+   táctil de UI.bindTips() a propósito: ese handler llama
+   preventDefault() en cada tap, lo que bloquearía la navegación/el
+   logout real en pantallas táctiles — aquí el toque se resuelve con
+   .is-touched (initNavFx en main.js), que NO bloquea el clic. */
+.navsign[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute; top: calc(100% + 9px); right: 0; transform: translateY(-6px) scale(.92);
+  width: max-content; max-width: 190px; padding: .5rem .65rem;
+  background: var(--ink); color: var(--paper-2); border: 2px solid var(--panini);
+  font: 700 .68rem/1.3 var(--sans); text-transform: none; letter-spacing: normal; text-align: left;
+  box-shadow: 3px 3px 0 var(--ink); opacity: 0; visibility: hidden; pointer-events: none;
+  transform-origin: top right; z-index: 30;
+  transition: opacity .16s var(--ease-out), transform .18s var(--ease-bounce), visibility 0s linear .18s;
+}
+.navsign[data-tip]::before {
+  content: ""; position: absolute; top: calc(100% + 3px); right: 10px;
+  border: 6px solid transparent; border-bottom-color: var(--ink);
+  opacity: 0; visibility: hidden; pointer-events: none; z-index: 31;
+  transition: opacity .16s var(--ease-out), visibility 0s linear .18s;
+}
+.navsign[data-tip]:hover::after, .navsign[data-tip]:focus-visible::after, .navsign[data-tip].is-touched::after,
+.navsign[data-tip]:hover::before, .navsign[data-tip]:focus-visible::before, .navsign[data-tip].is-touched::before {
+  opacity: 1; visibility: visible; transition-delay: 0s;
+}
+.navsign[data-tip]:hover::after, .navsign[data-tip]:focus-visible::after, .navsign[data-tip].is-touched::after {
+  transform: translateY(0) scale(1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .navsign__leaf, .navsign__figure { transition: none !important; }
+  .navsign__stage, .navsign__door::after { animation: none !important; }
+  .navsign[data-tip]::after, .navsign[data-tip]::before { transition: opacity .12s linear !important; }
+}
 
 /* ---------- Header compacto en móvil ----------
    Nunca se ocultan: marca, idioma (ES/EN), carrito y "Mi panel"/"Login". */
@@ -129,6 +340,21 @@ body.in-app .lang-toggle button.is-active {
   .lang-toggle button { padding: .3rem .34rem; }
 }
 
+/* El texto "Iniciar sesión / Registrarse" + la placa del pictograma no
+   caben juntos por debajo de ~560px (se verificó con el navegador: el
+   topbar se desbordaba y el pictograma quedaba recortado fuera de
+   pantalla). Mismo patrón que .cartbtn arriba: se oculta solo la palabra,
+   el pictograma (ya con su propio tooltip accesible) pasa a ser el botón.
+   El texto NO se quita del DOM (sigue siendo el nombre accesible del
+   link) — se oculta visualmente con la misma técnica de .sr-only. */
+@media (max-width: 560px) {
+  .navsign--enter .navsign__label {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+  }
+  .navsign--enter.btn { gap: 0; padding: .5rem; }
+}
+
 /* ---------- Botones ---------- */
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
@@ -152,7 +378,7 @@ body.in-app .btn:active { transform: translateY(0); box-shadow: var(--nm-in-sm);
 .btn--sm { padding: .4rem .7rem; font-size: .78rem; }
 .btn--block { display: flex; width: 100%; }
 
-.btn--panini, .btn--neon { background: var(--panini); color: var(--ink); border-color: var(--ink); }
+.btn--panini, .btn--neon { background: var(--panini); color: var(--ink-fixed); border-color: var(--ink-fixed); }
 body.in-app .btn--neon { background: var(--accent); color: #05060b; box-shadow: var(--glow-cyan), 4px 4px 14px var(--nm-dark); border-color: transparent; }
 .btn--ink, .btn--violet { background: var(--ink); color: var(--paper-2); border-color: var(--ink); }
 body.in-app .btn--violet { background: linear-gradient(180deg, var(--neon-violet), #6a3ee0); color: #fff; box-shadow: var(--glow-violet), 4px 4px 14px var(--nm-dark); }
@@ -216,10 +442,10 @@ body.in-app .input:focus, body.in-app .select:focus, body.in-app .textarea:focus
 .tip {
   display: inline-flex; align-items: center; justify-content: center;
   width: 17px; height: 17px; margin-left: .35rem; vertical-align: middle;
-  border-radius: 0; border: 2px solid var(--ink); background: var(--panini);
-  color: var(--ink); font: 800 .64rem/1 var(--mono); text-transform: none;
+  border-radius: 0; border: 2px solid var(--ink-fixed); background: var(--panini);
+  color: var(--ink-fixed); font: 800 .64rem/1 var(--mono); text-transform: none;
   letter-spacing: 0; cursor: help; position: relative; flex: 0 0 auto;
-  box-shadow: 2px 2px 0 var(--ink);
+  box-shadow: 2px 2px 0 var(--ink-fixed);
   transition: transform .12s var(--ease-out), box-shadow .12s var(--ease-out);
 }
 body.in-app .tip {
@@ -274,9 +500,9 @@ body.in-app .badge { background: var(--surface-3); color: var(--muted); border-r
 .badge--ok { background: var(--success); color: #fff; }
 .badge--warn { background: var(--warning); color: #fff; }
 .badge--danger { background: var(--danger); color: #fff; }
-.badge--cyan { background: var(--neon-cyan); color: var(--ink); }
+.badge--cyan { background: var(--neon-cyan); color: var(--ink-fixed); }
 .badge--violet { background: var(--neon-violet); color: #fff; }
-.badge--panini { background: var(--panini); color: var(--ink); }
+.badge--panini { background: var(--panini); color: var(--ink-fixed); }
 
 .chip {
   display: inline-flex; align-items: center; gap: .4rem;
@@ -286,7 +512,7 @@ body.in-app .badge { background: var(--surface-3); color: var(--muted); border-r
 }
 body.in-app .chip { border: 0; border-radius: 999px; box-shadow: var(--nm-out-sm); color: var(--muted); }
 .chip:hover { transform: translateY(-1px); }
-.chip.is-active { background: var(--panini); color: var(--ink); }
+.chip.is-active { background: var(--panini); color: var(--ink-fixed); }
 body.in-app .chip.is-active { background: var(--accent); color: #05060b; box-shadow: var(--glow-cyan); }
 
 /* ---------- Selector de etiquetas (novedad / oferta / preventa) ---------- */
@@ -299,7 +525,7 @@ body.in-app .chip.is-active { background: var(--accent); color: #05060b; box-sha
               border-color .15s var(--ease-out), transform .12s var(--ease-out);
 }
 .tagpick__opt:hover { transform: translateY(-1px); }
-.tagpick__opt.is-on { background: var(--panini); color: var(--ink); border-color: var(--panini); }
+.tagpick__opt.is-on { background: var(--panini); color: var(--ink-fixed); border-color: var(--panini); }
 body.in-app .tagpick__opt { border: 0; border-radius: 999px; box-shadow: var(--nm-out-sm); }
 body.in-app .tagpick__opt.is-on { background: var(--accent); color: #05060b; box-shadow: var(--glow-cyan); }
 
@@ -387,7 +613,7 @@ body.in-app .modal__card { border: 0; border-radius: var(--radius-lg); box-shado
   .modal.is-leaving .modal__card, .modal.is-leaving .modal__backdrop { animation: none; }
 }
 .modal__title { font-family: var(--display); text-transform: uppercase; font-size: 1.3rem; margin-bottom: 1rem; }
-.modal__close { position: absolute; top: .8rem; right: .8rem; width: 34px; height: 34px; display: grid; place-items: center; background: var(--panini); color: var(--ink); border: 2px solid var(--ink); }
+.modal__close { position: absolute; top: .8rem; right: .8rem; width: 34px; height: 34px; display: grid; place-items: center; background: var(--panini); color: var(--ink-fixed); border: 2px solid var(--ink-fixed); }
 body.in-app .modal__close { background: var(--surface-2); color: var(--text); border: 0; border-radius: 10px; box-shadow: var(--nm-out-sm); }
 
 /* ---------- API banner ---------- */
@@ -395,7 +621,7 @@ body.in-app .modal__close { background: var(--surface-2); color: var(--text); bo
   position: sticky; top: var(--topbar-h); z-index: var(--z-banner);
   display: flex; align-items: center; justify-content: center; gap: 1rem; flex-wrap: wrap;
   padding: .55rem 1rem; font-size: .82rem; font-weight: 600;
-  background: var(--panini); color: var(--ink); border-bottom: 2px solid var(--ink);
+  background: var(--panini); color: var(--ink-fixed); border-bottom: 2px solid var(--ink-fixed);
 }
 .api-banner button { font-weight: 800; text-decoration: underline; color: inherit; }
 
@@ -460,15 +686,15 @@ body.in-app .del-btn:focus-visible { box-shadow: 0 0 0 3px rgba(228, 0, 43, .4),
 /* Rediseño alto contraste: base amarillo GeekPoint, hover cyan con glow. */
 .printbtn.btn {
   align-items: center;
-  background: var(--panini); color: var(--ink);
-  border: 2px solid var(--ink);
-  box-shadow: 3px 3px 0 var(--ink);
+  background: var(--panini); color: var(--ink-fixed);
+  border: 2px solid var(--ink-fixed);
+  box-shadow: 3px 3px 0 var(--ink-fixed);
   transition: transform .14s var(--ease-out), box-shadow .18s var(--ease-out), background .18s var(--ease-out);
 }
 .printbtn.btn:hover {
-  background: var(--neon-cyan); color: var(--ink);
+  background: var(--neon-cyan); color: var(--ink-fixed);
   transform: translate(-2px, -2px);
-  box-shadow: 6px 6px 0 var(--ink), 0 0 18px rgba(0, 229, 255, .55);
+  box-shadow: 6px 6px 0 var(--ink-fixed), 0 0 18px rgba(0, 229, 255, .55);
 }
 .printbtn.btn:active { transform: translate(1px, 1px); box-shadow: none; }
 body.in-app .printbtn.btn {
@@ -691,5 +917,9 @@ body.in-app .printbtn .printer { --pr-bg: var(--surface); }
 }
 @media (max-width: 768px) { .themeToggle { width: 2.25em; } }
 
-/* Fuera de alcance: el toggle es solo para la tienda pública. */
-body.in-app .themeToggle { display: none; }
+/* El toggle ahora también vive en Login/Admin/Manager/POS (antes solo
+   existía para la tienda pública): misma preferencia (localStorage
+   gp_theme) para todo el sitio — ver el bloque de tokens
+   ":root[data-theme=light] body.in-app" en tokens.css. */
+body.in-app .themeToggle { color: var(--faint); }
+body.in-app .themeToggle:hover { color: var(--text); }

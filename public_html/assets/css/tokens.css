@@ -22,6 +22,20 @@
   --ease-soft:   cubic-bezier(0.25, 0.46, 0.45, 0.94);
   --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
 
+  /* ---- Constantes de contraste (NUNCA se redefinen por tema) ----
+     Muchos componentes compartidos (badges, tags, botón amarillo, cierre
+     de modal, selección de texto…) pintan texto oscuro sobre un fondo de
+     acento fijo (--panini, --neon-cyan, degradados). Antes usaban
+     var(--ink) para ese texto, lo cual funciona en .in-app (donde --ink
+     nunca cambia) pero se rompe en el modo oscuro de la Store, donde
+     --ink se invierte a un tono casi blanco y el texto queda casi
+     invisible sobre amarillo. --ink-fixed / --paper-fixed son ese mismo
+     par de colores pero SIN inversión: úsalos para "texto/silueta sobre
+     un fondo de acento que no cambia con el tema", nunca para texto de
+     cuerpo normal (ese sigue usando --text/--ink, que sí debe invertir). */
+  --ink-fixed:   #0c0c0e;
+  --paper-fixed: #ffffff;
+
   --z-topbar: 100; --z-banner: 90; --z-drawer: 400; --z-toast: 500; --z-modal: 600; --z-splash: 900;
 
   /* ---- Paleta base Manga Ink ---- */
@@ -105,9 +119,14 @@
   --accent:    var(--text);
   --accent-2:  var(--panini);
 
-  /* Sombras "manga": el offset duro de tinta no lee sobre oscuro → sombra negra suave */
-  --shadow-hard:    4px 4px 0 rgba(0,0,0,.55);
-  --shadow-hard-sm: 2px 2px 0 rgba(0,0,0,.55);
+  /* Sombras "manga" en oscuro: un offset negro se funde con un fondo ya
+     oscuro y desaparece (el bug que reportaste: "elementos que
+     prácticamente desaparecen"). Se mantiene el mismo lenguaje "golpe
+     duro sin blur" de la Store, pero con el offset en el tono claro de
+     --ink de este tema — así el borde/sombra vuelve a leerse contra la
+     superficie oscura, igual que en claro se lee contra la superficie clara. */
+  --shadow-hard:    4px 4px 0 rgba(242,239,230,.22);
+  --shadow-hard-sm: 2px 2px 0 rgba(242,239,230,.18);
   --shadow-pop:     6px 6px 0 var(--panini-deep);
   --halftone: rgba(255,255,255,.045);
 
@@ -144,6 +163,14 @@ body.in-shell {
   --faint:  #6a6e90;
   --accent:    var(--panini);
   --accent-2:  var(--neon-cyan);
+  /* Variante "para texto" de --accent/--accent-2: varios componentes
+     (precios, kickers, links) pintan el acento directamente como color de
+     texto. Sobre el fondo oscuro de este tema, el amarillo/cian a toda
+     saturación se lee perfecto — por eso aquí son iguales a --accent/
+     --accent-2. El tema claro de abajo los redefine con tonos más oscuros
+     porque amarillo/cian puro sobre blanco es casi ilegible. */
+  --accent-text:   var(--accent);
+  --accent-2-text: var(--accent-2);
 
   --nm-light: rgba(255,255,255,0.045);
   --nm-dark:  rgba(0,0,0,0.55);
@@ -166,4 +193,57 @@ body.in-shell {
   --radius: 16px; --radius-sm: 12px; --radius-lg: 24px;
 
   color-scheme: dark;
+}
+
+/* =============================================================
+   Tema SISTEMA (claro) — Login y módulos internos con el toggle en
+   "claro". Antes .in-app no tenía variante clara (el interruptor estaba
+   oculto ahí, ver components.css). Misma LÓGICA que el oscuro de arriba
+   (superficies elevadas con sombra neumórfica, jerarquía de texto en 3
+   niveles, --accent/--accent-2 como acento fijo de marca) pero resuelta
+   en claro: base gris-azulado suave, tarjetas casi blancas "elevadas"
+   con luz arriba-izquierda y sombra abajo-derecha en vez del par
+   luz/oscuridad sobre negro. No es una inversión mecánica del oscuro:
+   los grises se eligieron para que la sombra neumórfica siga leyéndose
+   (una sombra clara sobre blanco puro es invisible). */
+:root[data-theme="light"] body.in-app,
+:root[data-theme="light"] body.in-shell {
+  --bg:        #eef1f6;
+  --bg-2:      #e6e9f0;
+  --surface:   #f8f9fc;
+  --surface-2: #ffffff;
+  --surface-3: #eceff5;
+  --line:      #dbdfe8;
+  --line-soft: #e6e9f0;
+  --text:   #171922;
+  --muted:  #5b5f72;
+  --faint:  #8b8ea1;
+  --accent:    var(--panini);
+  --accent-2:  var(--neon-cyan);
+  /* Panini/neon-cyan a toda saturación siguen sirviendo de fondo (chips,
+     botones, glows), pero como TEXTO sobre las superficies claras de
+     abajo casi no se leen — estas dos son la versión oscurecida para esos
+     casos (precios, kickers, links destacados). */
+  --accent-text:   #8a6300;
+  --accent-2-text: #0a7d94;
+
+  --nm-light: rgba(255,255,255,.95);
+  --nm-dark:  rgba(163,171,194,.4);
+  --nm-out:    -6px -6px 16px var(--nm-light), 8px 8px 22px var(--nm-dark);
+  --nm-out-sm: -3px -3px 8px var(--nm-light), 4px 4px 12px var(--nm-dark);
+  --nm-in:     inset -4px -4px 10px var(--nm-light), inset 5px 5px 14px var(--nm-dark);
+  --nm-in-sm:  inset -2px -2px 6px var(--nm-light), inset 3px 3px 8px var(--nm-dark);
+  --glow-cyan:   0 0 0 1px rgba(255,212,0,.4), 0 0 18px rgba(255,212,0,.25);
+  --glow-violet: 0 0 0 1px rgba(0,229,255,.4), 0 0 18px rgba(0,229,255,.28);
+
+  --shadow-hard: var(--nm-out);
+  --shadow-hard-sm: var(--nm-out-sm);
+  --shadow-pop: var(--nm-out);
+
+  --btn-bg: var(--surface-2);
+  --btn-fg: var(--text);
+  --btn-shadow: var(--nm-out-sm);
+  --btn-border: transparent;
+
+  color-scheme: light;
 }

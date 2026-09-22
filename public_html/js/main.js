@@ -40,6 +40,14 @@
     });
   }
 
+  /* ---------- Footer: oculto en la pantalla de acceso/registro ---------- */
+  function paintFooter() {
+    var foot = $("[data-foot]");
+    if (!foot) return;
+    var view = window.Router ? Router.current().view : "";
+    foot.hidden = (view === "login");
+  }
+
   /* ---------- Sesión en el header ---------- */
   function paintSession() {
     var logged = STORE.isLogged();
@@ -384,18 +392,42 @@
     });
   }
 
-  /* ---------- Logout global ---------- */
+  /* ---------- Logout global (con confirmación) ----------
+     [data-logout] ya lo llevan varios botones (topbar, Mi cuenta, POS,
+     sidebar admin/gerente) — un único listener delegado para todos.
+     UI.confirm() reutiliza el modal existente: no se cierra la sesión
+     hasta que el usuario confirma, y "Cancelar" no ejecuta nada. */
   function initLogout() {
     document.addEventListener("click", function (e) {
       if (!e.target.closest("[data-logout]")) return;
       e.preventDefault();
-      var done = function () {
-        STORE.clearSession(); paintSession();
-        UI.toast(I18N.t("toast.sessionEnd"), "ok");
-        location.hash = "#/";
-      };
-      if (window.API && API.base) API.post("auth/logout").then(done).catch(done);
-      else done();
+      UI.confirm(I18N.t("confirm.logout"), function () {
+        var done = function () {
+          STORE.clearSession(); paintSession();
+          UI.toast(I18N.t("toast.sessionEnd"), "ok");
+          location.hash = "#/";
+        };
+        if (window.API && API.base) API.post("auth/logout").then(done).catch(done);
+        else done();
+      }, { title: I18N.t("confirm.logoutTitle"), yes: I18N.t("cta.logout"), no: I18N.t("btn.cancel"), danger: true });
+    });
+  }
+
+  /* ---------- Animación de los signos de nav en táctil ----------
+     :hover no existe en touch: un tap agrega .is-touched (mismo estado
+     final que :hover en CSS — anima la puerta/figura Y muestra el
+     tooltip, ver components.css) y se retira solo tras un momento. A
+     propósito NO usa UI.bindTips()/preventDefault: estos elementos deben
+     seguir navegando o abriendo el modal de logout con el mismo tap. */
+  function initNavFx() {
+    var els = $$(".navsign");
+    if (!els.length) return;
+    els.forEach(function (el) {
+      el.addEventListener("touchstart", function () {
+        el.classList.add("is-touched");
+        clearTimeout(el.__fxTimer);
+        el.__fxTimer = setTimeout(function () { el.classList.remove("is-touched"); }, 900);
+      }, { passive: true });
     });
   }
 
@@ -405,13 +437,15 @@
     UI.safe(initCart, "initCart");
     UI.safe(initApi, "initApi");
     UI.safe(initLogout, "initLogout");
+    UI.safe(initNavFx, "initNavFx");
 
     UI.safe(function () { I18N.apply(document); }, "i18n.apply");
     paintSession();
     paintNav();
+    paintFooter();
     STORE.on("session", paintSession);
 
-    window.addEventListener("route:change", paintNav);
+    window.addEventListener("route:change", function () { paintNav(); paintFooter(); });
     window.addEventListener("hashchange", paintNav);
 
     window.addEventListener("i18n:change", function () {

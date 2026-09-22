@@ -55,7 +55,7 @@ body.in-app h1, body.in-app h2, body.in-app h3, body.in-app h4 {
   letter-spacing: -0.01em;
 }
 
-::selection { background: var(--panini); color: var(--ink); }
+::selection { background: var(--panini); color: var(--ink-fixed); }
 
 :focus-visible {
   outline: 3px solid var(--neon-cyan);
@@ -72,8 +72,8 @@ body.in-app *::-webkit-scrollbar-thumb { background: var(--surface-3); border-ra
    ============================================================= */
 .skip-link {
   position: fixed; top: -120px; left: 1rem;
-  padding: .7rem 1.1rem; background: var(--panini); color: var(--ink);
-  z-index: var(--z-splash); border: 2px solid var(--ink); font-weight: 700;
+  padding: .7rem 1.1rem; background: var(--panini); color: var(--ink-fixed);
+  z-index: var(--z-splash); border: 2px solid var(--ink-fixed); font-weight: 700;
   transition: top .2s var(--ease-out);
 }
 .skip-link:focus { top: 1rem; }
@@ -97,7 +97,7 @@ body.in-app *::-webkit-scrollbar-thumb { background: var(--surface-3); border-ra
 .kicker::before {
   content: ""; width: 30px; height: 3px; background: var(--panini-deep);
 }
-body.in-app .kicker { color: var(--accent); }
+body.in-app .kicker { color: var(--accent-text); }
 body.in-app .kicker::before { background: var(--accent); height: 1px; }
 
 [hidden] { display: none !important; }

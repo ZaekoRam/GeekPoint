@@ -39,7 +39,8 @@ INSERT INTO `users` (`id`,`name`,`email`,`password_hash`,`role`,`branch_id`,`sta
   (4,'Diego Molina','gerente.mty@geekpoint.mx','$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi','manager',3,'active'),
   (5,'Paola Ríos','caja.cdmx@geekpoint.mx','$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi','cashier',1,'active'),
   (6,'Kevin Ortega','caja.gdl@geekpoint.mx','$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi','cashier',2,'active'),
-  (7,'Sofía Nava','caja.mty@geekpoint.mx','$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi','cashier',3,'active');
+  (7,'Sofía Nava','caja.mty@geekpoint.mx','$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi','cashier',3,'active'),
+  (8,'Cliente Demo','cliente@geekpoint.mx','$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi','customer',NULL,'active');
 
 -- ---------------------------------------------------------------------
 --  Categorías

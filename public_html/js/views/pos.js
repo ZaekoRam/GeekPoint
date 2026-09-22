@@ -302,43 +302,56 @@
       var k = byNum[v];
       if (k) {
         var realSample = k.sample || k;
-        rows.push({ sample: realSample, cartSample: realSample, name: k.displayName || k.name, virtual: false });
+        rows.push({ sample: realSample, cartSample: realSample, name: k.displayName || k.name, virtual: false, v: v });
       } else {
         var vName = seriesName + " " + I18N.t("prod.volume") + " " + v;
         var vSku = base + "-" + _pad2(v);
         rows.push({
           sample: _withOverrides(seriesSample, { name: vName, sku: vSku }),
-          cartSample: seriesSample, name: vName, virtual: true
+          cartSample: seriesSample, name: vName, virtual: true, v: v
         });
       }
     }
 
-    // Misma estética que "Tomos y precios" en Admin/Gerente (.pkm-branches /
-    // .pkm-branch): línea de serie + SKU, encabezado en mono/mayúsculas y la
-    // cuadrícula de filas. Aquí cada fila ES el botón — tocarla agrega ESE
-    // tomo a la venta actual (sin precio/stock editable, solo vender).
+    // Igual que la grilla principal del POS (.pos__grid / .prod): una tarjeta
+    // con portada real por tomo, no una fila de texto — reutiliza el mismo
+    // localizador de portadas que ya usa la tienda (V._productCover matchea
+    // por nombre "… Vol. N" contra Catalog.all() y devuelve la portada real
+    // de ESE tomo si existe). Cada tarjeta sigue siendo el botón: tocarla
+    // agrega ese tomo a la venta actual (misma lógica de antes, solo cambia
+    // el marcado/estética de la fila).
+    var art = EMOJI[g.category_slug] || "📦";
     var c = document.createElement("div");
     c.innerHTML =
       '<p class="muted" style="margin-bottom:.6rem">' + esc(seriesName) +
         ' · <span class="mono">' + esc(g.sku) + '</span></p>' +
       '<p class="field__label mono" style="font-size:.7rem;color:var(--faint);text-transform:uppercase;letter-spacing:.1em;margin:.6rem 0 .5rem">' +
         esc(I18N.t("pos.pickVolumeHint")) + '</p>' +
-      '<div class="pkm-branches">' + rows.map(function (r, i) {
+      '<div class="pos__grid" style="max-height:60vh">' + rows.map(function (r, i) {
         var s = r.sample;
         var out = (s.stock || 0) === 0;
         var discounted = !r.virtual && s.discount_status === "active" && Number(s.effective_price) < Number(s.price);
         var priceHTML = discounted
-          ? '<del class="muted" style="font-size:.7rem;font-weight:400">' + UI.money(s.price, true) + '</del> ' +
-              UI.money(s.effective_price, true)
+          ? '<del>' + UI.money(s.price, true) + '</del><strong>' + UI.money(s.effective_price, true) + '</strong>'
           : UI.money(s.effective_price != null ? s.effective_price : s.price, true);
-        return '<button type="button" class="pkm-branch" data-vol-idx="' + i + '"' + (out ? " disabled" : "") +
-            ' style="border:0;width:100%;text-align:left' + (out ? ";opacity:.5" : "") + '">' +
-          '<span>' + esc(r.name) +
-            '<br><small class="muted mono" style="font-size:.62rem">' + esc(s.sku) + ' · ' +
-              (out ? esc(I18N.t("pos.outOfStock")) : esc(I18N.t("col.stock").toLowerCase()) +
-                (r.virtual ? " " + esc(I18N.t("volumes.seriesStock")) : "") + ': ' + s.stock) +
-            '</small></span>' +
-          '<span class="mono" style="font-weight:700;white-space:nowrap">' + priceHTML + '</span>' +
+        r.generic = r.virtual || !s.image_url;
+        var cover = (V._productCover
+          ? V._productCover({ name: r.name, category_slug: g.category_slug, image_url: r.virtual ? "" : s.image_url })
+          : "") || "";
+        var stockLabel = out ? esc(I18N.t("pos.outOfStock"))
+          : (s.stock + " " + esc(I18N.t("col.stock").toLowerCase()) + (r.virtual ? " " + esc(I18N.t("volumes.seriesStock")) : ""));
+        return '<button type="button" class="prod' + (out ? " is-out" : "") + '" data-vol-idx="' + i + '"' + (out ? " disabled" : "") + '>' +
+          '<span class="prod__media">' +
+            (cover
+              ? '<img src="' + esc(cover) + '" alt="" loading="lazy" decoding="async" onerror="this.remove()">'
+              : '<span class="prod__art">' + art + '</span>') +
+            '<span class="prod__badge">' + stockLabel + '</span>' +
+          '</span>' +
+          '<span class="prod__body">' +
+            '<span class="prod__name">' + esc(r.name) + '</span>' +
+            '<span class="muted mono" style="font-size:.62rem">' + esc(s.sku) + '</span>' +
+            '<span class="prod__price">' + priceHTML + '</span>' +
+          '</span>' +
         '</button>';
       }).join("") + '</div>';
     UI.modal({ title: I18N.t("prod.pickVolume") + " · " + esc(seriesName), content: c, wide: true });
@@ -354,6 +367,38 @@
       // El modal NO se cierra: se puede seguir agregando varios tomos de la
       // misma serie de un tirón. Se cierra con la ✕ o el fondo, como siempre.
     });
+
+    // Portadas reales por tomo (MangaDex), igual que el modal de la tienda:
+    // las filas "virtuales" (sin ficha propia) sólo tienen la portada de
+    // SERIE repetida — aquí se piden las de cada tomo y se sustituyen en
+    // el DOM ya pintado, sin bloquear la apertura del selector.
+    if (window.Catalog && Catalog.volumeCovers) {
+      Catalog.volumeCovers(seriesName).then(function (list) {
+        if (!list.length || !c.isConnected) return;
+        var byV = {};
+        list.forEach(function (vc) { byV[String(vc.v)] = vc.url; });
+        rows.forEach(function (r, i) {
+          if (!r.generic) return;
+          var url = byV[String(r.v)];
+          if (!url) return;
+          var btn = c.querySelector('[data-vol-idx="' + i + '"]');
+          var media = btn && btn.querySelector(".prod__media");
+          if (!media) return;
+          var img = media.querySelector("img");
+          if (img) {
+            img.src = url;
+          } else {
+            var artSpan = media.querySelector(".prod__art");
+            var el = document.createElement("img");
+            el.alt = ""; el.loading = "lazy"; el.decoding = "async";
+            el.onerror = function () { el.remove(); };
+            el.src = url;
+            if (artSpan) media.replaceChild(el, artSpan);
+            else media.insertBefore(el, media.firstChild);
+          }
+        });
+      }).catch(function () {});
+    }
   }
 
   function mapProduct(p) {

@@ -1386,31 +1386,47 @@ class CatalogController extends Controller
         return trim($es);
     }
 
-    /** Catálogo desde AniList (GraphQL) — una sola petición con alias. */
+    /** Cuántas series entran en una sola petición GraphQL sin pasarse del
+     *  límite de "complejidad" que impone AniList (500 — antes no existía
+     *  o el seed era más chico; ahora una sola petición con las ~39 series
+     *  del seed pesa ~624 y AniList la rechaza con 400 "Max query
+     *  complexity..." — todo el catálogo caía a Jikan o a `local`, tanto
+     *  aquí como eventualmente en producción en cuanto expirara su caché
+     *  vieja). Se reparte el seed en lotes de este tamaño y se hace una
+     *  petición por lote — mismos campos, mismo resultado, solo repartido. */
+    const ANILIST_BATCH = 15;
+
+    /** Catálogo desde AniList (GraphQL) — un alias por serie, repartido en
+     *  lotes de ANILIST_BATCH para no exceder el límite de complejidad. */
     private function buildFromAniList()
     {
         $seed = self::seed();
-        $parts = [];
-        foreach ($seed as $i => $s) {
-            // Si la semilla fija un MAL id, se busca la serie exacta (evita spinoffs/precuelas).
-            if (!empty($s['mal'])) {
-                $selector = 'idMal: ' . (int) $s['mal'] . ', type: MANGA';
-            } else {
-                $q = str_replace('"', '\"', $s['q']);
-                $selector = 'search: "' . $q . '", type: MANGA';
+        $data = [];
+        foreach (array_chunk($seed, self::ANILIST_BATCH, true) as $chunk) {
+            $parts = [];
+            foreach ($chunk as $i => $s) {
+                // Si la semilla fija un MAL id, se busca la serie exacta (evita spinoffs/precuelas).
+                if (!empty($s['mal'])) {
+                    $selector = 'idMal: ' . (int) $s['mal'] . ', type: MANGA';
+                } else {
+                    $q = str_replace('"', '\"', $s['q']);
+                    $selector = 'search: "' . $q . '", type: MANGA';
+                }
+                $parts[] = 'm' . $i . ': Media(' . $selector . ') { ' .
+                    'id title { english romaji } coverImage { extraLarge large } ' .
+                    'description(asHtml: false) volumes averageScore ' .
+                    'staff(perPage: 1, sort: RELEVANCE) { edges { node { name { full } } } } }';
             }
-            $parts[] = 'm' . $i . ': Media(' . $selector . ') { ' .
-                'id title { english romaji } coverImage { extraLarge large } ' .
-                'description(asHtml: false) volumes averageScore ' .
-                'staff(perPage: 1, sort: RELEVANCE) { edges { node { name { full } } } } }';
-        }
-        $query = "query {\n" . implode("\n", $parts) . "\n}";
+            $query = "query {\n" . implode("\n", $parts) . "\n}";
 
-        list($body, $code) = $this->httpPost(self::ANILIST, ['query' => $query], 12);
-        if (!$body) return [];
-        $j = json_decode($body, true);
-        $data = $j['data'] ?? null;
-        if (!is_array($data)) return [];
+            list($body, ) = $this->httpPost(self::ANILIST, ['query' => $query], 12);
+            if (!$body) continue;
+            $j = json_decode($body, true);
+            if (is_array($j['data'] ?? null)) $data += $j['data'];
+            // AniList: 90 peticiones/min — un respiro entre lotes es de sobra.
+            if (count($seed) > self::ANILIST_BATCH) usleep(500000);
+        }
+        if (!$data) return [];
 
         $pool = self::branchesPool();
         $out = [];
