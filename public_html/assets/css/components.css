@@ -352,7 +352,21 @@ body.in-app .lang-toggle button.is-active {
     position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
     overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
   }
-  .navsign--enter.btn { gap: 0; padding: .5rem; }
+  /* Sin la palabra, el contorno de .btn (fondo negro, borde, sombra) se
+     queda como un cuadro suelto alrededor del pictograma — desentona con
+     el resto del topbar, que en esta anchura ya solo muestra íconos
+     sueltos (carrito, tema, idioma). Se le quita el chrome de botón y
+     queda igual que .navsign--exit: solo la placa amarilla/negra del
+     pictograma, con el padding como área de toque. */
+  .navsign--enter.btn {
+    gap: 0; padding: .3rem; background: transparent; border: 0; box-shadow: none;
+  }
+  /* Dentro de login/POS/admin, "body.in-app .topbar .btn" (más específica)
+     le vuelve a poner fondo/sombra a CUALQUIER .btn del topbar, incluido
+     este — hay que repetirlo con esa misma cadena para ganarle. */
+  body.in-app .topbar .navsign--enter.btn {
+    background: transparent; border: 0; box-shadow: none;
+  }
 }
 
 /* ---------- Botones ---------- */

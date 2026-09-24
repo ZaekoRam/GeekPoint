@@ -22,10 +22,19 @@ body.in-app [data-static-store] { display: none !important; }
      El pequeño salto de tamaño al cambiar Login ⇄ Registro no se nota:
      ocurre con la tarjeta ya encogida a un punto (.is-squashed, ver
      abajo), invisible de lo chica que queda. */
-  --auth-w: min(530px, 92vw);
+  --auth-w: min(460px, 88vw);
   position: relative;
   min-height: calc(100svh - var(--topbar-h));
   display: grid; place-items: center; padding: 2rem var(--gutter);
+}
+/* Tarjeta + personaje EN FILA: tarjeta primero (izquierda), personaje
+   después (derecha) — el orden en el DOM ya es ese (ver login.js), así
+   que una fila normal sin reordenar basta. .auth__mascot se saca del
+   flujo (position:absolute) para poder anclarla con precisión sobre las
+   esquinas — ver esa regla más abajo. */
+.auth__composition {
+  position: relative;
+  display: flex; align-items: flex-end; justify-content: center;
 }
 .auth__card {
   position: relative;
@@ -157,16 +166,96 @@ body.in-app [data-static-store] { display: none !important; }
   to   { transform: translate(0, 0); }
 }
 
-/* ---------- Espacio reservado: personaje animado ----------
-   Sin asset todavía. El personaje futuro se integra aquí: se posiciona
-   junto a la esquina de la tarjeta y reacciona a los eventos que dispara
-   login.js en `window` — "auth:closing" (empuja/cierra la tarjeta),
-   "auth:opening" (la tarjeta ya se repintó y empieza a abrirse) y
-   "auth:opened" (terminó). No se necesita tocar la animación de la
-   tarjeta para conectar el personaje: solo escuchar esos 3 eventos. */
+/* ---------- Personaje animado ----------
+   Chica-gato armada por partes (cadera -> torso -> cabeza/brazos), EXACTA
+   al HTML de referencia (personaje-animado.html): misma jerarquía, mismos
+   porcentajes de posición y mismas animaciones de vida, sin deformarla.
+   HERMANA de .auth__stage dentro de .auth__composition (no hija de
+   .auth__card) — por ahora solo está parada junto al modal, sin
+   interactuar físicamente con el pellizco. */
+/* Anclada por posición+transform (NO por deformar brazos): la caja entera
+   gira/escala como un cuerpo rígido alrededor de transform-origin, que
+   coincide con la mano derecha (76%,76%)... digo, (43.7%, 41.5%) de esta
+   caja. Esa mano queda FIJA en pantalla durante el rotate/scale (por eso
+   el ancla ahí), y como el vector mano-izquierda->mano-derecha de la
+   ilustración original ya apunta casi exacto hacia la diagonal del modal
+   (~7° de diferencia, medido con getBoundingClientRect), un solo
+   rotate+scale del CUERPO COMPLETO basta para que ambas manos lleguen
+   cerca de sus esquinas — sin tocar brazos/torso por separado. left/top
+   son px fijos calibrados contra el modal a 460px de ancho; solo son
+   válidos en el rango donde .auth-w/.auth__mascot ya están en su tope de
+   px (aprox. desde donde deja de ocultarse, ver media query de abajo). */
 .auth__mascot {
-  position: absolute; top: -45px; right: -13px; width: 96px; height: 96px;
-  pointer-events: none;
+  position: absolute; z-index: 1; pointer-events: none;
+  left: 330px; top: 275px;
+  width: 540px; aspect-ratio: 3000 / 2500;
+  transform-origin: 43.7% 41.5%;
+  transform: rotate(6.6deg) scale(2.54);
+}
+.auth__mascot img {
+  display: block; width: 100%; height: auto;
+  -webkit-user-drag: none; user-select: none;
+}
+/* Los % de cada parte son recortes 1:1 de un mismo lienzo de referencia
+   (3000x2500) expresados como porcentaje relativo a SU PADRE en esta
+   misma jerarquía — no los toques sueltos, están calculados en conjunto
+   para que las piezas encajen exactamente por su punto de unión. */
+.auth__mascot-hip {
+  position: absolute; left: 41.07%; top: 66.40%; width: 51.30%;
+  transform-origin: 50% 19%;                      /* une con el torso */
+  animation: mascotHipSway 6s ease-in-out infinite;
+}
+.auth__mascot-torso {
+  position: absolute; left: -4.68%; top: -89.64%; width: 57.57%;
+  transform-origin: 50% 85%;                      /* une con la cadera */
+  animation: mascotBreathe 4s ease-in-out infinite;
+}
+.auth__mascot-head {
+  position: absolute; left: 12.53%; top: -71.53%; width: 111.96%;
+  transform-origin: 50% 89%;                      /* une con el cuello */
+  animation: mascotHeadMove 5s ease-in-out infinite;
+}
+/* Brazo izquierdo (levantado, va DETRÁS del torso/pelo) y derecho
+   (cruzado, AL FRENTE de todo) — EXACTAMENTE la pose e idle del HTML de
+   referencia (personaje-animado.html): ángulos chicos, SIN scale(). El
+   intento anterior de "estirar" el brazo con scale() para tocar las
+   esquinas del modal deformaba el personaje de forma evidente — se quitó
+   por completo. El personaje ya no interactúa físicamente con el
+   pellizco; solo está parada junto al modal con su animación de vida
+   normal, sin deformarse. */
+.auth__mascot-arm-l {
+  position: absolute; left: -99.89%; top: -63.07%; width: 158.01%; z-index: -1;
+  transform-origin: 76% 76%;
+  animation: mascotArmL 4.4s ease-in-out infinite;
+}
+.auth__mascot-arm-r {
+  position: absolute; left: 17.61%; top: 13.21%; width: 119.98%;
+  transform-origin: 69% 47%;
+  animation: mascotArmR 3.8s ease-in-out infinite;
+}
+/* Ángulos chicos a propósito: las piezas encajan pixel a pixel en su
+   punto de unión, un giro grande se ve "despegado". */
+@keyframes mascotHipSway { 0%, 100% { transform: rotate(-.6deg); } 50% { transform: rotate(.6deg); } }
+@keyframes mascotBreathe {
+  0%, 100% { transform: translateY(0)    rotate(-.5deg) scaleY(1); }
+  50%      { transform: translateY(-3px) rotate(.5deg)  scaleY(1.012); }
+}
+@keyframes mascotHeadMove {
+  0%, 100% { transform: rotate(.8deg)  translateY(0); }
+  30%      { transform: rotate(-1.4deg) translateY(-1px); }
+  60%      { transform: rotate(1.6deg)  translateY(.5px); }
+}
+@keyframes mascotArmL { 0%, 100% { transform: rotate(-2.5deg); } 50% { transform: rotate(2deg); } }
+@keyframes mascotArmR { 0%, 100% { transform: rotate(1.8deg); } 50% { transform: rotate(-1.5deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .auth__mascot-hip, .auth__mascot-torso, .auth__mascot-head,
+  .auth__mascot-arm-l, .auth__mascot-arm-r { animation: none; }
+}
+/* Bajo ~1150px ya no hay ancho para la fila tarjeta+personaje (ahora
+   mucho más grande, hasta 420px) sin desbordar o apretar el formulario —
+   se oculta, prioridad al formulario. */
+@media (max-width: 1150px) {
+  .auth__mascot { display: none; }
 }
 
 /* ---------- App shell ---------- */

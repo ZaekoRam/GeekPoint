@@ -163,7 +163,7 @@
 
       "login.title": "Bienvenido de vuelta",
       "login.sub": "Ingresa con tu cuenta de GeekPoint POS.",
-      "login.email": "Correo", "login.password": "Contraseña", "login.submit": "Entrar",
+      "login.email": "Correo", "login.password": "Contraseña", "login.submit": "Iniciar sesión",
       "login.demo": "Cuentas de demostración (contraseña: password)",
       "login.badcreds": "Correo o contraseña incorrectos.",
       "login.noapi": "No hay conexión con la API. Revisa que el servidor PHP y MySQL estén activos.",
@@ -457,7 +457,7 @@
 
       "login.title": "Welcome back",
       "login.sub": "Sign in with your GeekPoint POS account.",
-      "login.email": "Email", "login.password": "Password", "login.submit": "Sign in",
+      "login.email": "Email", "login.password": "Password", "login.submit": "Sign in to your account",
       "login.demo": "Demo accounts (password: password)",
       "login.badcreds": "Wrong email or password.",
       "login.noapi": "No API connection. Check that the PHP server and MySQL are running.",
@@ -467,7 +467,7 @@
       "register.sub": "Create your GeekPoint customer account to buy and reserve products.",
       "register.name": "Full name", "register.email": "Email",
       "register.password": "Password", "register.confirm": "Confirm password",
-      "register.submit": "Sign up",
+      "register.submit": "Sign up for an account",
       "register.haveAccount": "Already have an account?", "register.toLogin": "Sign in",
       "register.mismatch": "Passwords don't match.",
       "register.success": "Account created. Welcome to GeekPoint!",

@@ -13,6 +13,25 @@
     { email: "cliente@geekpoint.mx", label: "Cliente" }
   ];
 
+  /* Personaje animado, armado por partes (cadera -> torso -> cabeza/brazos)
+     — mismo orden de anidado y de pintado que el diseño original: el brazo
+     izquierdo va PRIMERO (queda detrás del torso, z-index:-1 en CSS) y el
+     derecho AL FINAL (queda al frente de todo). Ver ".auth__mascot" en
+     app.css para las animaciones/posicionamiento; este HTML solo arma la
+     jerarquía, nunca cambia. */
+  var MASCOT_HTML =
+    '<div class="auth__mascot" data-mascot aria-hidden="true">' +
+      '<div class="auth__mascot-hip">' +
+        '<img src="assets/images/mascot/cadera.png" alt="">' +
+        '<div class="auth__mascot-torso">' +
+          '<img src="assets/images/mascot/torso.png" alt="">' +
+          '<div class="auth__mascot-arm-l"><img src="assets/images/mascot/brazo_izquierdo.png" alt=""></div>' +
+          '<div class="auth__mascot-head"><img src="assets/images/mascot/cabeza.png" alt=""></div>' +
+          '<div class="auth__mascot-arm-r"><img src="assets/images/mascot/brazo_derecho.png" alt=""></div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+
   function backLinkHTML() {
     return '<a href="#/" data-link class="mono" style="font-size:.72rem;letter-spacing:.1em;color:var(--muted)">← ' +
       esc(I18N.lang === "en" ? "Back to store" : "Volver a la tienda") + '</a>';
@@ -74,24 +93,34 @@
   function render() {
     return (
       '<section class="auth">' +
-        /* .auth__stage envuelve la tarjeta y mide EXACTAMENTE su tamaño real
-           (fijo en desktop, automático en móvil). Los 2 triángulos son
-           hermanos de .auth__card dentro de este stage — no hijos de la
-           tarjeta — así no heredan su transform: scale() durante el
-           pellizco y nunca cambian de tamaño/forma, solo se trasladan (ver
-           app.css ".auth__corner", reacciona solo con CSS a las clases que
-           ya pone switchTo(), sin tocar esa lógica). */
-        '<div class="auth__stage">' +
-          '<span class="auth__corner auth__corner--tl" aria-hidden="true"></span>' +
-          '<span class="auth__corner auth__corner--br" aria-hidden="true"></span>' +
-          '<form class="auth__card" data-auth-card novalidate>' +
-            /* Espacio reservado para el personaje animado que "acciona" la
-               tarjeta (aún sin asset — ver comentario en mount() y en
-               app.css ".auth__mascot"). Vacío a propósito: no es un
-               placeholder visual, es el gancho donde se insertará después. */
-            '<div class="auth__mascot" data-mascot aria-hidden="true"></div>' +
-            cardInnerHTML("login") +
-          '</form>' +
+        /* .auth__composition pone la tarjeta y el personaje EN FILA: tarjeta
+           a la izquierda, personaje a su derecha, fuera del modal (no forma
+           parte de .auth__card/.auth__fields) — así el personaje no se
+           repinta ni se mueve con el contenido del formulario, solo con sus
+           propias clases de estado (ver mount()). */
+        '<div class="auth__composition">' +
+          /* .auth__stage envuelve la tarjeta y mide EXACTAMENTE su tamaño
+             real (fijo en desktop, automático en móvil). Los 2 triángulos
+             son hermanos de .auth__card dentro de este stage — no hijos de
+             la tarjeta — así no heredan su transform: scale() durante el
+             pellizco y nunca cambian de tamaño/forma, solo se trasladan
+             (ver app.css ".auth__corner", reacciona solo con CSS a las
+             clases que ya pone switchTo(), sin tocar esa lógica). */
+          '<div class="auth__stage">' +
+            '<span class="auth__corner auth__corner--tl" aria-hidden="true"></span>' +
+            '<span class="auth__corner auth__corner--br" aria-hidden="true"></span>' +
+            '<form class="auth__card" data-auth-card novalidate>' +
+              '<div class="auth__fields" data-auth-fields>' + cardInnerHTML("login") + '</div>' +
+            '</form>' +
+          '</div>' +
+          /* El personaje es HERMANO de .auth__stage, no hijo de la tarjeta:
+             mount() le refleja is-closing/is-squashed/is-opening (las
+             mismas clases y tiempos que switchTo() ya le pone a .auth__card)
+             vía los eventos auth:* que la tarjeta dispara en `window` — así
+             "agarra" las esquinas superior-izq. e inferior-der. con sus
+             brazos EN SINCRONÍA con el pellizco, sin tocar la animación de
+             la tarjeta ni tener que medir posiciones en JS. */
+          MASCOT_HTML +
         '</div>' +
       '</section>'
     );
@@ -120,14 +149,12 @@
     /* Transición "pellizco" diagonal: las esquinas se juntan hacia el
        centro (ver el scale() uniforme en app.css) → pausa breve ya
        pellizcado → repinta → se expande otra vez hacia las esquinas
-       revelando el otro formulario. Se dispara sobre .auth__card. Hooks
-       para el futuro personaje animado — se escuchan en `window`, sin
-       acoplarlos a esta función: nada aquí necesita cambiar cuando se
-       integre.
+       revelando el otro formulario. Se dispara sobre .auth__card. Estos
+       eventos en `window` son también lo que sincroniza al personaje (ver
+       más abajo): nada aquí necesita saber que existe.
          auth:closing  { from, to }  — empieza a pellizcarse
          auth:squashed { mode: to }  — ya está pellizcado al centro; arranca
-                                        la pausa breve (aquí "engancharía"
-                                        el personaje su propio golpe/instante)
+                                        la pausa breve
          auth:opening  { mode }      — ya repintada, empieza a expandirse
          auth:opened   { mode }      — terminó de abrirse (o no hubo
                                         animación, si prefers-reduced-motion) */
@@ -135,8 +162,9 @@
 
     function paint(newMode) {
       mode = newMode;
-      card.innerHTML = cardInnerHTML(mode);
-      I18N.apply(card);
+      var fields = $("[data-auth-fields]", card);
+      fields.innerHTML = cardInnerHTML(mode);
+      I18N.apply(fields);
     }
 
     function switchTo(next) {
@@ -169,6 +197,12 @@
         setTimeout(openNext, SQUASH_PAUSE_MS);
       }, { once: true });
     }
+
+    /* El personaje por ahora queda en su pose FIJA de "agarre" (ver
+       .auth__mascot-arm-l/-r en app.css) — todavía sin animar en sync con
+       el pellizco. auth:closing/squashed/opening/opened ya se disparan en
+       `window` (arriba) para cuando se retome esa animación; no se
+       necesita ningún listener extra aquí mientras tanto. */
 
     root.addEventListener("click", function (e) {
       var sw = e.target.closest("[data-auth-switch]");
