@@ -26,6 +26,17 @@ body.in-app [data-static-store] { display: none !important; }
   position: relative;
   min-height: calc(100svh - var(--topbar-h));
   display: grid; place-items: center; padding: 2rem var(--gutter);
+  /* El personaje (ver .auth__mascot) es mucho más grande que la tarjeta a
+     propósito, para lograr el agarre real de las esquinas, y se sale del
+     viewport en pantallas normales — eso está bien, PUEDE recortarse.
+     Lo que NO puede pasar es que ese desbordamiento estire el documento y
+     genere scroll: .auth ya mide exactamente el alto disponible (min-height
+     de arriba, sin contenido en flujo que lo haga crecer, el personaje es
+     position:absolute y no cuenta para ese alto), así que recortar aquí
+     (no en .auth__composition, que es chica y taparía al personaje entero)
+     mantiene el viewport fijo sin ocultar el brazo derecho: su punto de
+     agarre cae muy adentro de esta caja, muy lejos del borde de recorte. */
+  overflow: hidden;
 }
 /* Tarjeta + personaje EN FILA: tarjeta primero (izquierda), personaje
    después (derecha) — el orden en el DOM ya es ese (ver login.js), así
@@ -35,15 +46,25 @@ body.in-app [data-static-store] { display: none !important; }
 .auth__composition {
   position: relative;
   display: flex; align-items: flex-end; justify-content: center;
+  flex-wrap: wrap;
 }
 .auth__card {
-  position: relative;
+  position: relative; z-index: 1;
   width: var(--auth-w); padding: 1.5rem 1.7rem;
   background: var(--surface); border-radius: var(--radius-lg);
   box-shadow: var(--nm-out), var(--glow-violet);
   transform-origin: center; will-change: transform, opacity;
 }
 .auth__card h1 { font-size: 1.5rem; margin-bottom: .3rem; }
+/* Botón "paso anterior" (paso 2 de Registro): reutiliza .btn/.btn--ghost
+   (fondo transparente, YA existe en components.css) + .btn--sm, anclado
+   ARRIBA A LA DERECHA junto a "← Volver a la tienda" (arriba a la
+   izquierda) con position:absolute — así no agrega una línea al
+   formulario ni agranda la tarjeta. Ver login.js stepBackButtonHTML(). */
+.auth__stepback {
+  position: absolute; top: 1.3rem; right: 1.3rem; z-index: 2;
+  margin: 0; border-radius: 999px;
+}
 .auth__sub { color: var(--muted); font-size: .86rem; margin-bottom: 1rem; line-height: 1.4; }
 .auth__switch { font-size: .82rem; color: var(--muted); text-align: center; margin-top: .6rem; }
 .auth__switch a { color: var(--accent-2-text); font-weight: 700; margin-left: .25rem; }
@@ -167,30 +188,62 @@ body.in-app [data-static-store] { display: none !important; }
 }
 
 /* ---------- Personaje animado ----------
-   Chica-gato armada por partes (cadera -> torso -> cabeza/brazos), EXACTA
-   al HTML de referencia (personaje-animado.html): misma jerarquía, mismos
-   porcentajes de posición y mismas animaciones de vida, sin deformarla.
-   HERMANA de .auth__stage dentro de .auth__composition (no hija de
-   .auth__card) — por ahora solo está parada junto al modal, sin
-   interactuar físicamente con el pellizco. */
-/* Anclada por posición+transform (NO por deformar brazos): la caja entera
-   gira/escala como un cuerpo rígido alrededor de transform-origin, que
-   coincide con la mano derecha (76%,76%)... digo, (43.7%, 41.5%) de esta
-   caja. Esa mano queda FIJA en pantalla durante el rotate/scale (por eso
-   el ancla ahí), y como el vector mano-izquierda->mano-derecha de la
-   ilustración original ya apunta casi exacto hacia la diagonal del modal
-   (~7° de diferencia, medido con getBoundingClientRect), un solo
-   rotate+scale del CUERPO COMPLETO basta para que ambas manos lleguen
-   cerca de sus esquinas — sin tocar brazos/torso por separado. left/top
-   son px fijos calibrados contra el modal a 460px de ancho; solo son
-   válidos en el rango donde .auth-w/.auth__mascot ya están en su tope de
-   px (aprox. desde donde deja de ocultarse, ver media query de abajo). */
+   Chica-gato armada por partes (cadera -> torso -> cabeza/brazos), MISMA
+   pose/proporciones que el HTML de referencia (personaje-animado.html):
+   nunca se deforma, nunca se gira como bloque, nunca se estira un brazo
+   con scale(). HERMANA de .auth__stage dentro de .auth__composition (no
+   hija de .auth__card).
+
+   AGARRE REAL POR CAPAS — el cuerpo (cadera/torso/cabeza/brazo izquierdo,
+   todavía anidados exactamente igual que siempre) queda DETRÁS de la
+   tarjeta; el brazo derecho es la ÚNICA excepción: se sacó del anidado
+   (ver MASCOT_HTML en login.js) para poder pintarse POR ENCIMA de la
+   tarjeta y cruzar visualmente sobre ella hasta la esquina inferior-
+   derecha, tal como se agarra desde el frente. El brazo levantado se
+   queda detrás, hacia la esquina superior-izquierda, como si la
+   agarrara desde atrás (la propia tarjeta lo tapa en parte — a
+   propósito, no es un error).
+
+   Por qué el brazo derecho SÍ puede separarse sin que se note "pieza
+   suelta": .auth__mascot-arm-r ahora es hijo directo de .auth__mascot
+   (no de .auth__mascot-torso), pero sigue viviendo en el MISMO marco de
+   referencia en % que la cadera (mismo padre), así que su posición de
+   abajo es la equivalente ya "aplanada" de cadera->torso->brazo (mismas
+   matemáticas de porcentaje anidado, resueltas a mano) — visualmente cae
+   exactamente en el mismo sitio de siempre, solo cambia de capa.
+
+   z-index en juego (de atrás hacia adelante):
+     .auth__mascot-hip (-1, cuerpo completo) < .auth__card (1) <
+     .auth__corner (2) < .auth__mascot-arm-r (3) */
 .auth__mascot {
-  position: absolute; z-index: 1; pointer-events: none;
-  left: 330px; top: 275px;
-  width: 540px; aspect-ratio: 3000 / 2500;
-  transform-origin: 43.7% 41.5%;
-  transform: rotate(6.6deg) scale(2.54);
+  position: absolute; left: -39.2%; top: -12.76%; pointer-events: none;
+  /* Tamaño FIJO (no en vw): la tarjeta también es ancho fijo (460px) por
+     encima de 523px de viewport (ver --auth-w), así que un tamaño fijo
+     aquí es lo que mantiene el agarre pixel-preciso y la presencia visual
+     ESTABLES sin importar el ancho de pantalla — un tamaño en vw se
+     encogería/crecería constantemente respecto a una tarjeta que NO se
+     mueve, rompiendo el ajuste y "desinflando" al personaje cada vez que
+     la ventana se achica. Por eso el único límite es el aviso de abajo:
+     una red de seguridad para anchos absurdamente angostos (por debajo
+     de los 900px donde igual se oculta), nunca un encogimiento gradual.
+     1215px = 1350px - 10% (ligera reducción pedida, manteniendo el agarre;
+     ver .auth overflow:hidden arriba: lo que no quepa se recorta, no
+     empuja la página). */
+  width: min(1215px, 160vw); aspect-ratio: 3000 / 2500;
+}
+/* Cada modo del formulario (login / paso 1 de registro / paso 2 de
+   registro) tiene una cantidad de campos distinta y por lo tanto una
+   ALTURA distinta de tarjeta (alto automático, ver .auth__card). Como la
+   posición del personaje es en % de ese mismo alto (composition = tamaño
+   real de la tarjeta en cada momento), cada modo necesita su propio
+   desplazamiento vertical para que la mano derecha siga cayendo justo en
+   la esquina inferior-derecha — login.js pone data-auth-mode en
+   .auth__composition, sin tocar el pellizco ni su timing. */
+.auth__composition[data-auth-mode="register"] .auth__mascot {
+  top: -35.42%;   /* paso 1: nombre + correo (tarjeta corta) */
+}
+.auth__composition[data-auth-mode="register2"] .auth__mascot {
+  top: -35.42%;   /* paso 2: contraseña + confirmar (el botón "paso anterior" es position:absolute, no suma alto) */
 }
 .auth__mascot img {
   display: block; width: 100%; height: auto;
@@ -202,6 +255,7 @@ body.in-app [data-static-store] { display: none !important; }
    para que las piezas encajen exactamente por su punto de unión. */
 .auth__mascot-hip {
   position: absolute; left: 41.07%; top: 66.40%; width: 51.30%;
+  z-index: -1;                                    /* cuerpo: detrás de la tarjeta */
   transform-origin: 50% 19%;                      /* une con el torso */
   animation: mascotHipSway 6s ease-in-out infinite;
 }
@@ -215,23 +269,68 @@ body.in-app [data-static-store] { display: none !important; }
   transform-origin: 50% 89%;                      /* une con el cuello */
   animation: mascotHeadMove 5s ease-in-out infinite;
 }
-/* Brazo izquierdo (levantado, va DETRÁS del torso/pelo) y derecho
-   (cruzado, AL FRENTE de todo) — EXACTAMENTE la pose e idle del HTML de
-   referencia (personaje-animado.html): ángulos chicos, SIN scale(). El
-   intento anterior de "estirar" el brazo con scale() para tocar las
-   esquinas del modal deformaba el personaje de forma evidente — se quitó
-   por completo. El personaje ya no interactúa físicamente con el
-   pellizco; solo está parada junto al modal con su animación de vida
-   normal, sin deformarse. */
+/* Brazo izquierdo (SOLO brazo, sin dedos — brazo_izquierdo_arm.png, ver
+   MASCOT_HTML en login.js): sigue anidado en el torso igual que siempre
+   (detrás del torso/pelo, z-index:-1 LOCAL dentro de la cadera — sin
+   relación con el z-index:-1 de la cadera de arriba, son capas
+   distintas). Los números son los de siempre RECALCULADOS para el nuevo
+   recorte (más angosto de alto al faltarle los dedos: 995px en vez de
+   1188px de la imagen original) — mismo left/ancho por pixel-de-origen
+   (el recorte no tocó los bordes izq/der), pero top y transform-origin
+   se corrieron hacia abajo lo que ocupaban los dedos, para que el brazo
+   SIGA RENDERIZANDO EXACTAMENTE EN EL MISMO SITIO que antes de separarlo. */
 .auth__mascot-arm-l {
-  position: absolute; left: -99.89%; top: -63.07%; width: 158.01%; z-index: -1;
-  transform-origin: 76% 76%;
+  position: absolute; left: -99.89%; top: -45.12%; width: 159.25%; z-index: -1;
+  transform-origin: 75.4% 71.35%;
   animation: mascotArmL 4.4s ease-in-out infinite;
 }
+/* Brazo derecho: posición EQUIVALENTE aplanada de cadera->torso->brazo
+   (mismo resultado visual que antes de sacarlo del anidado), pero ahora
+   hijo directo de .auth__mascot con su propio z-index por encima de la
+   tarjeta — ver la nota de capas más arriba. */
 .auth__mascot-arm-r {
-  position: absolute; left: 17.61%; top: 13.21%; width: 119.98%;
+  position: absolute; left: 43.87%; top: 41.95%; width: 35.42%;
+  z-index: 3;                                     /* por encima de la tarjeta: agarre visible */
   transform-origin: 69% 47%;
   animation: mascotArmR 3.8s ease-in-out infinite;
+}
+/* Dedos de la mano izquierda (brazo_izquierdo_dedos.png, el recorte
+   complementario de arriba): hijo directo de .auth__mascot (como el
+   brazo derecho) para poder pintarse POR ENCIMA de la tarjeta — el
+   agarre visible de la esquina superior-izquierda, desde el FRENTE,
+   mientras el brazo (arriba) se queda detrás.
+   Posición: como este elemento cuelga directo de .auth__mascot (no del
+   torso), un cálculo puramente geométrico a partir de las coordenadas
+   del recorte original no bastó para hacerlo encajar (dejaba un hueco
+   visible entre la mano y el brazo) — el left/top de abajo están
+   AJUSTADOS A OJO comparando ambos recortes en vivo en el navegador
+   hasta que la muñeca de los dedos conecta con la muñeca del brazo sin
+   hueco.
+   transform-origin MUY LEJOS de su propio cuadro (>100%) A PROPÓSITO:
+   es el MISMO punto absoluto en pantalla que usa el brazo como pivote
+   (el hombro, 75.4%/71.35% del cuadro del brazo), convertido a fracción
+   del cuadro —mucho más chico— de los dedos. Necesario para que ambas
+   piezas giren como una sola pieza rígida sin que el puño gire sobre sí
+   mismo. Si cambias left/top/width de esta regla o de
+   .auth__mascot-arm-l, este número hay que RECALCULARLO (botón
+   "Calcular pivote rígido" en mascot-debug.html).
+   SIN "animation" a propósito — a diferencia de todas las demás partes,
+   estos dedos NO tienen su propia animación CSS. Los gira JS en vivo
+   (ver syncHandRotation() en login.js): el brazo hereda gratis el
+   balanceo de la cadera Y del torso por estar anidado dentro de ambos
+   (cadera->torso->brazo), pero los dedos son hermanos de la cadera (no
+   están anidados, por la capa — ver notas de arriba), así que una
+   animación CSS propia —aunque fuera "igual" a la del brazo— solo
+   replica el giro PROPIO del brazo, nunca el que además le suman la
+   cadera y el torso: por eso se veían despegar en ciertos puntos del
+   ciclo, no por un problema de tiempo entre animaciones. syncHandRotation()
+   lee en cada frame cuánto están rotados cadera+torso+brazo
+   (getComputedStyle) y le aplica la SUMA a los dedos, así siempre giran
+   EXACTO lo mismo que el brazo sin importar de dónde venga ese giro. */
+.auth__mascot-hand-l {
+  position: absolute; left: 8.4%; top: 17.3%; width: 8.2%;
+  z-index: 3;                                     /* por encima de la tarjeta: agarre visible */
+  transform-origin: 441.9% 260.9%;
 }
 /* Ángulos chicos a propósito: las piezas encajan pixel a pixel en su
    punto de unión, un giro grande se ve "despegado". */
@@ -249,12 +348,11 @@ body.in-app [data-static-store] { display: none !important; }
 @keyframes mascotArmR { 0%, 100% { transform: rotate(1.8deg); } 50% { transform: rotate(-1.5deg); } }
 @media (prefers-reduced-motion: reduce) {
   .auth__mascot-hip, .auth__mascot-torso, .auth__mascot-head,
-  .auth__mascot-arm-l, .auth__mascot-arm-r { animation: none; }
+  .auth__mascot-arm-l, .auth__mascot-arm-r, .auth__mascot-hand-l { animation: none; }
 }
-/* Bajo ~1150px ya no hay ancho para la fila tarjeta+personaje (ahora
-   mucho más grande, hasta 420px) sin desbordar o apretar el formulario —
-   se oculta, prioridad al formulario. */
-@media (max-width: 1150px) {
+/* Bajo ~900px ya no hay ancho cómodo para la fila tarjeta+personaje sin
+   desbordar o apretar el formulario — se oculta, prioridad al formulario. */
+@media (max-width: 900px) {
   .auth__mascot { display: none; }
 }
 

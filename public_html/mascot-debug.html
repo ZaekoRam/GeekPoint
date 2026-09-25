@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mascot debug — solo personaje, sin animación</title>
+<!-- Mismas hojas que index.html: así la tarjeta de referencia (para ver
+     si el brazo llega a su esquina) se ve IDÉNTICA a la real, sin tener
+     que reinventar sus estilos aquí. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Bangers&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" />
+<link rel="stylesheet" href="assets/css/tokens.css" />
+<link rel="stylesheet" href="assets/css/base.css" />
+<link rel="stylesheet" href="assets/css/components.css" />
+<link rel="stylesheet" href="assets/css/app.css" />
+<style>
+  :root { --panel-w: 340px; }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; min-height: 100%;
+    background: #eef1f6; font-family: system-ui, sans-serif; color: #14151d;
+  }
+  /* flex-direction explícito: base.css (enlazado arriba, para que la
+     tarjeta de referencia se vea real) le pone flex-direction:column a
+     body para el layout del sitio — sin este override el panel se
+     apilaba debajo del escenario en vez de al lado. */
+  body { display: flex; flex-direction: row; }
+
+  /* ---------- Escenario: personaje + tarjeta de referencia ---------- */
+  .stage {
+    flex: 1; min-width: 0;
+    display: flex; align-items: center; justify-content: center;
+    padding: 2rem; overflow: auto;
+  }
+  /* --auth-w normalmente sale de ".auth" (no la usamos aquí, es solo la
+     tarjeta de referencia) — se fija directo para que la tarjeta mida
+     los mismos 460px reales. */
+  #debug-card { width: 460px; }
+  #wrap { z-index: 0; }
+  /* position/left/top/width los pone JS (fieldset "Personaje completo",
+     mismo sistema que ya usa left/top/width de dedos/brazo) — arranca
+     con los valores REALES que están hoy en producción para
+     .auth__mascot, así el punto de partida ya es fiel al sitio. */
+  .mascot {
+    position: absolute;
+    aspect-ratio: 3000 / 2500;
+    pointer-events: none;
+  }
+  .mascot img {
+    display: block; width: 100%; height: auto;
+    -webkit-user-drag: none; user-select: none;
+  }
+  /* Por defecto NINGÚN .mascot-* lleva "animation": pose FIJA para poder
+     ver y ajustar posiciones sin que el balanceo estorbe. El checkbox
+     "Animar" de abajo agrega la clase .is-animating a .mascot, que es lo
+     único que activa estas reglas — mismos keyframes, duraciones y curva
+     que app.css (copiados tal cual), para reproducir EXACTAMENTE la
+     animación de GeekPoint. --anim-speed (1 = normal) se usa en
+     animation-duration vía calc() para poder ponerla en cámara lenta. */
+  .mascot { --anim-speed: 1; }
+  .mascot.is-animating .mascot-hip      { animation: mascotHipSway   calc(6s   / var(--anim-speed)) ease-in-out infinite; }
+  .mascot.is-animating .mascot-torso    { animation: mascotBreathe   calc(4s   / var(--anim-speed)) ease-in-out infinite; }
+  .mascot.is-animating .mascot-head     { animation: mascotHeadMove  calc(5s   / var(--anim-speed)) ease-in-out infinite; }
+  .mascot.is-animating .mascot-arm-l    { animation: mascotArmL      calc(4.4s / var(--anim-speed)) ease-in-out infinite; }
+  .mascot.is-animating .mascot-arm-r    { animation: mascotArmR      calc(3.8s / var(--anim-speed)) ease-in-out infinite; }
+  /* .mascot-hand-l NO lleva "animation": se sincroniza por JS (ver
+     syncHandRotation() más abajo), igual que en producción — el brazo
+     hereda el balanceo de cadera+torso por estar anidado, los dedos no,
+     así que una animación CSS propia no bastaba (se veían despegar). */
+  @keyframes mascotHipSway   { 0%, 100% { transform: rotate(-.6deg); } 50% { transform: rotate(.6deg); } }
+  @keyframes mascotBreathe   {
+    0%, 100% { transform: translateY(0)    rotate(-.5deg) scaleY(1); }
+    50%      { transform: translateY(-3px) rotate(.5deg)  scaleY(1.012); }
+  }
+  @keyframes mascotHeadMove  {
+    0%, 100% { transform: rotate(.8deg)  translateY(0); }
+    30%      { transform: rotate(-1.4deg) translateY(-1px); }
+    60%      { transform: rotate(1.6deg)  translateY(.5px); }
+  }
+  @keyframes mascotArmL { 0%, 100% { transform: rotate(-2.5deg); } 50% { transform: rotate(2deg); } }
+  @keyframes mascotArmR { 0%, 100% { transform: rotate(1.8deg);  } 50% { transform: rotate(-1.5deg); } }
+
+  /* Mismo orden de capas que produción (app.css): cuerpo (cadera, con
+     todo lo anidado adentro — torso/cabeza/brazo-izq) DETRÁS de la
+     tarjeta; brazo derecho y dedos DELANTE. La tarjeta real (enlazada
+     arriba) trae z-index:1 en .auth__card y z-index:2 en .auth__corner
+     — por eso el cuerpo va en -1 (detrás de ambas) y brazo-derecho/dedos
+     en 3 (delante de ambas). */
+  .mascot-hip {
+    position: absolute; left: 41.07%; top: 66.40%; width: 51.30%;
+    z-index: -1;
+    transform-origin: 50% 19%;
+    outline: 1px dashed rgba(0,0,0,.15);
+  }
+  .mascot-torso {
+    position: absolute; left: -4.68%; top: -89.64%; width: 57.57%;
+    transform-origin: 50% 85%;
+    outline: 1px dashed rgba(0,0,0,.15);
+  }
+  .mascot-head {
+    position: absolute; left: 12.53%; top: -71.53%; width: 111.96%;
+    transform-origin: 50% 89%;
+    outline: 1px dashed rgba(0,0,0,.15);
+  }
+  .mascot-arm-l {
+    position: absolute; z-index: -1;
+    outline: 2px dashed rgba(220,40,40,.55);
+  }
+  .mascot-arm-r {
+    position: absolute; left: 43.87%; top: 41.95%; width: 35.42%;
+    transform-origin: 69% 47%; z-index: 3;
+    outline: 1px dashed rgba(0,0,0,.15);
+  }
+  .mascot-hand-l {
+    position: absolute; z-index: 3;
+    outline: 2px dashed rgba(20,150,60,.65);
+  }
+  .origin-dot {
+    position: absolute; width: 10px; height: 10px; margin: -5px 0 0 -5px;
+    border-radius: 50%; background: #16b6cc; border: 2px solid #05060b;
+    pointer-events: none;
+  }
+
+  /* ---------- Panel de controles ---------- */
+  .panel {
+    width: var(--panel-w); flex: none; background: #fff;
+    border-left: 1px solid #d8dce6; padding: 1rem; overflow-y: auto;
+    font-size: 13px;
+  }
+  .panel h2 { font-size: 15px; margin: 0 0 .3rem; }
+  .panel p.hint { color: #666; margin: 0 0 1rem; line-height: 1.4; }
+  fieldset {
+    border: 1px solid #d8dce6; border-radius: 8px; margin: 0 0 1rem; padding: .6rem .7rem .8rem;
+  }
+  fieldset legend { font-weight: 700; padding: 0 .3rem; font-size: 12.5px; }
+  .row { display: flex; align-items: center; gap: .5rem; margin: .4rem 0; }
+  .row label { width: 78px; flex: none; color: #333; }
+  .row input[type="range"] { flex: 1; min-width: 0; }
+  .row input[type="number"] {
+    width: 70px; flex: none; padding: .15rem .3rem; font-family: monospace; font-size: 12px;
+  }
+  .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: .35rem; vertical-align: -1px; }
+  .out {
+    margin-top: .6rem; padding: .6rem; background: #f4f6fa; border-radius: 6px;
+    font-family: monospace; font-size: 11.5px; white-space: pre-wrap; line-height: 1.5;
+  }
+  button {
+    font: inherit; padding: .4rem .7rem; border-radius: 6px; border: 1px solid #ccc;
+    background: #fff; cursor: pointer; margin-right: .4rem;
+  }
+  button:hover { background: #f0f0f0; }
+  .toggle { display: flex; align-items: center; gap: .4rem; margin: .5rem 0 0; }
+</style>
+</head>
+<body class="in-app">
+
+  <div class="stage">
+    <div class="auth__composition" id="wrap">
+      <!-- Tarjeta de referencia REAL (mismas clases/CSS que el sitio) —
+           solo para ver si el brazo llega a su esquina; no es funcional. -->
+      <div class="auth__stage">
+        <span class="auth__corner auth__corner--tl" aria-hidden="true"></span>
+        <span class="auth__corner auth__corner--br" aria-hidden="true"></span>
+        <form class="auth__card" id="debug-card" novalidate onsubmit="return false">
+          <div id="debug-card-fields"></div>
+        </form>
+      </div>
+      <div class="mascot" id="mascot">
+      <div class="mascot-hip" id="p-hip">
+        <img src="assets/images/mascot/cadera.png" alt="">
+        <div class="mascot-torso" id="p-torso">
+          <img src="assets/images/mascot/torso.png" alt="">
+          <div class="mascot-arm-l" id="p-arm-l">
+            <img src="assets/images/mascot/brazo_izquierdo_arm.png" alt="">
+          </div>
+          <div class="mascot-head" id="p-head">
+            <img src="assets/images/mascot/cabeza.png" alt="">
+          </div>
+        </div>
+      </div>
+      <div class="mascot-arm-r" id="p-arm-r">
+        <img src="assets/images/mascot/brazo_derecho.png" alt="">
+      </div>
+      <div class="mascot-hand-l" id="p-hand-l">
+        <img src="assets/images/mascot/brazo_izquierdo_dedos.png" alt="">
+      </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Mascot debug</h2>
+    <p class="hint">Con la tarjeta real de referencia (mismos estilos que GeekPoint) para ver si el personaje llega a sus esquinas. Mueve los controles y copia los valores de abajo para pasármelos.</p>
+
+    <fieldset id="fs-mode">
+      <legend>🪪 Tarjeta de referencia</legend>
+      <div class="row"><label>Modo</label>
+        <select id="card-mode" style="flex:1;padding:.25rem;">
+          <option value="login">Login</option>
+          <option value="register" selected>Registro — paso 1</option>
+          <option value="register2">Registro — paso 2</option>
+        </select>
+      </div>
+      <p class="hint" style="margin:.3rem 0 0">El alto de la tarjeta cambia según el paso, igual que en el sitio real — así ves si la esquina inferior-derecha también se sigue alcanzando en cada uno.</p>
+    </fieldset>
+
+    <fieldset id="fs-mascot">
+      <legend>🧍 Personaje completo (posición general)</legend>
+      <div class="row"><label>left %</label><input type="range" data-m="left" min="-100" max="20" step="0.1" value="-39.2"><input type="number" data-m="left" step="0.1" value="-39.2"></div>
+      <div class="row"><label>top %</label><input type="range" data-m="top" min="-100" max="20" step="0.1" value="-35.42"><input type="number" data-m="top" step="0.1" value="-35.42"></div>
+      <div class="row"><label>ancho px</label><input type="range" data-m="width" min="400" max="2000" step="1" value="1215"><input type="number" data-m="width" step="1" value="1215"></div>
+      <p class="hint" style="margin:.3rem 0 0">left/top son % del tamaño de LA TARJETA (igual que en app.css) — mueven al personaje entero (con dedos y brazo adentro) respecto a ella. Si mueves esto, la animación se re-sincroniza sola, no se rompe.</p>
+    </fieldset>
+
+    <fieldset id="fs-zoom">
+      <legend>🔍 Zoom (mano izquierda)</legend>
+      <div class="row"><label>Zoom</label><input type="range" id="zoom-range" min="1" max="8" step="0.1" value="1"><input type="number" id="zoom-number" min="1" max="8" step="0.1" value="1"></div>
+      <div class="toggle" style="margin-top:.3rem">
+        <input type="checkbox" id="zoom-follow" checked>
+        <label for="zoom-follow">El zoom sigue a la mano al moverla</label>
+      </div>
+      <button id="btn-zoom-hand" style="margin-top:.5rem">Centrar y acercar a la mano</button>
+      <button id="btn-zoom-reset" style="margin-top:.5rem">Quitar zoom</button>
+    </fieldset>
+
+    <fieldset id="fs-anim">
+      <legend>▶️ Animación (igual que GeekPoint)</legend>
+      <div class="toggle">
+        <input type="checkbox" id="anim-on">
+        <label for="anim-on">Animar (mismos keyframes/duración que el sitio real)</label>
+      </div>
+      <div class="row" style="margin-top:.5rem"><label>Velocidad</label><input type="range" id="anim-speed-range" min="0.05" max="2" step="0.05" value="1"><input type="number" id="anim-speed-number" min="0.05" max="2" step="0.05" value="1"></div>
+      <p class="hint" style="margin:.4rem 0 0">Baja la velocidad (ej. 0.1) para ver en cámara lenta si la mano y el brazo se separan durante el balanceo.</p>
+    </fieldset>
+
+    <div class="toggle">
+      <input type="checkbox" id="toggle-outlines" checked>
+      <label for="toggle-outlines">Mostrar contornos (rojo=brazo, verde=dedos)</label>
+    </div>
+    <div class="toggle">
+      <input type="checkbox" id="toggle-origins">
+      <label for="toggle-origins">Mostrar puntos de pivote (transform-origin)</label>
+    </div>
+
+    <fieldset id="fs-hand-l">
+      <legend><span class="swatch" style="background:#149c3c"></span>Dedos (hand-l)</legend>
+      <div class="row"><label>left %</label><input type="range" data-t="hand-l" data-p="left" min="-20" max="40" step="0.1" value="8.4"><input type="number" data-t="hand-l" data-p="left" step="0.1" value="8.4"></div>
+      <div class="row"><label>top %</label><input type="range" data-t="hand-l" data-p="top" min="-20" max="40" step="0.1" value="17.3"><input type="number" data-t="hand-l" data-p="top" step="0.1" value="17.3"></div>
+      <div class="row"><label>width %</label><input type="range" data-t="hand-l" data-p="width" min="1" max="30" step="0.1" value="8.2"><input type="number" data-t="hand-l" data-p="width" step="0.1" value="8.2"></div>
+      <div class="row"><label>origin X %</label><input type="range" data-t="hand-l" data-p="ox" min="-100" max="600" step="1" value="441.9"><input type="number" data-t="hand-l" data-p="ox" step="1" value="441.9"></div>
+      <div class="row"><label>origin Y %</label><input type="range" data-t="hand-l" data-p="oy" min="-100" max="600" step="1" value="260.9"><input type="number" data-t="hand-l" data-p="oy" step="1" value="260.9"></div>
+    </fieldset>
+
+    <fieldset id="fs-arm-l">
+      <legend><span class="swatch" style="background:#dc2828"></span>Brazo (arm-l)</legend>
+      <div class="row"><label>left %</label><input type="range" data-t="arm-l" data-p="left" min="-150" max="20" step="0.1" value="-99.89"><input type="number" data-t="arm-l" data-p="left" step="0.1" value="-99.89"></div>
+      <div class="row"><label>top %</label><input type="range" data-t="arm-l" data-p="top" min="-150" max="20" step="0.1" value="-45.12"><input type="number" data-t="arm-l" data-p="top" step="0.1" value="-45.12"></div>
+      <div class="row"><label>width %</label><input type="range" data-t="arm-l" data-p="width" min="50" max="250" step="0.1" value="159.25"><input type="number" data-t="arm-l" data-p="width" step="0.1" value="159.25"></div>
+      <div class="row"><label>origin X %</label><input type="range" data-t="arm-l" data-p="ox" min="-100" max="200" step="1" value="75.4"><input type="number" data-t="arm-l" data-p="ox" step="1" value="75.4"></div>
+      <div class="row"><label>origin Y %</label><input type="range" data-t="arm-l" data-p="oy" min="-100" max="200" step="1" value="71.35"><input type="number" data-t="arm-l" data-p="oy" step="1" value="71.35"></div>
+    </fieldset>
+
+    <button id="btn-rigid-pivot">🔗 Calcular pivote rígido de los dedos</button>
+    <p class="hint" style="margin:.3rem 0 1rem">Pone el origin de los dedos en el MISMO punto absoluto que usa el brazo (el hombro), para que ambas piezas giren como una sola pieza rígida sin que el puño gire sobre sí mismo. Vuelve a darle click si mueves left/top/width de cualquiera de las dos.</p>
+
+    <button id="btn-reset">Restaurar valores actuales</button>
+    <div class="out" id="out"></div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+
+  var DEFAULTS = {
+    "hand-l": { left: 8.4, top: 17.3, width: 8.2, ox: 441.9, oy: 260.9 },
+    "arm-l":  { left: -99.89, top: -45.12, width: 159.25, ox: 75.4, oy: 71.35 }
+  };
+  var state = JSON.parse(JSON.stringify(DEFAULTS));
+
+  /* ---------- Tarjeta de referencia: mismo contenido que cada paso real
+     (ver cardInnerHTML() en login.js), simplificado — solo hace falta
+     que mida lo mismo, no que funcione. ---------- */
+  var CARD_HTML = {
+    login:
+      '<a href="#" class="mono" style="font-size:.72rem;letter-spacing:.1em;color:var(--muted)">← Volver a la tienda</a>' +
+      '<h1 style="margin-top:.6rem">Bienvenido de vuelta</h1>' +
+      '<p class="auth__sub">Acceso POS / Personal — Ingresa con tu cuenta de GeekPoint POS.</p>' +
+      '<div class="field"><label>Correo</label><input class="input" type="email" disabled /></div>' +
+      '<div class="field"><label>Contraseña</label><input class="input" type="password" disabled /></div>' +
+      '<button class="btn btn--neon btn--block btn--lg" type="button">Iniciar sesión</button>' +
+      '<p class="auth__switch">¿No tienes cuenta? <a href="#">Regístrate</a></p>' +
+      '<div class="auth__demo"><p>Cuentas de demostración (contraseña: password)</p>' +
+      '<div class="demo-row">' +
+        '<button type="button" class="demo-chip">Administrador</button>' +
+        '<button type="button" class="demo-chip">Gerente CDMX</button>' +
+        '<button type="button" class="demo-chip">Cajero CDMX</button>' +
+        '<button type="button" class="demo-chip">Cliente</button>' +
+      '</div></div>',
+    register:
+      '<a href="#" class="mono" style="font-size:.72rem;letter-spacing:.1em;color:var(--muted)">← Volver a la tienda</a>' +
+      '<h1 style="margin-top:.6rem">Registrarse</h1>' +
+      '<p class="auth__sub">Crea tu cuenta de cliente GeekPoint para comprar y apartar productos.</p>' +
+      '<div class="field"><label>Nombre completo</label><input class="input" disabled /></div>' +
+      '<div class="field"><label>Correo</label><input class="input" type="email" disabled /></div>' +
+      '<button class="btn btn--neon btn--block btn--lg" type="button">Continuar</button>' +
+      '<p class="auth__switch">¿Ya tienes cuenta? <a href="#">Inicia sesión</a></p>',
+    register2:
+      '<a href="#" class="mono" style="font-size:.72rem;letter-spacing:.1em;color:var(--muted)">← Volver a la tienda</a>' +
+      '<button type="button" class="btn btn--ghost btn--sm auth__stepback">Paso anterior</button>' +
+      '<h1 style="margin-top:.6rem">Registrarse</h1>' +
+      '<p class="auth__sub">Crea tu cuenta de cliente GeekPoint para comprar y apartar productos.</p>' +
+      '<div class="field"><label>Contraseña</label><input class="input" type="password" disabled /></div>' +
+      '<div class="field"><label>Confirmar contraseña</label><input class="input" type="password" disabled /></div>' +
+      '<button class="btn btn--neon btn--block btn--lg" type="button">Registrarse</button>' +
+      '<p class="auth__switch">¿Ya tienes cuenta? <a href="#">Inicia sesión</a></p>'
+  };
+  var wrapEl = document.getElementById("wrap");
+  var cardModeSel = document.getElementById("card-mode");
+  function applyCardMode() {
+    document.getElementById("debug-card-fields").innerHTML = CARD_HTML[cardModeSel.value];
+    wrapEl.setAttribute("data-auth-mode", cardModeSel.value);
+    /* El alto de la tarjeta cambia con el modo, y eso puede correr al
+       personaje (su "top" es % de ese alto) — si la animación está
+       prendida, se re-mide sola para no desarmarse. */
+    recaptureRestIfAnimating();
+  }
+  cardModeSel.addEventListener("change", applyCardMode);
+  applyCardMode();
+
+  var els = {
+    "hand-l": document.getElementById("p-hand-l"),
+    "arm-l": document.getElementById("p-arm-l")
+  };
+  var origins = {
+    "hand-l": null,
+    "arm-l": null
+  };
+
+  function ensureOriginDot(target) {
+    if (origins[target]) return origins[target];
+    var dot = document.createElement("div");
+    dot.className = "origin-dot";
+    dot.style.display = "none";
+    els[target].appendChild(dot);
+    origins[target] = dot;
+    return dot;
+  }
+  ensureOriginDot("hand-l");
+  ensureOriginDot("arm-l");
+
+  function apply(target) {
+    var s = state[target];
+    var el = els[target];
+    el.style.left = s.left + "%";
+    el.style.top = s.top + "%";
+    el.style.width = s.width + "%";
+    el.style.transformOrigin = s.ox + "% " + s.oy + "%";
+    var dot = origins[target];
+    dot.style.left = s.ox + "%";
+    dot.style.top = s.oy + "%";
+  }
+
+  function syncInputs(target) {
+    var s = state[target];
+    document.querySelectorAll('[data-t="' + target + '"]').forEach(function (input) {
+      var p = input.getAttribute("data-p");
+      input.value = s[p];
+    });
+  }
+
+  /* ---------- Personaje completo: posición/tamaño general ----------
+     Mismas left/top que ".auth__mascot" en app.css hoy — mueven al
+     personaje ENTERO (dedos y brazo se mueven con él, porque están dentro). */
+  /* top: -35.42% es el valor real que usa producción en modo Registro
+     (distinto del de Login, -12.76% — la tarjeta mide distinto de alto
+     en cada paso, ver [data-auth-mode] en app.css). Como esta página
+     abre por defecto en "Registro — paso 1", el punto de partida usa
+     ESE valor para que ya arranque fiel a como se ve ahí. */
+  var MASCOT_DEFAULTS = { left: -39.2, top: -35.42, width: 1215 };
+  var mascotPos = JSON.parse(JSON.stringify(MASCOT_DEFAULTS));
+  var mascotEl = document.getElementById("mascot");
+
+  function applyMascotPos() {
+    mascotEl.style.left = mascotPos.left + "%";
+    mascotEl.style.top = mascotPos.top + "%";
+    mascotEl.style.width = mascotPos.width + "px";
+  }
+  function syncMascotInputs() {
+    document.querySelectorAll("[data-m]").forEach(function (input) {
+      input.value = mascotPos[input.getAttribute("data-m")];
+    });
+  }
+  document.querySelectorAll("input[data-m]").forEach(function (input) {
+    input.addEventListener("input", function () {
+      var p = input.getAttribute("data-m");
+      var v = parseFloat(input.value);
+      if (isNaN(v)) return;
+      mascotPos[p] = v;
+      applyMascotPos();
+      syncMascotInputs();
+      printOut();
+      followZoomToHand();
+      recaptureRestIfAnimating();
+    });
+  });
+  applyMascotPos();
+
+  function printOut() {
+    var out = document.getElementById("out");
+    function block(name, s) {
+      return "." + name + " {\n" +
+        "  left: " + s.left + "%; top: " + s.top + "%; width: " + s.width + "%;\n" +
+        "  transform-origin: " + s.ox + "% " + s.oy + "%;\n}";
+    }
+    out.textContent =
+      ".auth__mascot { left: " + mascotPos.left + "%; top: " + mascotPos.top + "%; width: " + mascotPos.width + "px; }\n\n" +
+      block("auth__mascot-hand-l", state["hand-l"]) + "\n\n" +
+      block("auth__mascot-arm-l (solo left/top/width/transform-origin)", state["arm-l"]);
+  }
+
+  document.querySelectorAll("input[data-t]").forEach(function (input) {
+    input.addEventListener("input", function () {
+      var t = input.getAttribute("data-t");
+      var p = input.getAttribute("data-p");
+      var v = parseFloat(input.value);
+      if (isNaN(v)) return;
+      state[t][p] = v;
+      apply(t);
+      syncInputs(t);
+      printOut();
+      if (t === "hand-l") followZoomToHand();
+      recaptureRestIfAnimating();
+    });
+  });
+
+  /* ---------- Zoom: acerca la vista a la mano izquierda ----------
+     Escala .mascot entero con transform:scale() y ancla el
+     transform-origin en el CENTRO de la mano (calculado en % del propio
+     .mascot, mismo sistema que left/top de hand-l) — así, al acercar, la
+     mano queda centrada en pantalla en vez de salirse hacia una esquina. */
+  var zoomRange = document.getElementById("zoom-range");
+  var zoomNumber = document.getElementById("zoom-number");
+  var zoomFollow = document.getElementById("zoom-follow");
+
+  function handCenter() {
+    var s = state["hand-l"];
+    var cx = s.left + s.width / 2;
+    var cy = s.top + (s.width * (268 / 246) / 0.83333) / 2;
+    return { x: cx, y: cy };
+  }
+
+  function setZoom(v) {
+    v = Math.max(1, Math.min(8, v));
+    mascotEl.style.transform = "scale(" + v + ")";
+    zoomRange.value = v;
+    zoomNumber.value = v;
+    followZoomToHand();
+  }
+
+  function followZoomToHand() {
+    if (!zoomFollow.checked) return;
+    var c = handCenter();
+    mascotEl.style.transformOrigin = c.x + "% " + c.y + "%";
+  }
+
+  zoomRange.addEventListener("input", function () { setZoom(parseFloat(zoomRange.value)); });
+  zoomNumber.addEventListener("input", function () {
+    var v = parseFloat(zoomNumber.value);
+    if (!isNaN(v)) setZoom(v);
+  });
+  document.getElementById("btn-zoom-hand").addEventListener("click", function () {
+    zoomFollow.checked = true;
+    setZoom(4.5);
+  });
+  document.getElementById("btn-zoom-reset").addEventListener("click", function () {
+    setZoom(1);
+  });
+
+  /* ---------- Animación: reproduce EXACTAMENTE la de GeekPoint ---------- */
+  var animOn = document.getElementById("anim-on");
+  var animSpeedRange = document.getElementById("anim-speed-range");
+  var animSpeedNumber = document.getElementById("anim-speed-number");
+
+  function setAnimSpeed(v) {
+    v = Math.max(0.05, Math.min(2, v));
+    mascotEl.style.setProperty("--anim-speed", v);
+    animSpeedRange.value = v;
+    animSpeedNumber.value = v;
+  }
+  /* Dedos sincronizados por JS (igual que en producción, ver
+     syncHandRotation() en login.js): dos marcadores invisibles DENTRO
+     del brazo heredan gratis su transform final real (cadera+torso+
+     brazo juntos, venga de donde venga — rotación, translateY, scaleY,
+     lo que sea). En cada frame se compara su posición actual contra la
+     de reposo (medida una vez, con la animación apagada) y esa
+     comparación da la traslación+rotación exacta que hay que aplicarle
+     a los dedos. Un primer intento solo sumaba ÁNGULOS de rotación y
+     dejaba un despegue chiquito porque no capturaba el translateY/
+     scaleY del "respirar" del torso. */
+  var handLEl = document.getElementById("p-hand-l");
+  var armLEl = els["arm-l"];
+  var markerA = document.createElement("i");
+  var markerB = document.createElement("i");
+  markerA.style.cssText = "position:absolute;left:75.4%;top:71.35%;width:1px;height:1px;";
+  markerB.style.cssText = "position:absolute;left:20%;top:20%;width:1px;height:1px;";
+  armLEl.appendChild(markerA);
+  armLEl.appendChild(markerB);
+
+  var handSyncRunning = false;
+  var restA = { x: 0, y: 0 }, restB = { x: 0, y: 0 }, restAngle = 0;
+
+  /* Medido RELATIVO a #mascot (no a la ventana): así, si mueves el
+     fieldset "Personaje completo" (o cambias de modo de tarjeta, que
+     también puede recorrer al personaje) MIENTRAS está animando, ese
+     corrimiento se cancela solo — nunca se duplica ni se le suma de más
+     a los dedos. Ver la misma nota en syncHandRotation() de login.js:
+     esto es justo lo que se rompía antes al cambiar de Login a Registro. */
+  function markerPoint(el) {
+    var r = el.getBoundingClientRect();
+    var m = mascotEl.getBoundingClientRect();
+    return { x: r.left - m.left, y: r.top - m.top };
+  }
+
+  /* Mide la posición de "reposo" (animación apagada un instante) sin que
+     se llegue a pintar ese cuadro intermedio. Se puede llamar en
+     cualquier momento — al prender "Animar" por primera vez, o para
+     REFRESCAR el reposo si mueves cualquier slider mientras ya está
+     animando (ver recaptureRestIfAnimating más abajo), así nada de lo
+     que muevas puede desarmar la animación. */
+  function captureRest() {
+    var wasAnimating = mascotEl.classList.contains("is-animating");
+    mascotEl.classList.remove("is-animating");
+    void armLEl.offsetWidth; // fuerza a aplicar el cambio antes de medir
+    restA = markerPoint(markerA);
+    restB = markerPoint(markerB);
+    restAngle = Math.atan2(restB.y - restA.y, restB.x - restA.x);
+    if (wasAnimating) mascotEl.classList.add("is-animating");
+  }
+  function recaptureRestIfAnimating() {
+    if (handSyncRunning) captureRest();
+  }
+
+  function handSyncTick() {
+    if (!handSyncRunning) return;
+    var a = markerPoint(markerA), b = markerPoint(markerB);
+    var angleDeg = (Math.atan2(b.y - a.y, b.x - a.x) - restAngle) * (180 / Math.PI);
+    var dx = a.x - restA.x, dy = a.y - restA.y;
+    handLEl.style.transform =
+      "translate(" + dx.toFixed(2) + "px," + dy.toFixed(2) + "px) rotate(" + angleDeg.toFixed(3) + "deg)";
+    requestAnimationFrame(handSyncTick);
+  }
+
+  animOn.addEventListener("change", function (e) {
+    mascotEl.classList.toggle("is-animating", e.target.checked);
+    handSyncRunning = e.target.checked;
+    if (handSyncRunning) {
+      captureRest();
+      handSyncTick();
+    } else {
+      handLEl.style.transform = "";
+    }
+  });
+  animSpeedRange.addEventListener("input", function () { setAnimSpeed(parseFloat(animSpeedRange.value)); });
+  animSpeedNumber.addEventListener("input", function () {
+    var v = parseFloat(animSpeedNumber.value);
+    if (!isNaN(v)) setAnimSpeed(v);
+  });
+
+  document.getElementById("toggle-outlines").addEventListener("change", function (e) {
+    document.getElementById("p-arm-l").style.outline = e.target.checked ? "" : "none";
+    document.getElementById("p-hand-l").style.outline = e.target.checked ? "" : "none";
+  });
+  document.getElementById("toggle-origins").addEventListener("change", function (e) {
+    origins["hand-l"].style.display = e.target.checked ? "block" : "none";
+    origins["arm-l"].style.display = e.target.checked ? "block" : "none";
+  });
+
+  document.getElementById("btn-reset").addEventListener("click", function () {
+    state = JSON.parse(JSON.stringify(DEFAULTS));
+    mascotPos = JSON.parse(JSON.stringify(MASCOT_DEFAULTS));
+    apply("hand-l"); apply("arm-l"); applyMascotPos();
+    syncInputs("hand-l"); syncInputs("arm-l"); syncMascotInputs();
+    printOut();
+    recaptureRestIfAnimating();
+  });
+
+  /* ---------- Pivote rígido: mismo centro de giro absoluto que el brazo ----------
+     Cadera/torso son FIJOS (no tienen sliders aquí), así que sus
+     posiciones en % de .mascot están constantes: se recalculan una sola
+     vez a partir de left/top/width de .mascot-hip y .mascot-torso (ver
+     arriba en el CSS) — mismo método/números que ya se usó a mano para
+     ".auth__mascot-arm-r" en producción. */
+  var TORSO = (function () {
+    var hipW = 0.5130, hipL = 0.4107, hipT = 0.6640;
+    var hipH = hipW * (840 / 1539);            // cadera.png
+    var mascotH = 2500 / 3000;
+    var torsoW = 0.5757 * hipW;
+    var torsoL = hipL + (-0.0468) * hipW;
+    var torsoT = (hipT * mascotH) + (-0.8964) * hipH;
+    var torsoH = torsoW * (1075 / 886);        // torso.png
+    return { w: torsoW, l: torsoL, t: torsoT, h: torsoH };
+  })();
+
+  document.getElementById("btn-rigid-pivot").addEventListener("click", function () {
+    var a = state["arm-l"], h = state["hand-l"];
+    var mascotH = 2500 / 3000;
+
+    var armW = (a.width / 100) * TORSO.w;
+    var armH = armW * (995 / 1411);            // brazo_izquierdo_arm.png
+    var armL = TORSO.l + (a.left / 100) * TORSO.w;
+    var armT = TORSO.t + (a.top / 100) * TORSO.h;
+
+    var pivotX = armL + (a.ox / 100) * armW;
+    var pivotY = armT + (a.oy / 100) * armH;
+
+    var handL = h.left / 100;
+    var handT = (h.top / 100) * mascotH;
+    var handW = h.width / 100;
+    var handH = handW * (268 / 246);           // brazo_izquierdo_dedos.png
+
+    h.ox = Math.round(((pivotX - handL) / handW) * 1000) / 10;
+    h.oy = Math.round(((pivotY - handT) / handH) * 1000) / 10;
+
+    apply("hand-l");
+    syncInputs("hand-l");
+    printOut();
+  });
+
+  apply("hand-l"); apply("arm-l");
+  syncInputs("hand-l"); syncInputs("arm-l");
+  printOut();
+})();
+</script>
+</body>
+</html>

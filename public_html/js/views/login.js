@@ -13,23 +13,35 @@
     { email: "cliente@geekpoint.mx", label: "Cliente" }
   ];
 
-  /* Personaje animado, armado por partes (cadera -> torso -> cabeza/brazos)
-     — mismo orden de anidado y de pintado que el diseño original: el brazo
-     izquierdo va PRIMERO (queda detrás del torso, z-index:-1 en CSS) y el
-     derecho AL FINAL (queda al frente de todo). Ver ".auth__mascot" en
-     app.css para las animaciones/posicionamiento; este HTML solo arma la
-     jerarquía, nunca cambia. */
+  /* Personaje animado, armado por partes (cadera -> torso -> cabeza/brazos).
+     Los DOS brazos tienen la misma excepción de capas, por la misma razón:
+     necesitan una parte VISIBLE por encima de la tarjeta (agarrando la
+     esquina) mientras el resto del cuerpo queda detrás.
+       - Brazo derecho: brazo+mano en una sola imagen (brazo_derecho.png),
+         sacado entero a hermano directo de la cadera (ver notas previas).
+       - Brazo izquierdo: la imagen original (brazo_izquierdo.png, brazo Y
+         mano juntos) se separó en DOS archivos —
+         brazo_izquierdo_arm.png (solo el brazo, sin dedos) y
+         brazo_izquierdo_dedos.png (solo los dedos) — para que los DEDOS
+         puedan pintarse por ENCIMA de la tarjeta (agarrando la esquina
+         superior-izquierda desde el FRENTE) mientras el brazo se queda
+         DETRÁS como antes. ".auth__mascot-arm-l" conserva su posición de
+         siempre (sigue anidado en el torso); ".auth__mascot-hand-l" es
+         hermano directo de la cadera, con su propio z-index, posicionado
+         y con el MISMO transform-origin "efectivo" (ver app.css) para que
+         gire en sincronía con el brazo sin separarse visualmente. */
   var MASCOT_HTML =
     '<div class="auth__mascot" data-mascot aria-hidden="true">' +
       '<div class="auth__mascot-hip">' +
         '<img src="assets/images/mascot/cadera.png" alt="">' +
         '<div class="auth__mascot-torso">' +
           '<img src="assets/images/mascot/torso.png" alt="">' +
-          '<div class="auth__mascot-arm-l"><img src="assets/images/mascot/brazo_izquierdo.png" alt=""></div>' +
+          '<div class="auth__mascot-arm-l"><img src="assets/images/mascot/brazo_izquierdo_arm.png" alt=""></div>' +
           '<div class="auth__mascot-head"><img src="assets/images/mascot/cabeza.png" alt=""></div>' +
-          '<div class="auth__mascot-arm-r"><img src="assets/images/mascot/brazo_derecho.png" alt=""></div>' +
         '</div>' +
       '</div>' +
+      '<div class="auth__mascot-arm-r"><img src="assets/images/mascot/brazo_derecho.png" alt=""></div>' +
+      '<div class="auth__mascot-hand-l"><img src="assets/images/mascot/brazo_izquierdo_dedos.png" alt=""></div>' +
     '</div>';
 
   function backLinkHTML() {
@@ -37,21 +49,50 @@
       esc(I18N.lang === "en" ? "Back to store" : "Volver a la tienda") + '</a>';
   }
 
+  /* Botón "paso anterior" del paso 2 de Registro: mismo lenguaje visual
+     que "Registrarse" (clases .btn/.btn--ghost — variante YA existente en
+     components.css, fondo transparente y borde sutil solo al hover, en
+     vez del amarillo), pero chico (.btn--sm) y anclado ARRIBA A LA
+     DERECHA junto a "← Volver a la tienda" (ver ".auth__stepback" en
+     app.css) — no debajo de "Registrarse", así no agranda la tarjeta.
+     Reutiliza switchTo() (mismo pellizco existente) para regresar al
+     paso 1, con nombre/correo ya pre-llenados. */
+  function stepBackButtonHTML() {
+    return '<button type="button" class="btn btn--ghost btn--sm auth__stepback" data-auth-switch="register" data-i18n="register.prevStep">Paso anterior</button>';
+  }
+
   /* Contenido del formulario según el modo — se repinta ENTERO al cambiar
-     de "login" a "register" y viceversa (ver switchTo() en mount()). */
-  function cardInnerHTML(mode) {
+     de modo (ver switchTo() en mount()). El registro va en DOS PASOS
+     ("register" = nombre+correo, "register2" = contraseñas) para que el
+     modal sea corto en cada uno — cada paso pinta SOLO sus propios campos,
+     nunca los cuatro juntos, así el alto automático de .auth__card (ver
+     app.css) se ajusta de verdad al contenido de ese paso, no deja huecos.
+     `prefill` (opcional) trae { name, email } del paso 1 para repintar sus
+     campos con lo ya escrito si el usuario regresa desde el paso 2. */
+  function cardInnerHTML(mode, prefill) {
     if (mode === "register") {
+      var pName = (prefill && prefill.name) || "";
+      var pEmail = (prefill && prefill.email) || "";
       return backLinkHTML() +
         '<h1 style="margin-top:.6rem" data-i18n="register.title">Registrarse</h1>' +
         '<p class="auth__sub" data-i18n="register.sub"></p>' +
         '<div class="field">' +
           '<label for="rg-name" data-i18n="register.name">Nombre completo</label>' +
-          '<input class="input" id="rg-name" name="name" autocomplete="name" required maxlength="120" />' +
+          '<input class="input" id="rg-name" name="name" autocomplete="name" required maxlength="120" value="' + esc(pName) + '" />' +
         '</div>' +
         '<div class="field">' +
           '<label for="rg-email" data-i18n="register.email">Correo</label>' +
-          '<input class="input" type="email" id="rg-email" name="email" autocomplete="email" required maxlength="160" />' +
+          '<input class="input" type="email" id="rg-email" name="email" autocomplete="email" required maxlength="160" value="' + esc(pEmail) + '" />' +
         '</div>' +
+        '<p class="field__error" data-auth-error hidden></p>' +
+        '<button class="btn btn--neon btn--block btn--lg" type="submit" data-i18n="register.continue">Continuar</button>' +
+        '<p class="auth__switch"><span data-i18n="register.haveAccount"></span> ' +
+          '<a href="#" data-auth-switch="login" data-i18n="register.toLogin"></a></p>';
+    }
+    if (mode === "register2") {
+      return backLinkHTML() + stepBackButtonHTML() +
+        '<h1 style="margin-top:.6rem" data-i18n="register.title">Registrarse</h1>' +
+        '<p class="auth__sub" data-i18n="register.sub"></p>' +
         '<div class="field">' +
           '<label for="rg-pass" data-i18n="register.password">Contraseña</label>' +
           '<input class="input" type="password" id="rg-pass" name="password" autocomplete="new-password" required minlength="6" />' +
@@ -126,6 +167,113 @@
     );
   }
 
+  /* Sincroniza los dedos (.auth__mascot-hand-l) con el brazo
+     (.auth__mascot-arm-l) fotograma a fotograma, en vez de darles
+     animaciones CSS independientes.
+     Por qué: el brazo está anidado cadera->torso->brazo, y CADERA y
+     TORSO tienen SU PROPIO balanceo (mascotHipSway, mascotBreathe) que
+     se SUMA visualmente a la rotación propia del brazo (mascotArmL) — el
+     brazo hereda eso automático por estar anidado. Los dedos, al ser
+     hermanos de la cadera (no anidados, por el z-index — ver capas en
+     app.css), nunca lo heredan.
+     Un primer intento sumaba solo los ÁNGULOS de rotación de cadera +
+     torso + brazo (leídos con getComputedStyle) — mejoró mucho, pero el
+     "respirar" del torso (mascotBreathe) NO es solo rotate(): también
+     tiene translateY() y scaleY(), y esa parte del movimiento se perdía,
+     dejando un despegue chiquito pero visible en ciertos momentos.
+     Solución robusta: en vez de tratar de recalcular a mano cada
+     componente (rotación + traslación + escala) de cada animación, se
+     ponen DOS marcadores invisibles DENTRO del brazo (heredan gratis su
+     transform final real, sea lo que sea — cadera+torso+brazo juntos, no
+     hay que saber qué animación aporta qué). En cada frame se mide dónde
+     cayeron esos dos puntos en pantalla, se compara contra dónde caían
+     en reposo (sin animación, medido una sola vez al montar), y esa
+     comparación da exactamente cuánto se movió (traslación) y giró
+     (rotación) el brazo — eso mismo se le aplica a los dedos. */
+  function syncHandRotation(root) {
+    if (UI.reduced) return;
+    var mascot = $(".auth__mascot", root);
+    var hip = $(".auth__mascot-hip", root);
+    var torso = $(".auth__mascot-torso", root);
+    var armL = $(".auth__mascot-arm-l", root);
+    var handL = $(".auth__mascot-hand-l", root);
+    if (!mascot || !hip || !torso || !armL || !handL) return;
+
+    var markerA = document.createElement("i");   // el mismo punto que usa transform-origin de los dedos
+    var markerB = document.createElement("i");   // segundo punto, solo para medir el ángulo
+    markerA.style.cssText = "position:absolute;left:75.4%;top:71.35%;width:1px;height:1px;";
+    markerB.style.cssText = "position:absolute;left:20%;top:20%;width:1px;height:1px;";
+    armL.appendChild(markerA);
+    armL.appendChild(markerB);
+
+    /* Medido RELATIVO a .auth__mascot (no a la ventana): así, cuando
+       Login/Registro cambian de alto y ".auth__mascot" entero se corre
+       (ver [data-auth-mode] en app.css, para que la mano derecha siga
+       cayendo justo en la esquina de CADA tarjeta), ese corrido se
+       cancela solo — el marcador y el origen de referencia se mueven
+       igual, así que la resta da 0 — y lo único que queda en dx/dy es el
+       movimiento REAL del balanceo. Medir en coordenadas de ventana
+       (como antes) sumaba ese corrido de "cambio de tarjeta" encima del
+       que ya aplican las propias % de .auth__mascot-hand-l (mismo
+       padre), duplicándolo — por eso se desarmaba al pasar a Registro. */
+    function point(el) {
+      var r = el.getBoundingClientRect();
+      var m = mascot.getBoundingClientRect();
+      return { x: r.left - m.left, y: r.top - m.top };
+    }
+
+    /* Las % de arriba dependen del ALTO real de .auth__mascot-arm-l, que
+       a su vez sale del ancho/alto NATURAL de su <img> (no hay
+       aspect-ratio fijo por pieza) — si se mide el "reposo" antes de que
+       esa imagen (u otras del personaje, cadera/torso arriba en la
+       cadena) terminen de cargar, el brazo todavía puede medir 0 de alto
+       en ese instante y la muñeca de "reposo" queda mal calculada para
+       siempre (esto fue justo lo que pasó: los dedos salían disparados
+       lejísimos). Por eso se espera a que TODAS las imágenes del
+       personaje ya hayan cargado (+1 frame extra para que el layout ya
+       esté asentado) antes de medir nada. */
+    var imgs = root.querySelectorAll(".auth__mascot img");
+    Promise.all(Array.prototype.map.call(imgs, function (img) {
+      if (img.complete) return Promise.resolve();
+      return new Promise(function (resolve) {
+        img.addEventListener("load", resolve, { once: true });
+        img.addEventListener("error", resolve, { once: true });
+      });
+    })).then(function () {
+      requestAnimationFrame(function () { requestAnimationFrame(start); });
+    });
+
+    function start() {
+      // Mide la posición de "reposo" (sin animación) UNA sola vez, sin
+      // que se llegue a pintar ese cuadro intermedio (se restaura antes
+      // de ceder el hilo al navegador).
+      var prevAnim = { hip: hip.style.animation, torso: torso.style.animation, arm: armL.style.animation };
+      hip.style.animation = "none"; torso.style.animation = "none"; armL.style.animation = "none";
+      void armL.offsetWidth; // fuerza a aplicar el "none" antes de medir
+      var restA = point(markerA), restB = point(markerB);
+      hip.style.animation = prevAnim.hip; torso.style.animation = prevAnim.torso; armL.style.animation = prevAnim.arm;
+      var restAngle = Math.atan2(restB.y - restA.y, restB.x - restA.x);
+      /* Red de seguridad: el balanceo real nunca mueve la muñeca más de
+         unos pocos px. Si algún frame mide un salto absurdo (p.ej. un
+         reflow raro a mitad de una transición de layout), se ignora ESE
+         frame en vez de mandar a los dedos a volar — el siguiente frame
+         ya vuelve a medir bien. */
+      var MAX_JUMP_PX = 150;
+
+      function tick() {
+        var a = point(markerA), b = point(markerB);
+        var dx = a.x - restA.x, dy = a.y - restA.y;
+        if (Math.abs(dx) <= MAX_JUMP_PX && Math.abs(dy) <= MAX_JUMP_PX) {
+          var angleDeg = (Math.atan2(b.y - a.y, b.x - a.x) - restAngle) * (180 / Math.PI);
+          handL.style.transform =
+            "translate(" + dx.toFixed(2) + "px," + dy.toFixed(2) + "px) rotate(" + angleDeg.toFixed(3) + "deg)";
+        }
+        requestAnimationFrame(tick);
+      }
+      tick();
+    }
+  }
+
   function fieldErrorMsg(err) {
     var fields = err && err.data && err.data.fields;
     if (!fields) return null;
@@ -144,7 +292,17 @@
 
   function mount(root) {
     var card = $("[data-auth-card]", root);
+    var composition = $(".auth__composition", root);
     var mode = "login";
+    /* Nombre/correo capturados en el paso 1 del registro — se conservan
+       aquí para no pedírselos de nuevo en el paso 2 (esos campos ya no
+       existen en el DOM del paso 2, ver cardInnerHTML). */
+    var regData = { name: "", email: "" };
+    /* data-auth-mode en .auth__composition: SOLO lo usa CSS para el
+       desplazamiento vertical del personaje (la tarjeta de Registro es
+       más alta que la de Login, ver ".auth__mascot" en app.css) — no
+       toca el pellizco ni su timing. */
+    composition.setAttribute("data-auth-mode", mode);
 
     /* Transición "pellizco" diagonal: las esquinas se juntan hacia el
        centro (ver el scale() uniforme en app.css) → pausa breve ya
@@ -162,8 +320,9 @@
 
     function paint(newMode) {
       mode = newMode;
+      composition.setAttribute("data-auth-mode", mode);
       var fields = $("[data-auth-fields]", card);
-      fields.innerHTML = cardInnerHTML(mode);
+      fields.innerHTML = cardInnerHTML(mode, regData);
       I18N.apply(fields);
     }
 
@@ -203,6 +362,7 @@
        el pellizco. auth:closing/squashed/opening/opened ya se disparan en
        `window` (arriba) para cuando se retome esa animación; no se
        necesita ningún listener extra aquí mientras tanto. */
+    syncHandRotation(root);
 
     root.addEventListener("click", function (e) {
       var sw = e.target.closest("[data-auth-switch]");
@@ -225,10 +385,23 @@
       var errBox = $("[data-auth-error]", card);
       errBox.hidden = true;
       if (!card.reportValidity()) return;
+
+      /* Paso 1 del registro: solo valida nombre/correo (arriba, con la
+         validación nativa del form) y avanza al paso 2 con la MISMA
+         animación de pellizco que ya usa switchTo() para Login⇄Registro —
+         no se llama a la API todavía, no hay botón "is-loading" que
+         mostrar aquí. */
+      if (mode === "register") {
+        regData.name = card.name.value.trim();
+        regData.email = card.email.value.trim();
+        switchTo("register2");
+        return;
+      }
+
       var btn = card.querySelector('button[type="submit"]');
       btn.classList.add("is-loading");
 
-      if (mode === "register") {
+      if (mode === "register2") {
         if (card.password.value !== card.password_confirmation.value) {
           btn.classList.remove("is-loading");
           errBox.textContent = I18N.t("register.mismatch");
@@ -236,8 +409,8 @@
           return;
         }
         API.post("auth/register", {
-          name: card.name.value.trim(),
-          email: card.email.value.trim(),
+          name: regData.name,
+          email: regData.email,
           password: card.password.value,
           password_confirmation: card.password_confirmation.value
         }, { noAuthRedirect: true }).then(function (data) {
