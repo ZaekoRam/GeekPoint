@@ -23,6 +23,17 @@ body.in-app [data-static-store] { display: none !important; }
      ocurre con la tarjeta ya encogida a un punto (.is-squashed, ver
      abajo), invisible de lo chica que queda. */
   --auth-w: min(460px, 88vw);
+  /* Cierre/apertura del modal (Login ⇄ Registro), acomodado en
+     mascot-debug.html: cierra en 360ms con ease-in-out fuerte (arranca y
+     frena suave, como un jalón), abre en 300ms con ease-out fuerte (sale
+     rápido y aterriza suave). Los triángulos crecen de 32px a --tri-end
+     mientras se cierra, y la tarjeta termina del ancho de ese cuadro
+     (escondida debajo), no en un punto. */
+  --pinch-in: 360ms;
+  --pinch-out: 300ms;
+  --pinch-ease-in: cubic-bezier(0.77, 0, 0.175, 1);
+  --pinch-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --tri-end: 110px;
   position: relative;
   min-height: calc(100svh - var(--topbar-h));
   display: grid; place-items: center; padding: 2rem var(--gutter);
@@ -53,7 +64,7 @@ body.in-app [data-static-store] { display: none !important; }
   width: var(--auth-w); padding: 1.5rem 1.7rem;
   background: var(--surface); border-radius: var(--radius-lg);
   box-shadow: var(--nm-out), var(--glow-violet);
-  transform-origin: center; will-change: transform, opacity;
+  transform-origin: 100% 100%; will-change: transform, opacity;   /* se cierra hacia la esquina inferior-derecha, ver pellizco abajo */
 }
 .auth__card h1 { font-size: 1.5rem; margin-bottom: .3rem; }
 /* Botón "paso anterior" (paso 2 de Registro): reutiliza .btn/.btn--ghost
@@ -68,43 +79,43 @@ body.in-app [data-static-store] { display: none !important; }
 .auth__sub { color: var(--muted); font-size: .86rem; margin-bottom: 1rem; line-height: 1.4; }
 .auth__switch { font-size: .82rem; color: var(--muted); text-align: center; margin-top: .6rem; }
 .auth__switch a { color: var(--accent-2-text); font-weight: 700; margin-left: .25rem; }
-.auth__demo { margin-top: .9rem; padding-top: .7rem; border-top: 1px dashed var(--line); }
-.auth__demo p { font-size: .68rem; color: var(--faint); margin-bottom: .45rem; letter-spacing: .04em; text-transform: uppercase; font-family: var(--mono); }
-.auth__demo .demo-row { display: flex; flex-wrap: wrap; gap: .4rem; }
-.demo-chip { font-size: .7rem; padding: .32rem .6rem; border-radius: 8px; background: var(--surface-2); box-shadow: var(--nm-out-sm); font-family: var(--mono); color: var(--muted); }
-.demo-chip:hover { color: var(--accent-2-text); }
 .auth__card .field { margin-bottom: .55rem; gap: .22rem; }
 .auth__card .field > label { font-size: .74rem; }
 .auth__card .input { padding: .55rem .75rem; font-size: .9rem; }
 .auth__card .btn--lg { padding: .7rem 1.4rem; font-size: .92rem; }
 
-/* ---------- Transición Login ⇄ Registro: pellizco diagonal a esquinas ----------
-   transform-origin: center (declarado arriba en .auth__card) + `scale()`
+/* ---------- Transición Login ⇄ Registro: pellizco diagonal a la esquina inferior-derecha ----------
+   transform-origin: 100% 100% (declarado arriba en .auth__card) + `scale()`
    UNIFORME (misma proporción en X y en Y, NO scaleY solo) es justo lo que
-   hace que las 4 esquinas viajen en línea recta hacia el centro: la
-   esquina superior-izquierda se mueve en diagonal ↘ y la inferior-derecha
-   en diagonal ↖ (y las otras dos igual) — es geometría pura de un scale
-   centrado con AMBOS ejes moviéndose juntos, no un scaleY vertical ni un
-   cambio de width/height.
-     1. .is-closing  → scale 1 → .01 (las esquinas se "pellizcan" hacia el
-        centro hasta quedar prácticamente en un punto — no un rectángulo
-        chico, casi nada)
-     2. .is-squashed → se mantiene en ese punto ~1s (SIN animación: clase
-        estática) mientras switchTo() en login.js repinta el otro
-        formulario por debajo, invisible de lo diminuto que quedó
-     3. .is-opening  → scale .01 → 1 (se expande otra vez hacia las
-        esquinas, revelando el contenido ya repintado)
-   Ver switchTo() en login.js, que encadena estas 3 clases con setTimeout
-   para la pausa. */
-.auth__card.is-closing { animation: authCardPinch .22s linear forwards; }
-.auth__card.is-squashed { transform: scale(.01); }
-.auth__card.is-opening { animation: authCardUnpinch .26s linear forwards; }
+   hace que la tarjeta se cierre en línea recta hacia su esquina
+   inferior-DERECHA: esa esquina se queda QUIETA (es el punto fijo del
+   scale) y la superior-izquierda viaja en diagonal ↘ hasta alcanzarla
+   (las otras dos igual, en línea recta hacia ese mismo punto) — es la
+   pose que va a hacer el personaje: su mano derecha sostiene la esquina
+   inferior-derecha y la izquierda arrastra la superior-izquierda.
+     1. .is-closing  → scale 1 → --pinch-end: la esquina superior-izquierda
+        viaja hasta la inferior-derecha y la tarjeta termina del ancho del
+        cuadro que forman los dos triángulos ya crecidos (--tri-end),
+        escondida debajo de él. --pinch-end = --tri-end / ancho de la
+        tarjeta; lo calcula switchTo() en login.js (CSS no puede dividir
+        longitudes).
+     2. .is-squashed → se queda así ~0.5s (SIN animación: clase estática)
+        mientras switchTo() repinta el otro formulario por debajo
+     3. .is-opening  → --pinch-end → 1 (se expande otra vez desde la
+        esquina inferior-derecha, revelando el contenido ya repintado)
+   Mientras tanto la mano izquierda del personaje lleva su esquina y la
+   derecha sostiene la otra sin moverse (ver syncHandRotation() en
+   login.js). Ver switchTo() en login.js, que encadena estas 3 clases con
+   setTimeout para la pausa. */
+.auth__card.is-closing { animation: authCardPinch var(--pinch-in) var(--pinch-ease-in) forwards; }
+.auth__card.is-squashed { transform: scale(var(--pinch-end, .24)); }
+.auth__card.is-opening { animation: authCardUnpinch var(--pinch-out) var(--pinch-ease-out) forwards; }
 @keyframes authCardPinch {
   from { transform: scale(1); }
-  to   { transform: scale(.01); }
+  to   { transform: scale(var(--pinch-end, .24)); }
 }
 @keyframes authCardUnpinch {
-  from { transform: scale(.01); }
+  from { transform: scale(var(--pinch-end, .24)); }
   to   { transform: scale(1); }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -134,11 +145,12 @@ body.in-app [data-static-store] { display: none !important; }
    is-squashed/is-opening que ya pone switchTo() en login.js — esa lógica
    no se tocó, igual que su duración/curva.
 
-   El destino (--tx/--ty) no es "mover cada triángulo hasta el centro"
-   (eso los deja tocándose solo por la punta, como un moño, con dos huecos
-   vacíos) sino "mover cada caja de 32x32 hasta que las DOS queden
-   exactamente superpuestas" — por eso llevan un ajuste fijo de 16px (la
-   mitad de 32px) además del 50%. Como --tl y --br ya usan la MISMA
+   Igual que la tarjeta (ver pellizco arriba), el punto de cierre es la
+   esquina INFERIOR-DERECHA: el triángulo --br se queda QUIETO (--tx/--ty
+   en 0) y solo el --tl viaja en diagonal ↘ hasta quedar EXACTAMENTE
+   superpuesto a él — por eso su destino es 100% menos --tri-end (el
+   tamaño que alcanzan los triángulos al cerrar), no el 100% entero, que lo sacaría por
+   fuera de la esquina. Como --tl y --br ya usan la MISMA
    diagonal (ver los clip-path del ::before: ambos cortan de la esquina
    superior-derecha a la inferior-izquierda de su propia caja, sin rotar
    nada), al superponerse sus dos mitades encajan perfecto y forman un
@@ -162,22 +174,40 @@ body.in-app [data-static-store] { display: none !important; }
   background: var(--panini); border: 2px solid var(--ink);
 }
 .auth__corner--tl {
-  --tx: calc(50% - 16px); --ty: calc(50% - 16px);
+  /* Destino: justo encima del triángulo inferior-derecho YA crecido
+     (--tri-end), no del de 32px — ver el crecimiento más abajo. */
+  --tx: calc(100% - var(--tri-end)); --ty: calc(100% - var(--tri-end));
 }
 .auth__corner--tl::before {
   top: 0; left: 0;
   clip-path: polygon(0 0, 100% 0, 0 100%);
 }
 .auth__corner--br {
-  --tx: calc(-50% + 16px); --ty: calc(-50% + 16px);
+  --tx: 0%; --ty: 0%;                             /* punto de cierre: no se mueve */
 }
 .auth__corner--br::before {
   bottom: 0; right: 0;
   clip-path: polygon(100% 100%, 0 100%, 100% 0);
 }
-.auth:has(.auth__card.is-closing) .auth__corner { animation: authCornerIn .22s linear forwards; }
+.auth:has(.auth__card.is-closing) .auth__corner { animation: authCornerIn var(--pinch-in) var(--pinch-ease-in) forwards; }
 .auth:has(.auth__card.is-squashed) .auth__corner { transform: translate(var(--tx), var(--ty)); }
-.auth:has(.auth__card.is-opening) .auth__corner { animation: authCornerOut .26s linear forwards; }
+.auth:has(.auth__card.is-opening) .auth__corner { animation: authCornerOut var(--pinch-out) var(--pinch-ease-out) forwards; }
+/* Los dos triángulos crecen de 32px a --tri-end mientras se cierra (mismo
+   tiempo y curva que la tarjeta y el traslado), y al quedar encimados
+   forman un cuadro amarillo que tapa la tarjeta ya encogida. width/height
+   en un ::before chiquito: no hay forma con transform sin que también
+   engorde el borde. */
+.auth:has(.auth__card.is-closing) .auth__corner::before { animation: authTriGrow var(--pinch-in) var(--pinch-ease-in) forwards; }
+.auth:has(.auth__card.is-squashed) .auth__corner::before { width: var(--tri-end); height: var(--tri-end); }
+.auth:has(.auth__card.is-opening) .auth__corner::before { animation: authTriShrink var(--pinch-out) var(--pinch-ease-out) forwards; }
+@keyframes authTriGrow {
+  from { width: 32px; height: 32px; }
+  to   { width: var(--tri-end); height: var(--tri-end); }
+}
+@keyframes authTriShrink {
+  from { width: var(--tri-end); height: var(--tri-end); }
+  to   { width: 32px; height: 32px; }
+}
 @keyframes authCornerIn {
   from { transform: translate(0, 0); }
   to   { transform: translate(var(--tx), var(--ty)); }
@@ -216,7 +246,7 @@ body.in-app [data-static-store] { display: none !important; }
      .auth__mascot-hip (-1, cuerpo completo) < .auth__card (1) <
      .auth__corner (2) < .auth__mascot-arm-r (3) */
 .auth__mascot {
-  position: absolute; left: -39.2%; top: -12.76%; pointer-events: none;
+  position: absolute; left: -39.2%; top: -35.42%;   /* login: sin las cuentas demo mide lo mismo que Registro (394.8px) → mismo desplazamiento */ pointer-events: none;
   /* Tamaño FIJO (no en vw): la tarjeta también es ancho fijo (460px) por
      encima de 523px de viewport (ver --auth-w), así que un tamaño fijo
      aquí es lo que mantiene el agarre pixel-preciso y la presencia visual
@@ -269,20 +299,41 @@ body.in-app [data-static-store] { display: none !important; }
   transform-origin: 50% 89%;                      /* une con el cuello */
   animation: mascotHeadMove 5s ease-in-out infinite;
 }
-/* Brazo izquierdo (SOLO brazo, sin dedos — brazo_izquierdo_arm.png, ver
-   MASCOT_HTML en login.js): sigue anidado en el torso igual que siempre
-   (detrás del torso/pelo, z-index:-1 LOCAL dentro de la cadera — sin
-   relación con el z-index:-1 de la cadera de arriba, son capas
-   distintas). Los números son los de siempre RECALCULADOS para el nuevo
-   recorte (más angosto de alto al faltarle los dedos: 995px en vez de
-   1188px de la imagen original) — mismo left/ancho por pixel-de-origen
-   (el recorte no tocó los bordes izq/der), pero top y transform-origin
-   se corrieron hacia abajo lo que ocupaban los dedos, para que el brazo
-   SIGA RENDERIZANDO EXACTAMENTE EN EL MISMO SITIO que antes de separarlo. */
+/* Brazo izquierdo: DOS imágenes (brazo2.png = hombro/manga, manos2.png =
+   antebrazo y mano) dentro de un marco común, .auth__mascot-arm-l, que
+   sigue anidado en el torso (detrás del torso/pelo, z-index:-1 LOCAL
+   dentro de la cadera) y es lo ÚNICO que lleva la animación — así ambas
+   piezas se balancean juntas, como un solo brazo, alrededor del mismo
+   pivote (el hombro). El marco no se ve: solo fija el sistema de
+   coordenadas; sus medidas y el aspect-ratio (793/586) son los de
+   mascot-debug.html (.mascot-rig-1), donde se acomodaron.
+   isolation: la mano (z -1) queda DETRÁS del brazo sin escaparse detrás
+   del torso. Valores de brazo/mano = "Guardar como valor actual" del
+   debug; ahí están en % de ESTE marco, no del torso. */
 .auth__mascot-arm-l {
-  position: absolute; left: -99.89%; top: -45.12%; width: 159.25%; z-index: -1;
-  transform-origin: 75.4% 71.35%;
-  animation: mascotArmL 4.4s ease-in-out infinite;
+  position: absolute; left: -6.4%; top: 1.3%; width: 89.5%; z-index: -1;
+  aspect-ratio: 793 / 586; isolation: isolate;
+  transform-origin: 38.2648% 18.9052%;            /* hombro = origin del brazo2 */
+  /* Su balanceo propio (lento a propósito: la mano está a ~450px del
+     hombro y cualquier giro se nota mucho ahí) + la rotación CONTRARIA a
+     la de la cadera y el torso (mismas duraciones y curva, así se
+     cancelan): el brazo no hereda el giro del cuerpo y la mano, que agarra
+     la esquina, casi no se mueve — solo la acompaña lo que se mueve el
+     hombro. animation-composition: add SUMA las tres en vez de que la
+     última pise a las otras. Medido en mascot-debug.html: la mano pasó de
+     ~71px de recorrido (55px/s) a ~33px (22px/s). */
+  animation: mascotArmL 6.6s ease-in-out infinite,
+             mascotHipCounter 6s ease-in-out infinite,
+             mascotBreatheCounter 4s ease-in-out infinite;
+  animation-composition: replace, add, add;
+}
+.auth__mascot-upper-l {
+  position: absolute; left: -8%; top: -23.4%; width: 88.8%;
+  rotate: 43.8deg; transform-origin: 52.1% 55.3%;
+}
+.auth__mascot-forearm-l {
+  position: absolute; left: -101.5%; top: -102.8%; width: 122%; z-index: -1;
+  transform-origin: 98% 88%;
 }
 /* Brazo derecho: posición EQUIVALENTE aplanada de cadera->torso->brazo
    (mismo resultado visual que antes de sacarlo del anidado), pero ahora
@@ -306,14 +357,11 @@ body.in-app [data-static-store] { display: none !important; }
    AJUSTADOS A OJO comparando ambos recortes en vivo en el navegador
    hasta que la muñeca de los dedos conecta con la muñeca del brazo sin
    hueco.
-   transform-origin MUY LEJOS de su propio cuadro (>100%) A PROPÓSITO:
-   es el MISMO punto absoluto en pantalla que usa el brazo como pivote
-   (el hombro, 75.4%/71.35% del cuadro del brazo), convertido a fracción
-   del cuadro —mucho más chico— de los dedos. Necesario para que ambas
-   piezas giren como una sola pieza rígida sin que el puño gire sobre sí
-   mismo. Si cambias left/top/width de esta regla o de
-   .auth__mascot-arm-l, este número hay que RECALCULARLO (botón
-   "Calcular pivote rígido" en mascot-debug.html).
+   transform-origin: punto de giro de los dedos. syncHandRotation() pone
+   su marcador de referencia DENTRO del brazo, en este MISMO punto
+   absoluto (lo calcula al montar), así que los dedos se mueven rígidos
+   con el brazo nuevo sea cual sea este valor — ya no hay que
+   recalcularlo a mano si se mueve el brazo o los dedos.
    SIN "animation" a propósito — a diferencia de todas las demás partes,
    estos dedos NO tienen su propia animación CSS. Los gira JS en vivo
    (ver syncHandRotation() en login.js): el brazo hereda gratis el
@@ -328,7 +376,7 @@ body.in-app [data-static-store] { display: none !important; }
    (getComputedStyle) y le aplica la SUMA a los dedos, así siempre giran
    EXACTO lo mismo que el brazo sin importar de dónde venga ese giro. */
 .auth__mascot-hand-l {
-  position: absolute; left: 8.4%; top: 17.3%; width: 8.2%;
+  position: absolute; left: 10%; top: 13.1%; width: 8.2%;
   z-index: 3;                                     /* por encima de la tarjeta: agarre visible */
   transform-origin: 441.9% 260.9%;
 }
@@ -344,7 +392,15 @@ body.in-app [data-static-store] { display: none !important; }
   30%      { transform: rotate(-1.4deg) translateY(-1px); }
   60%      { transform: rotate(1.6deg)  translateY(.5px); }
 }
-@keyframes mascotArmL { 0%, 100% { transform: rotate(-2.5deg); } 50% { transform: rotate(2deg); } }
+/* Brazo izquierdo más quieto que el resto: 1.8° en total (antes 4.5°) —
+   en la punta, donde la mano agarra la esquina, eso ya son ~14px de ida y
+   vuelta; con 4.5° eran ~36px y los dedos se veían resbalar sobre la
+   tarjeta. Misma proporción ida/vuelta de antes (55% / 45%). */
+@keyframes mascotArmL { 0%, 100% { transform: rotate(-1deg); } 50% { transform: rotate(.8deg); } }
+/* Inversos exactos del giro de mascotHipSway y mascotBreathe (solo la
+   rotación), para el brazo izquierdo — ver .auth__mascot-arm-l. */
+@keyframes mascotHipCounter     { 0%, 100% { transform: rotate(.6deg); } 50% { transform: rotate(-.6deg); } }
+@keyframes mascotBreatheCounter { 0%, 100% { transform: rotate(.5deg); } 50% { transform: rotate(-.5deg); } }
 @keyframes mascotArmR { 0%, 100% { transform: rotate(1.8deg); } 50% { transform: rotate(-1.5deg); } }
 @media (prefers-reduced-motion: reduce) {
   .auth__mascot-hip, .auth__mascot-torso, .auth__mascot-head,
