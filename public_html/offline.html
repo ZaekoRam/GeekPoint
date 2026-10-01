@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0c0c0e" />
+  <meta name="robots" content="noindex" />
+  <title>GeekPoint — Sin conexión</title>
+  <!--
+    Página que el Service Worker (sw.js) muestra SOLO cuando una navegación
+    falla por falta de red. Es autocontenida (sin CSS/JS/fuentes externas)
+    porque se sirve desde la caché. No arranca la app: sin conexión no se
+    muestran inventario ni pedidos (podrían estar desactualizados) y no se
+    permite operar el POS.
+  -->
+  <style>
+    :root {
+      --paper: #f3efe4; --paper-2: #ffffff; --ink: #0c0c0e; --muted: #63636d;
+      --panini: #ffd400; --ink-fixed: #0c0c0e; --halftone: rgba(12,12,14,.16);
+      color-scheme: light;
+    }
+    :root[data-theme="dark"] {
+      --paper: #12121a; --paper-2: #1b1b24; --ink: #f2efe6; --muted: #a4a1af;
+      --halftone: rgba(242,239,230,.07);
+      color-scheme: dark;
+    }
+    * { box-sizing: border-box; margin: 0; }
+    html, body { min-height: 100%; }
+    body {
+      min-height: 100vh; min-height: 100dvh;
+      display: grid; place-items: center;
+      padding: max(1.5rem, env(safe-area-inset-top)) 1rem max(1.5rem, env(safe-area-inset-bottom));
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      color: var(--ink); background-color: var(--paper);
+      background-image: radial-gradient(var(--halftone) 1px, transparent 1.4px);
+      background-size: 7px 7px;
+      -webkit-font-smoothing: antialiased;
+    }
+    .card {
+      width: min(100%, 440px); padding: 2rem 1.6rem 1.7rem;
+      background: var(--paper-2); border: 3px solid var(--ink); box-shadow: 6px 6px 0 var(--ink);
+      text-align: center;
+    }
+    .brand {
+      display: inline-flex; align-items: center; gap: .55rem; margin-bottom: 1.4rem;
+      font-family: "Anton", Impact, "Arial Black", sans-serif; font-size: 1.6rem; letter-spacing: .03em; line-height: 1;
+    }
+    .brand__glyph {
+      display: inline-grid; place-items: center; width: 1.5em; height: 1.5em;
+      background: var(--panini); color: var(--ink-fixed); border: 2px solid var(--ink-fixed);
+      font-size: .7em; transform: rotate(-4deg);
+    }
+    .icon { width: 56px; height: 56px; margin: 0 auto 1rem; display: block; }
+    h1 {
+      font-family: "Anton", Impact, "Arial Black", sans-serif; font-weight: 400;
+      text-transform: uppercase; letter-spacing: .02em; font-size: 1.9rem; line-height: 1.05;
+      margin-bottom: .7rem;
+    }
+    p { color: var(--muted); font-size: .95rem; line-height: 1.5; }
+    p + p { margin-top: .6rem; }
+    button {
+      margin-top: 1.5rem; width: 100%;
+      padding: .75rem 1rem; cursor: pointer;
+      font: inherit; font-family: "Anton", Impact, "Arial Black", sans-serif; font-size: 1.05rem;
+      text-transform: uppercase; letter-spacing: .04em;
+      color: var(--ink-fixed); background: var(--panini);
+      border: 2px solid var(--ink-fixed); box-shadow: 3px 3px 0 var(--ink);
+      transition: transform .14s cubic-bezier(.16,1,.3,1), box-shadow .18s cubic-bezier(.16,1,.3,1);
+    }
+    button:hover { transform: translate(-2px,-2px); box-shadow: 5px 5px 0 var(--ink); }
+    button:active { transform: translate(1px,1px); box-shadow: none; }
+    button:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+    .status { margin-top: .9rem; font-size: .78rem; font-family: ui-monospace, Consolas, monospace; }
+    @media (prefers-reduced-motion: reduce) { button { transition: none; } }
+  </style>
+  <script>
+    try {
+      if (localStorage.getItem("gp_theme") === "dark")
+        document.documentElement.setAttribute("data-theme", "dark");
+    } catch (e) {}
+  </script>
+</head>
+<body>
+  <main class="card" role="main">
+    <div class="brand" aria-hidden="true"><span class="brand__glyph">G</span><span>GeekPoint</span></div>
+    <svg class="icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M6 18a26 26 0 0 1 36 0"/><path d="M12 25a17 17 0 0 1 24 0"/><path d="M18 32a8 8 0 0 1 12 0"/>
+      <circle cx="24" cy="38" r="1.8" fill="currentColor" stroke="none"/><path d="M8 8l32 32"/>
+    </svg>
+    <h1 data-t="title">Sin conexión</h1>
+    <p data-t="body">GeekPoint necesita internet para mostrar el inventario, los pedidos y el punto de venta con información actualizada.</p>
+    <p data-t="safe">Sin conexión no se registran ventas, apartados ni cambios. Vuelve a intentarlo cuando tengas red.</p>
+    <button type="button" data-retry data-t="retry">Reintentar</button>
+    <p class="status" data-status role="status" aria-live="polite"></p>
+  </main>
+
+  <script>
+    (function () {
+      "use strict";
+      var TEXT = {
+        es: {
+          doc: "GeekPoint — Sin conexión",
+          title: "Sin conexión",
+          body: "GeekPoint necesita internet para mostrar el inventario, los pedidos y el punto de venta con información actualizada.",
+          safe: "Sin conexión no se registran ventas, apartados ni cambios. Vuelve a intentarlo cuando tengas red.",
+          retry: "Reintentar",
+          waiting: "Seguimos sin red…"
+        },
+        en: {
+          doc: "GeekPoint — Offline",
+          title: "You're offline",
+          body: "GeekPoint needs an internet connection to show up-to-date inventory, orders and the point of sale.",
+          safe: "While offline no sales, reservations or changes are recorded. Try again once you're back online.",
+          retry: "Try again",
+          waiting: "Still offline…"
+        }
+      };
+      var lang = "es";
+      try { if (localStorage.getItem("gp_lang") === "en") lang = "en"; } catch (e) {}
+      var t = TEXT[lang];
+      document.documentElement.lang = lang;
+      document.title = t.doc;
+      Array.prototype.forEach.call(document.querySelectorAll("[data-t]"), function (el) {
+        el.textContent = t[el.getAttribute("data-t")];
+      });
+
+      var status = document.querySelector("[data-status]");
+      function retry() {
+        if (navigator.onLine === false) { status.textContent = t.waiting; return; }
+        location.reload();
+      }
+      document.querySelector("[data-retry]").addEventListener("click", retry);
+      // Al volver la red se recarga la URL original (la que falló), no esta página.
+      window.addEventListener("online", function () { location.reload(); });
+    })();
+  </script>
+</body>
+</html>

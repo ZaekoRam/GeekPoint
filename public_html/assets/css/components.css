@@ -869,10 +869,14 @@ body.in-app .printbtn .printer { --pr-bg: var(--surface); }
   animation: none;
   z-index: 1;
 }
+/* La animación del círculo la aplica theme.js con Web Animations (px
+   literales: var() en @keyframes no se resuelve igual en todos los
+   navegadores y el wipe salía desde el centro). Aquí solo se desactiva la
+   animación por defecto (fundido) de la instantánea nueva. */
 :root.theme-toggle-transition::view-transition-new(root) {
   mix-blend-mode: normal;
   z-index: 9999;
-  animation: 0.55s cubic-bezier(0.4, 0, 0.2, 1) h-theme-toggle-reveal;
+  animation: none;
 }
 @keyframes h-theme-toggle-reveal {
   0%   { clip-path: circle(0 at var(--h-theme-toggle-x, 50%) var(--h-theme-toggle-y, 50%)); }
@@ -978,3 +982,79 @@ body.in-app .printbtn .printer { --pr-bg: var(--surface); }
    ":root[data-theme=light] body.in-app" en tokens.css. */
 body.in-app .themeToggle { color: var(--faint); }
 body.in-app .themeToggle:hover { color: var(--text); }
+
+/* =============================================================
+   PWA — "Instalar aplicación" (lógica en js/pwa.js)
+   Todo nace oculto ([hidden]) y solo aparece cuando el navegador
+   permite instalar de verdad; nunca dentro de la app ya instalada.
+   ============================================================= */
+
+/* Botón compacto del topbar: mismo lenguaje que .cartbtn (borde de
+   tinta + sombra dura). Dentro de login/POS/admin hereda los tokens
+   claros del topbar (ver "body.in-app .topbar" arriba). */
+.pwa-btn {
+  flex: none; display: inline-grid; place-items: center;
+  width: 2.35rem; height: 2.35rem;
+  color: var(--ink); background: var(--paper-2);
+  border: 2px solid var(--ink); box-shadow: var(--shadow-hard-sm);
+  transition: transform .14s var(--ease-out), box-shadow .18s var(--ease-out),
+              background .15s var(--ease-out), color .15s var(--ease-out);
+}
+.pwa-btn svg { width: 1.15rem; height: 1.15rem; }
+.pwa-btn:hover { transform: translate(-1px,-1px); box-shadow: 5px 5px 0 var(--ink); background: var(--panini); color: var(--ink-fixed); }
+.pwa-btn:active { transform: translate(2px,2px); box-shadow: none; }
+.pwa-btn:focus-visible { outline: 3px solid var(--neon-cyan); outline-offset: 2px; }
+@media (max-width: 768px) {
+  .pwa-btn { width: 2.1rem; height: 2.1rem; box-shadow: 2px 2px 0 var(--ink); }
+  .pwa-btn svg { width: 1rem; height: 1rem; }
+}
+
+/* Aviso discreto (abajo a la izquierda; los toasts viven a la derecha).
+   Como mucho una vez por semana; "Ahora no" lo silencia 30 días. */
+.pwa-hint {
+  position: fixed; z-index: 300;
+  left: max(1rem, env(safe-area-inset-left, 0px));
+  bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+  width: min(380px, calc(100vw - 2rem));
+  display: grid; grid-template-columns: auto 1fr; gap: .55rem .8rem; align-items: center;
+  padding: .85rem .95rem;
+  background: var(--surface); color: var(--text);
+  border: 2px solid var(--ink); box-shadow: var(--shadow-hard);
+  opacity: 0; transform: translateY(14px);
+  transition: opacity .26s var(--ease-out), transform .26s var(--ease-out);
+}
+.pwa-hint.is-in { opacity: 1; transform: none; }
+.pwa-hint__glyph { font-size: 1.35rem; }
+.pwa-hint__text { display: grid; gap: .15rem; min-width: 0; }
+.pwa-hint__text b {
+  font-family: var(--display); font-weight: 400; text-transform: uppercase;
+  letter-spacing: .03em; font-size: 1.02rem; line-height: 1.1;
+}
+.pwa-hint__text span { font-size: .82rem; line-height: 1.4; color: var(--muted); }
+.pwa-hint__actions { grid-column: 1 / -1; display: flex; gap: .5rem; justify-content: flex-end; }
+body.in-app .pwa-hint { border: 0; border-left: 3px solid var(--accent); border-radius: 12px; box-shadow: var(--nm-out); }
+@media (prefers-reduced-motion: reduce) {
+  .pwa-hint { transition: none; transform: none; }
+}
+
+/* Instrucciones iOS (Compartir → Añadir a pantalla de inicio) / Safari macOS. */
+.pwa-steps__list { list-style: none; padding: 0; margin: 0 0 1rem; display: grid; gap: .85rem; }
+.pwa-steps__list li {
+  display: grid; grid-template-columns: 2.4rem 1fr; gap: .8rem; align-items: center;
+  font-size: .92rem; line-height: 1.45;
+}
+.pwa-steps__ico {
+  width: 2.4rem; height: 2.4rem; display: grid; place-items: center;
+  background: var(--panini); color: var(--ink-fixed); border: 2px solid var(--ink-fixed);
+}
+body.in-app .pwa-steps__ico { background: var(--surface-2); color: var(--accent); border: 0; border-radius: 10px; }
+.pwa-steps__note { font-size: .8rem; line-height: 1.45; color: var(--muted); margin: 0 0 .5rem; }
+.pwa-steps .btn--block { margin-top: .9rem; }
+
+/* App instalada: con viewport-fit=cover el contenido llega bajo el
+   indicador de inicio del iPhone / la barra de gestos de Android.
+   env() vale 0 donde no hay muesca, así que fuera de eso no cambia nada. */
+[data-display-mode="standalone"] .toasts { bottom: calc(1rem + env(safe-area-inset-bottom, 0px)); }
+[data-display-mode="standalone"] .cart-drawer__foot { padding-bottom: calc(1.1rem + env(safe-area-inset-bottom, 0px)); }
+
+@media print { .pwa-hint { display: none !important; } }

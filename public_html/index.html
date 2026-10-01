@@ -13,6 +13,15 @@
 
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23ffd400'/%3E%3Ctext x='50' y='72' font-size='68' text-anchor='middle' font-family='Arial Black,sans-serif' font-weight='900'%3EG%3C/text%3E%3C/svg%3E" />
 
+  <!-- PWA: manifest + iconos (generados por tools/generate_pwa_icons.py a partir de este mismo favicon) -->
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png" />
+  <meta name="application-name" content="GeekPoint" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="GeekPoint" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+
   <!-- Anti-flash de Modo Oscuro: aplica data-theme antes de pintar. Por defecto: claro. -->
   <script>
     try {
@@ -23,7 +32,7 @@
 
   <link rel="stylesheet" href="assets/css/tokens.css?v=20260914_v76" />
   <link rel="stylesheet" href="assets/css/base.css?v=20260922_v77" />
-  <link rel="stylesheet" href="assets/css/components.css?v=20260922_v97" />
+  <link rel="stylesheet" href="assets/css/components.css?v=20261001_v99" />
   <link rel="stylesheet" href="assets/css/store.css?v=20260917_v77" />
   <link rel="stylesheet" href="assets/css/app.css?v=20260930_v160" />
 </head>
@@ -52,6 +61,13 @@
     </nav>
 
     <div class="topbar__actions">
+      <!-- Solo visible cuando el navegador permite instalar de verdad (js/pwa.js). -->
+      <button type="button" class="pwa-btn" data-pwa-install hidden title="Instalar aplicación" data-i18n-title="pwa.install">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 3v11"/><path d="M7.5 9.5 12 14l4.5-4.5"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>
+        </svg>
+        <span class="sr-only" data-i18n="pwa.install">Instalar aplicación</span>
+      </button>
       <label for="themeToggle" class="themeToggle st-sunMoonThemeToggleBtn" title="Cambiar tema" aria-label="Cambiar a tema oscuro">
         <input type="checkbox" id="themeToggle" class="themeToggleInput" />
         <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor" stroke="none">
@@ -229,9 +245,10 @@
   <script defer src="lib/barcode.js?v=20260908_v74"></script>
   <script defer src="lib/manifest.js?v=20260908_v74"></script>
   <script defer src="js/config.js?v=20260910_v75"></script>
-  <script defer src="js/i18n.js?v=20260930_v96"></script>
+  <script defer src="js/i18n.js?v=20261001_v102"></script>
   <script defer src="js/ui.js?v=20260922_v89"></script>
-  <script defer src="js/theme.js?v=20260910_v75"></script>
+  <script defer src="js/pwa.js?v=20261001_v1"></script>
+  <script defer src="js/theme.js?v=20261001_v76"></script>
   <script defer src="js/api.js?v=20260910_v75"></script>
   <script defer src="js/services/pokemonApi.js?v=20260910_v75"></script>
   <script defer src="js/services/figureApi.js?v=20260910_v75"></script>
@@ -239,13 +256,13 @@
   <script defer src="js/catalog.js?v=20260914_v76"></script>
   <script defer src="js/three-hero.js?v=20260910_v75"></script>
   <script defer src="js/views/shell.js?v=20260910_v75"></script>
-  <script defer src="js/views/store.js?v=20260910_v75"></script>
+  <script defer src="js/views/store.js?v=20261001_v76"></script>
   <script defer src="js/views/login.js?v=20260930_v118"></script>
   <script defer src="js/views/account.js?v=20260917_v2"></script>
-  <script defer src="js/views/admin.js?v=20260915_v82"></script>
-  <script defer src="js/views/manager.js?v=20260910_v75"></script>
+  <script defer src="js/views/admin.js?v=20261001_v89"></script>
+  <script defer src="js/views/manager.js?v=20261001_v76"></script>
   <script defer src="js/views/pos.js?v=20260922_v89"></script>
   <script defer src="js/router.js?v=20260917_v76"></script>
-  <script defer src="js/main.js?v=20260922_v89"></script>
+  <script defer src="js/main.js?v=20261001_v92"></script>
 </body>
 </html>

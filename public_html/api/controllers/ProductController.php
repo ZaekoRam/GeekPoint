@@ -38,7 +38,7 @@ class ProductController extends Controller
             $where[] = 'p.stock <= p.min_stock';
         }
 
-        $limit = min(200, max(1, (int) $this->query('limit', 100)));
+        $limit = min(5000, max(1, (int) $this->query('limit', 100)));   // inventario completo: los tomos sueltos generan muchas filas
 
         $rows = Database::all(
             'SELECT p.*, c.slug AS category_slug, c.name_es AS category_es, c.name_en AS category_en,

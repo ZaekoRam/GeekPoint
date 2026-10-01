@@ -111,7 +111,9 @@ carpeta `api/` esté dentro de `public_html/` y que exista `public_html/api/.hta
 - [ ] **Borra** la carpeta `api/tools/` (o protégela con contraseña en hPanel).
 - [ ] Deja `'env' => 'prod'` en `config.php` (oculta los mensajes de error internos).
 - [ ] Activa **SSL** (hPanel → SSL) y descomenta el bloque *HTTPS redirect* en
-      `public_html/.htaccess`.
+      `public_html/.htaccess`. **La instalación como app (PWA) solo funciona por
+      HTTPS**: sin SSL el navegador no registra el Service Worker ni ofrece
+      "Instalar aplicación".
 
 ---
 
@@ -120,7 +122,11 @@ carpeta `api/` esté dentro de `public_html/` y que exista `public_html/api/.hta
 1. Sube los archivos cambiados.
 2. Si tocaste algún `.js` o `.css`, cambia `?v=20260826` por la fecha nueva en
    **`index.html`** (todos los `<link>` y `<script>`). Así el navegador descarga la
-   versión nueva y no una cacheada.
+   versión nueva y no una cacheada. Con la PWA esto es aún más importante: el
+   Service Worker identifica cada versión de un JS/CSS por su `?v=`.
+3. Si cambiaste `sw.js`, `offline.html` o los iconos de `icons/`, incrementa
+   `SW_VERSION` al inicio de `sw.js`: los usuarios reciben el Service Worker nuevo
+   en su siguiente visita y se descartan las cachés anteriores.
 
 ---
 

@@ -39,6 +39,7 @@ $mime = @{
   '.webp'='image/webp'; '.ico'='image/x-icon'; '.avif'='image/avif'
   '.woff'='font/woff'; '.woff2'='font/woff2'; '.ttf'='font/ttf'; '.eot'='application/vnd.ms-fontobject'
   '.mp4'='video/mp4';  '.webm'='video/webm';  '.txt'='text/plain; charset=utf-8'
+  '.webmanifest'='application/manifest+json'
 }
 
 $listener = New-Object System.Net.HttpListener

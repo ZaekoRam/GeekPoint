@@ -122,9 +122,26 @@
 
     var transition = document.startViewTransition(apply);
     transition.finished.then(settle, settle);
-    // Si la transición se salta (watchdog, o el navegador la aborta) la
-    // promesa `ready` rechaza; sin este catch queda como error en consola.
-    if (transition.ready) transition.ready.catch(function () {});
+    // El círculo se anima con Web Animations y coordenadas en px LITERALES.
+    // Antes salía de var(--h-theme-toggle-x/y) dentro de @keyframes, pero
+    // algunos navegadores no resuelven esas variables en los pseudo-elementos
+    // ::view-transition-* y caían al respaldo 50%/50% (el centro).
+    // Si la promesa `ready` rechaza (transición saltada), el catch evita el
+    // error en consola.
+    if (transition.ready) transition.ready.then(function () {
+      try {
+        root.animate({
+          clipPath: [
+            "circle(0px at " + x + "px " + y + "px)",
+            "circle(" + radius + "px at " + x + "px " + y + "px)"
+          ]
+        }, {
+          duration: reduced ? 0 : 550,
+          easing: "cubic-bezier(0.4, 0, 0.2, 1)",
+          pseudoElement: "::view-transition-new(root)"
+        });
+      } catch (e) {}
+    }).catch(function () {});
 
     // Perro guardián: si el compositor va saturado o la pestaña pasa a
     // segundo plano, el callback de startViewTransition puede no correr y

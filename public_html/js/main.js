@@ -172,7 +172,10 @@
           for (var j = 0; j < vcs.length; j++) {
             if (String(vcs[j].id) === idStr && vcs[j].branches && vcs[j].branches.length) { branches = vcs[j].branches; break; }
           }
-          if (!branches && m && all[i].id === m[1] && all[i].branches && all[i].branches.length) branches = all[i].branches;
+          // Tomo sin ficha propia ("<serie>-vN") de una serie del inventario:
+          // no hereda el stock de la serie -> no disponible.
+          if (!branches && m && all[i].id === m[1] &&
+              (all[i].source === "local" || all[i].source === "series")) return 0;
         }
       }
       if (!branches) return null;
@@ -200,10 +203,14 @@
       c = STORE.shopCart;
 
       // Sucursales ACTIVAS de la BD (tabla `branches`); respaldo estático si el
-      // API aún no respondió.  La opción "Cualquier sucursal" se conserva fija.
-      var branches = (window.Catalog && Catalog.branches)
+      // API aún no respondió.  Se listan todas, pero las que NO tienen stock
+      // para todo el carrito salen bloqueadas ("sin stock"): el cliente elige
+      // dónde recoger (ya no hay "cualquiera").
+      var branches = ((window.Catalog && Catalog.branches)
         ? Catalog.branches().filter(function (b) { return String(b.status || "active") !== "inactive"; })
-        : (((window.__BRAND__ || {}).branches) || []);
+        : (((window.__BRAND__ || {}).branches) || []))
+        .map(function (b) { return { code: b.code, name: b.name, ok: !stockShortages(b.code).length }; });
+      if (!branches.some(function (b) { return b.ok; })) { UI.toast(I18N.t("resv.noBranch"), "warn", 5000); return; }
       var rows = c.map(function (l) {
         return '<tr><td>' + UI.escHTML(l.title) +
           (!/^local-/i.test(String(l.id)) ? '<small class="muted">' + UI.escHTML(I18N.t("resv.nonbinding")) + '</small>' : '') +
@@ -231,8 +238,11 @@
             '<input class="input" name="customer_phone" maxlength="40" autocomplete="tel"></div>' +
         '</div>' +
         '<div class="field"><label>' + UI.escHTML(I18N.t("resv.branch")) + '</label>' +
-          '<select class="select" name="branch_code"><option value="">' + UI.escHTML(I18N.t("resv.pickAny")) + '</option>' +
-          branches.map(function (b) { return '<option value="' + UI.escHTML(b.code) + '">' + UI.escHTML(b.name) + '</option>'; }).join("") +
+          '<select class="select" name="branch_code" required><option value="" disabled selected>' + UI.escHTML(I18N.t("resv.pickBranch")) + '</option>' +
+          branches.map(function (b) {
+            return '<option value="' + UI.escHTML(b.code) + '"' + (b.ok ? '' : ' disabled') + '>' +
+              UI.escHTML(b.name) + (b.ok ? '' : ' — ' + UI.escHTML(I18N.t("resv.noStockBranch"))) + '</option>';
+          }).join("") +
           '</select></div>' +
         '<p class="field__error" data-resv-error hidden></p>' +
         '<button class="btn btn--panini btn--block btn--lg" type="submit">' + UI.escHTML(I18N.t("resv.submit")) + '</button>';
@@ -264,8 +274,8 @@
         errBox.hidden = true;
         refreshQuotePrices();
 
-        // No permitir apartar si algún artículo no tiene stock suficiente
-        // (en la sucursal elegida, o en la mejor sucursal si es "cualquiera").
+        // No permitir apartar si algún artículo no tiene stock suficiente en la
+        // sucursal elegida (por si el catálogo cambió con el formulario abierto).
         var shortages = stockShortages(form.branch_code.value);
         if (shortages.length) {
           errBox.textContent = I18N.t("resv.shortStock") + " " +

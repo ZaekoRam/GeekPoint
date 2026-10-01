@@ -304,7 +304,7 @@
     Promise.all([
       API.get("branches"),
       API.get("categories"),
-      API.get("products?status=all&limit=300"),
+      API.get("products?status=all&limit=5000"),
       API.get("inventory/alerts")
     ]).then(function (res) {
       var brs = res[0].branches;
@@ -388,13 +388,28 @@
         if (!del) return;
         var sku = del.getAttribute("data-del-sku");
         var name = del.getAttribute("data-name") || sku;
-        UI.confirm(I18N.t("confirm.delete", { name: name }), function () {
-          API.del("products/sku/" + encodeURIComponent(sku)).then(function (r) {
-            var n = (r.deleted || []).length + (r.deactivated || []).length;
+        // Tarjeta plegada (serie de manga / números de un cómic): se borra el
+        // GRUPO completo. Antes solo se borraba el SKU visible y el siguiente
+        // número pasaba a ser la tarjeta, así que "no se eliminaba".
+        var grp = bySku[sku];
+        var skus = [sku].concat(((grp && grp.children) || []).map(function (ch) { return ch.sku; }));
+        var msg = skus.length > 1
+          ? I18N.t("confirm.deleteGroup", { name: name, n: skus.length - 1 })
+          : I18N.t("confirm.delete", { name: name });
+        UI.confirm(msg, function () {
+          var n = 0;
+          skus.reduce(function (chain, s) {
+            return chain.then(function () {
+              return API.del("products/sku/" + encodeURIComponent(s)).then(function (r) {
+                n += (r.deleted || []).length + (r.deactivated || []).length;
+              });
+            });
+          }, Promise.resolve()).then(function () {
             UI.toast(I18N.t("prodadm.deleted", { n: n }), "ok");
+          }).catch(apiToast).then(function () {
             V._catalogChanged();
             inventory(panel, root);
-          }).catch(apiToast);
+          });
         }, { danger: true });
       });
 
@@ -418,8 +433,11 @@
         category_slug: r.category_slug || "", status: r.status,
         total: 0, byBranch: {}, idByBranch: {}, rowsByBranch: {}, sample: r
       });
-      g.total += r.stock || 0;
-      g.byBranch[r.branch_id] = (g.byBranch[r.branch_id] || 0) + (r.stock || 0);
+      // En producción PDO devuelve el stock como texto: sin Number() la suma
+      // concatenaba ("10"+"11"+... -> "1011256").
+      var st = Number(r.stock) || 0;
+      g.total += st;
+      g.byBranch[r.branch_id] = (g.byBranch[r.branch_id] || 0) + st;
       g.idByBranch[r.branch_id] = r.id;          // id del producto en esa sucursal
       g.rowsByBranch[r.branch_id] = r;
       if (r.category_slug && !g.category_slug) g.category_slug = r.category_slug;
@@ -517,9 +535,12 @@
 
       parent.displayName = _seriesTitle(parent.name) || parent.name;
       parent.children = children;
-      parent.groupTotal = parent.total;
+      // Ficha de SERIE de manga (MNG-S-*) con tomos: su propio stock ya no se
+      // vende (la tienda usa el de cada tomo), así que no se suma.
+      var seriesOnly = /^MNG-S-/i.test(parent.sku);
+      parent.groupTotal = seriesOnly ? 0 : parent.total;
       parent.groupByBranch = {};
-      Object.keys(parent.byBranch).forEach(function (b) { parent.groupByBranch[b] = parent.byBranch[b]; });
+      if (!seriesOnly) Object.keys(parent.byBranch).forEach(function (b) { parent.groupByBranch[b] = parent.byBranch[b]; });
       children.forEach(function (c) {
         parent.groupTotal += c.total;
         Object.keys(c.byBranch).forEach(function (b) {
@@ -562,8 +583,9 @@
     branches = branches || [];
     return '<div class="invgrid">' + list.map(function (g) {
       var kids = g.children || [];
-      var total = kids.length ? g.groupTotal : g.total;
       var brMap = kids.length ? g.groupByBranch : g.byBranch;
+      // La insignia muestra el stock de la SUCURSAL seleccionada, no el total.
+      var total = Number((brMap || {})[activeBranchId]) || 0;
       var totalCls = total === 0 ? "badge--danger" : (total <= 6 ? "badge--warn" : "badge--ok");
       var cat = esc(PRV_LABEL[g.category_slug] || g.category_slug || "—");
       var perBranch = branchDigest(brMap, branches, activeBranchId);
@@ -768,7 +790,7 @@
     var seriesName = _seriesTitle(group.displayName || group.name) || group.name;
     var maxExisting = Object.keys(byNum).reduce(function (mx, k) { return Math.max(mx, +k); }, 0);
     var descMatch = String((group.sample && group.sample.description) || "").match(/(\d{1,3})\s*tomos?/i);
-    var guess = descMatch ? Math.min(parseInt(descMatch[1], 10), 80) : (maxExisting || 12);
+    var guess = descMatch ? Math.min(parseInt(descMatch[1], 10), 300) : (maxExisting || 12);
 
     var brs = branches || [];
     var defBranch = defaultBranchId || (window.STORE && STORE.user && STORE.user.branch_id) || (brs[0] && brs[0].id) || null;
@@ -779,7 +801,7 @@
     function refresh() {
       V._catalogChanged();
       done();
-      API.get("products?status=all&limit=300").then(function (res) {
+      API.get("products?status=all&limit=5000").then(function (res) {
         var folded = foldSeries(groupBySku(res.products, brs));
         volumesModal(folded.bySku[group.sku] || group, branches, done, defBranch);
       }).catch(function () { volumesModal(group, branches, done, defBranch); });
@@ -789,9 +811,10 @@
     c.innerHTML =
       '<p class="muted" style="margin-bottom:.6rem">' + esc(group.displayName || group.name) +
         ' · <span class="mono">' + esc(group.sku) + '</span></p>' +
-      '<button type="button" class="btn btn--neon btn--sm" data-add-vol style="margin-bottom:.9rem">' +
-        esc(I18N.t("volumes.addNew")) + '</button>' +
-      row("volumes.count", '<input class="input" type="number" min="1" max="99" name="count" value="' + guess + '" data-vol-count>', "volumes.count") +
+      '<div style="display:flex;flex-wrap:wrap;gap:.6rem;margin-bottom:.9rem">' +
+        '<button type="button" class="btn btn--neon btn--sm" data-add-vol>' + esc(I18N.t("volumes.addNew")) + '</button>' +
+      '</div>' +
+      row("volumes.count", '<input class="input" type="number" min="1" max="300" name="count" value="' + guess + '" data-vol-count>', "volumes.count") +
       '<div data-vol-rows></div>' +
       '<div style="display:flex;gap:.6rem;justify-content:flex-end;margin-top:.4rem">' +
         '<button type="button" class="btn btn--ghost" data-close-vol>' + esc(I18N.t("btn.close")) + '</button></div>';
@@ -801,23 +824,24 @@
 
     function selBranch() { return defBranch; }
 
-    /* Stock a mostrar para un tomo en una sucursal: el propio del tomo si tiene
-       ficha; si no, hereda el del registro de la serie en esa sucursal. */
+    /* Stock de un tomo en una sucursal: SOLO el de su propia ficha. Un tomo sin
+       ficha ya no hereda el stock de la serie: en la tienda sale "sin stock"
+       (ver stockRowsHTML en views/store.js). */
     function rowStock(ex, bid) {
       if (ex && ex.byBranch) return { n: ex.byBranch[bid] || 0, inherited: false };
-      return { n: (group.byBranch && group.byBranch[bid]) || 0, inherited: true };
+      return { n: 0, inherited: true };
     }
 
     function drawRows() {
-      var n = Math.max(1, Math.min(99, parseInt(c.querySelector("[data-vol-count]").value, 10) || 1));
+      var n = Math.max(1, Math.min(300, parseInt(c.querySelector("[data-vol-count]").value, 10) || 1));
       var bid = selBranch();
       var bName = (brs.filter(function (b) { return b.id === bid; })[0] || {}).name || "";
       var rows = "";
       for (var v = 1; v <= n; v++) {
         var ex = byNum[v];
         var st = rowStock(ex, bid);
-        var stockLbl = esc(I18N.t("col.stock").toLowerCase()) +
-          (st.inherited ? " " + esc(I18N.t("volumes.seriesStock")) : "") + ": " + st.n;
+        var stockLbl = st.inherited ? esc(I18N.t("volumes.noRecord"))
+          : esc(I18N.t("col.stock").toLowerCase()) + ": " + st.n;
         rows += '<label class="pkm-branch"><span>' + esc(I18N.t("prod.volume")) + ' ' + v +
           '<br><small class="muted mono" style="font-size:.62rem">' + esc((ex && ex.sku) || (base + "-" + _pad2(v))) +
             ' · ' + stockLbl + '</small></span>' +
@@ -857,28 +881,32 @@
           ' · <span class="mono">' + esc((ex && ex.sku) || (base + "-" + _pad2(v))) + '</span></p>' +
         '<input type="hidden" name="branch" value="' + (bid0 || (brs[0] && brs[0].id) || "") + '">' +
         '<p class="muted mono" style="font-size:.72rem;margin:.1rem 0 .5rem" data-cur></p>' +
-        row("volumes.addStock", '<input class="input" type="number" name="add" min="0" step="1" value="0">', "volumes.addStock") +
+        row("volumes.setStock", '<input class="input" type="number" name="qty" min="0" step="1" required value="' +
+          rowStock(ex, bid0).n + '">', "volumes.setStock") +
         formButtons();
       var sub = stackModal(I18N.t("volumes.stockTitle", { name: nm }) + (bName ? " · " + bName : ""), f);
       f.querySelector("[data-cancel]").addEventListener("click", sub.close);
 
       function paintCur() {
         var st = rowStock(ex, bid0);
-        f.querySelector("[data-cur]").textContent = I18N.t("volumes.curStock") + ": " + st.n +
-          (st.inherited ? " (" + I18N.t("volumes.seriesStock") + ")" : "");
+        f.querySelector("[data-cur]").textContent = st.inherited
+          ? I18N.t("volumes.noRecord")
+          : I18N.t("volumes.curStock") + ": " + st.n;
       }
       paintCur();
 
+      // Fija la cantidad EXACTA (no suma). 0 también vale: en un tomo sin
+      // ficha crea su ficha como agotado.
       bindSub(f, function (p) {
         var bid = parseInt(p.branch, 10);
-        var add = Math.max(0, parseInt(p.add, 10) || 0);
-        if (!add) { sub.close(); return Promise.resolve(); }
+        var qty = Math.max(0, parseInt(p.qty, 10) || 0);
         var job;
         if (ex && ex.idByBranch && ex.idByBranch[bid]) {
+          if (qty === ((ex.byBranch && ex.byBranch[bid]) || 0)) { sub.close(); return Promise.resolve(); }
           job = API.patch("products/" + ex.idByBranch[bid] + "/stock",
-            { mode: "delta", value: add, note: I18N.t("volumes.stockNote") });
+            { mode: "set", value: qty, note: I18N.t("volumes.stockNote") });
         } else if (ex) {
-          var sb1 = {}; sb1[bid] = add;
+          var sb1 = {}; sb1[bid] = qty;
           job = API.post("products/import", {
             source: "restock", sku: ex.sku, name: ex.name,
             category_slug: ex.category_slug || group.category_slug || "manga",
@@ -888,7 +916,7 @@
             stock_by_branch: sb1
           });
         } else {
-          var sb2 = {}; brs.forEach(function (b) { sb2[b.id] = 0; }); sb2[bid] = add;
+          var sb2 = {}; brs.forEach(function (b) { sb2[b.id] = 0; }); sb2[bid] = qty;
           job = API.post("products/import", {
             source: "volume", sku: base + "-" + _pad2(v), name: nm,
             category_slug: group.category_slug || "manga",
@@ -899,7 +927,7 @@
           });
         }
         return job.then(function () {
-          UI.toast(I18N.t("prodadm.restockDone"), "ok");
+          UI.toast(I18N.t("toast.stockAdjusted"), "ok");
           sub.close();
           refresh();
         });

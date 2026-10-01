@@ -112,6 +112,8 @@
       "volumes.seriesStock": "serie",
       "volumes.stockBranch": "Sucursal del stock",
       "volumes.stockNote": "Ajuste desde Tomos y precios",
+      "volumes.setStock": "Stock en esta sucursal (cantidad exacta)",
+      "volumes.noRecord": "sin ficha · no disponible",
       "volumes.needPrice": "Escribe el precio de al menos un tomo.",
       "volumes.done": "{n} cambio(s) guardado(s).",
       "volumes.current": "Tomos actuales",
@@ -142,6 +144,7 @@
       "resv.name": "Nombre", "resv.email": "Correo (opcional)", "resv.phone": "Teléfono (opcional)",
       "resv.emailTip": "Al ingresar tu correo podemos mandarte la información de tu pedido.",
       "resv.branch": "Sucursal para recoger", "resv.pickAny": "Cualquier sucursal",
+      "resv.pickBranch": "Elige la sucursal donde recogerás", "resv.noStockBranch": "sin stock", "resv.noBranch": "Ninguna sucursal tiene stock suficiente para todo tu carrito. Ajusta las cantidades o quita algún artículo.",
       "resv.submit": "Generar apartado", "resv.created": "Apartado creado",
       "resv.ticketKicker": "APARTADO",
       "resv.present": "Presenta este folio (o el código de barras) en caja para pagar y recoger.",
@@ -287,6 +290,7 @@
 
       "empty.none": "Sin registros todavía.",
       "confirm.delete": "¿Eliminar «{name}»? Esta acción no se puede deshacer.",
+      "confirm.deleteGroup": "¿Eliminar «{name}» junto con sus {n} tomos/números (en todas las sucursales)? Esta acción no se puede deshacer.",
       "confirm.logout": "¿Desea cerrar su sesión?", "confirm.logoutTitle": "Cerrar sesión",
       "toast.saved": "Cambios guardados.", "toast.deleted": "Registro eliminado.",
       "toast.created": "Registro creado.", "toast.error": "Ocurrió un error.",
@@ -296,7 +300,24 @@
       "misc.loading": "Cargando…", "misc.of": "de", "misc.branch": "Sucursal",
       "misc.welcome": "Hola, {name}", "misc.last14": "Últimos 14 días",
       "misc.cashierRank": "Desempeño por cajero", "misc.recentSales": "Ventas recientes",
-      "misc.movements": "Movimientos de inventario", "misc.alerts": "Productos en alerta"
+      "misc.movements": "Movimientos de inventario", "misc.alerts": "Productos en alerta",
+
+      "pwa.install": "Instalar aplicación",
+      "pwa.hint.title": "Instala GeekPoint",
+      "pwa.hint.body": "Ábrela como una aplicación, con su propio icono y sin la barra del navegador.",
+      "pwa.hint.cta": "Instalar", "pwa.hint.ctaHow": "Cómo instalar", "pwa.hint.dismiss": "Ahora no",
+      "pwa.installed": "GeekPoint se instaló. Ábrela desde tu pantalla de inicio o tus aplicaciones.",
+      "pwa.gotIt": "Entendido",
+      "pwa.ios.title": "Añadir a pantalla de inicio",
+      "pwa.ios.step1": "Toca el botón Compartir en la barra de Safari (abajo en iPhone, arriba en iPad). Si no lo ves, toca primero el botón «···».",
+      "pwa.ios.step1Other": "Toca el botón Compartir de tu navegador (suele estar junto a la barra de direcciones o en su menú).",
+      "pwa.ios.step2": "Elige «Añadir a pantalla de inicio» (o «Agregar a inicio», según el idioma de tu dispositivo). Si no aparece, desliza la lista hacia arriba o toca «Ver más».",
+      "pwa.ios.step3": "Toca «Añadir». GeekPoint aparecerá en tu pantalla de inicio y se abrirá como una aplicación, sin la barra del navegador.",
+      "pwa.ios.otherNote": "Si tu navegador no ofrece esta opción, abre GeekPoint en Safari y repite los pasos.",
+      "pwa.ios.already": "¿Ya la añadiste? Ábrela desde su icono en la pantalla de inicio.",
+      "pwa.mac.title": "Añadir al Dock",
+      "pwa.mac.step1": "En la barra de menús de Safari, elige Archivo → «Añadir al Dock».",
+      "pwa.mac.step2": "Pulsa «Añadir». GeekPoint se abrirá en su propia ventana desde el Dock o Launchpad."
     },
 
     en: {
@@ -406,6 +427,8 @@
       "volumes.seriesStock": "series",
       "volumes.stockBranch": "Stock branch",
       "volumes.stockNote": "Adjusted from Volumes & prices",
+      "volumes.setStock": "Stock at this branch (exact amount)",
+      "volumes.noRecord": "no record · unavailable",
       "volumes.needPrice": "Enter a price for at least one volume.",
       "volumes.done": "{n} change(s) saved.",
       "volumes.current": "Current volumes",
@@ -436,6 +459,7 @@
       "resv.name": "Name", "resv.email": "Email (optional)", "resv.phone": "Phone (optional)",
       "resv.emailTip": "If you give us your email we can send you your order information.",
       "resv.branch": "Pickup branch", "resv.pickAny": "Any branch",
+      "resv.pickBranch": "Choose your pickup branch", "resv.noStockBranch": "out of stock", "resv.noBranch": "No branch has enough stock for your whole cart. Adjust quantities or remove an item.",
       "resv.submit": "Create reservation", "resv.created": "Reservation created",
       "resv.ticketKicker": "RESERVATION",
       "resv.present": "Show this folio (or the barcode) at checkout to pay and collect.",
@@ -581,6 +605,7 @@
 
       "empty.none": "No records yet.",
       "confirm.delete": "Delete “{name}”? This cannot be undone.",
+      "confirm.deleteGroup": "Delete “{name}” along with its {n} volumes/issues (at every branch)? This cannot be undone.",
       "confirm.logout": "Do you want to sign out?", "confirm.logoutTitle": "Sign out",
       "toast.saved": "Changes saved.", "toast.deleted": "Record deleted.",
       "toast.created": "Record created.", "toast.error": "Something went wrong.",
@@ -590,7 +615,24 @@
       "misc.loading": "Loading…", "misc.of": "of", "misc.branch": "Branch",
       "misc.welcome": "Hi, {name}", "misc.last14": "Last 14 days",
       "misc.cashierRank": "Performance by cashier", "misc.recentSales": "Recent sales",
-      "misc.movements": "Inventory movements", "misc.alerts": "Products on alert"
+      "misc.movements": "Inventory movements", "misc.alerts": "Products on alert",
+
+      "pwa.install": "Install app",
+      "pwa.hint.title": "Install GeekPoint",
+      "pwa.hint.body": "Open it like an app, with its own icon and without the browser bar.",
+      "pwa.hint.cta": "Install", "pwa.hint.ctaHow": "How to install", "pwa.hint.dismiss": "Not now",
+      "pwa.installed": "GeekPoint is installed. Open it from your home screen or your apps.",
+      "pwa.gotIt": "Got it",
+      "pwa.ios.title": "Add to Home Screen",
+      "pwa.ios.step1": "Tap the Share button in Safari's toolbar (bottom on iPhone, top on iPad). If you don't see it, tap the “···” button first.",
+      "pwa.ios.step1Other": "Tap your browser's Share button (usually next to the address bar or inside its menu).",
+      "pwa.ios.step2": "Choose “Add to Home Screen”. If it's not listed, scroll the list up or tap “View More”.",
+      "pwa.ios.step3": "Tap “Add”. GeekPoint will appear on your Home Screen and open like an app, without the browser bar.",
+      "pwa.ios.otherNote": "If your browser doesn't offer this option, open GeekPoint in Safari and repeat the steps.",
+      "pwa.ios.already": "Already added it? Open it from its icon on your Home Screen.",
+      "pwa.mac.title": "Add to Dock",
+      "pwa.mac.step1": "In Safari's menu bar, choose File → “Add to Dock”.",
+      "pwa.mac.step2": "Click “Add”. GeekPoint will open in its own window from the Dock or Launchpad."
     }
   };
 

@@ -101,7 +101,7 @@
 
   function productsFallback(panel, root) {
     panel.innerHTML = V._loading();
-    Promise.all([API.get("products?status=all&limit=200"), categories()]).then(function (res) {
+    Promise.all([API.get("products?status=all&limit=5000"), categories()]).then(function (res) {
       var list = res[0].products, cats = res[1];
       panel.innerHTML = V._table([
         { key: "name", label: I18N.t("col.name"), render: function (r) {

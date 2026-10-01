@@ -371,12 +371,28 @@
     return hashInt(productId + "|v" + vol + "|" + branchCode) % 15;
   }
 
+  /** Stock real por sucursal del tomo/producto, o null si no hay inventario
+      POS detrás (catálogo externo → disponibilidad sintética).
+      Un tomo SIN ficha propia de una serie del inventario NO hereda el stock
+      de la serie: devuelve [] (= sin stock en todas las sucursales). */
+  function realBranchesFor(p, volObj) {
+    if (volObj && volObj.branches && volObj.branches.length) return volObj.branches;
+    var fromInventory = p.source === "local" || p.source === "series";
+    if (volObj && volObj.v != null && fromInventory && (p.volume_covers || []).length) return [];
+    return (p.source === "local" && p.branches && p.branches.length) ? p.branches : null;
+  }
+
+  /** Unidades totales del tomo/producto (null = sin inventario real). */
+  function totalStockFor(p, volObj) {
+    var real = realBranchesFor(p, volObj);
+    if (!real) return null;
+    return real.reduce(function (n, b) { return n + (Number(b.stock) || 0); }, 0);
+  }
+
   function stockRowsHTML(p, vol, volObj) {
     // Stock REAL por sucursal si es un tomo/producto del inventario POS;
     // si no, disponibilidad sintética determinista por tomo.
-    var realBranches =
-      (volObj && volObj.branches && volObj.branches.length) ? volObj.branches :
-      ((p.source === "local" && p.branches && p.branches.length) ? p.branches : null);
+    var realBranches = realBranchesFor(p, volObj);
     return activeBranches().map(function (b) {
       var n;
       if (realBranches) {
@@ -662,12 +678,23 @@
         applyFilter();   // ajusta altura + "Continuar" (y reaplica la búsqueda previa)
       }
 
+      // Tomo sin stock en ninguna sucursal: no se puede añadir al carrito.
+      var buyBtn = wrap.querySelector("[data-buy]");
+      function paintBuy(c) {
+        if (!buyBtn || !showVolumePicker) return;
+        var total = totalStockFor(p, c);
+        var out = total === 0;
+        buyBtn.disabled = out;
+        buyBtn.textContent = I18N.t(out ? "prod.soldout" : "prod.buy");
+      }
+
       function refresh() {
         var c = currentVol();
         if (stage && stage.setCover) stage.setCover(coverFor(c));
         if (priceEl) priceEl.innerHTML = priceHTML((c.id ? c : p), false);
         stockBox.innerHTML = stockPanelHTML(p, c.v, c);
         bindStockPanel();
+        paintBuy(c);
       }
       if (volSel) volSel.addEventListener("change", refresh);
       bindStockPanel();   // liga el panel inicial (refresh() lo re-liga tras cada cambio)
