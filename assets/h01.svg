@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 80" width="900" height="80">
+<style>.s{animation:s 3s ease-in-out infinite}@keyframes s{0%,100%{opacity:.35}50%{opacity:1}}</style>
+<rect width="900" height="80" rx="12" fill="#0B0B12"/>
+<rect x="0" y="0" width="900" height="80" rx="12" fill="none" stroke="#FFD400" stroke-width="3"/>
+<rect x="14" y="14" width="52" height="52" rx="8" fill="#FFD400"/>
+<text x="40" y="52" text-anchor="middle" font-family="Impact,'Arial Black','Anton',sans-serif" font-size="32" fill="#0B0B12">01</text>
+<text x="84" y="46" font-family="Impact,'Arial Black','Anton',sans-serif" font-size="32" fill="#fff" letter-spacing="2">DESCRIPCIÓN</text>
+<text x="86" y="66" font-family="'Courier New',Consolas,monospace" font-size="14" fill="#FFD400">Qué es GeekPoint</text>
+<g class="s" fill="#FFD400"><path d="M850 40 l5 -14 5 14 14 5 -14 5 -5 14 -5 -14 -14 -5z"/></g>
+<path d="M740 70 L790 10 M760 70 L810 10 M780 70 L830 10" stroke="#FFD400" stroke-width="4" opacity=".25"/></svg>

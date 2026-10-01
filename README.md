@@ -1,192 +1,302 @@
-# GeekPoint — Portal Coleccionable & Sistema POS Multi-Sede
+<div align="center">
 
-Plataforma **dual** para tiendas de cultura geek (manga, figuras, cartas TCG,
-cómics, coleccionables):
+<img src="assets/banner.svg" alt="GeekPoint — Portal coleccionable y sistema POS multi-sede" width="100%">
 
-1. **Tienda e-commerce** de cara al cliente — catálogo interactivo con portadas
-   reales, hero 3D estilo "Wii menu", vista previa 3D de cada producto, carrito
-   flotante y consulta de disponibilidad por sucursal.
-2. **Sistema POS / Gestión** para el personal — se entra por el botón
-   *"Acceso POS / Personal"*: administrador general, gerente de sede y módulo de
-   caja (POS) con descuento automático de inventario.
+<br>
 
-Detalles técnicos:
+[![Sitio](https://img.shields.io/badge/Sitio-geekpoint.com.mx-FFD400?style=for-the-badge&logoColor=black)](https://geekpoint.com.mx)
+![Tipo](https://img.shields.io/badge/Tipo-E--commerce%20%2B%20POS%20Multi--sede-FF2D8A?style=for-the-badge)
+![Público](https://img.shields.io/badge/Público-Fans%20del%20manga%2C%20TCG%20y%20cómics-22E5FF?style=for-the-badge&logoColor=black)
 
-- **Front-end:** HTML + CSS + JavaScript *vanilla*. Router propio por hash, Three.js
-  para el 3D, interfaz bilingüe (ES/EN). Sin framework, sin `npm`, sin build.
-- **Portadas reales:** la API consume **Jikan (MyAnimeList)** —pública y gratuita—
-  y cachea el resultado 24 h. Si MAL/Jikan no responde, la tienda usa un catálogo
-  local con portadas "manga ink" generadas.
-- **Back-end:** PHP puro (PDO) con API REST y autenticación por token Bearer.
-- **Base de datos:** MySQL / MariaDB con transacciones (el stock nunca queda inconsistente).
+<br>
 
----
+![HTML5](https://img.shields.io/badge/HTML5-E34F26?style=for-the-badge&logo=html5&logoColor=white)
+![CSS3](https://img.shields.io/badge/CSS3-1572B6?style=for-the-badge&logo=css3&logoColor=white)
+![JavaScript](https://img.shields.io/badge/JavaScript-F7DF1E?style=for-the-badge&logo=javascript&logoColor=black)
+![Three.js](https://img.shields.io/badge/Three.js-000000?style=for-the-badge&logo=threedotjs&logoColor=white)
+![GSAP](https://img.shields.io/badge/GSAP-88CE02?style=for-the-badge&logo=greensock&logoColor=black)
+![PHP](https://img.shields.io/badge/PHP-777BB4?style=for-the-badge&logo=php&logoColor=white)
+![MySQL](https://img.shields.io/badge/MySQL-4479A1?style=for-the-badge&logo=mysql&logoColor=white)
 
-## 1. Estructura del proyecto
+<br>
 
+![Estado](https://img.shields.io/badge/Estado-En%20desarrollo-FFD400?style=for-the-badge&logoColor=black)
+![Fase](https://img.shields.io/badge/Fase-2%20Prototipo%20funcional-FF2D8A?style=for-the-badge)
+
+<table>
+  <thead>
+    <tr>
+      <th colspan="2" style="background-color: #007FFF; color: white; text-align: center;">Idioma</th>
+    </tr>
+    <tr>
+      <th style="background-color: #007FFF; color: white; text-align: center;">English</th>
+      <th style="background-color: #007FFF; color: white; text-align: center;">Español</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td align="center"><img width="60" height="60" alt="English" src="https://github.com/user-attachments/assets/06fd3235-fd04-41ed-84a7-d795d13dc578" /></td>
+      <td align="center"><img width="60" height="60" alt="Español" src="https://github.com/user-attachments/assets/e472f7cd-4213-4fc6-b93c-effd068913b3" /></td>
+    </tr>
+  </tbody>
+</table>
+
+</div>
+
+<img src="assets/divider.svg" width="100%" alt="">
+
+## 🐾 Conoce a la mascota
+
+<p align="center">
+  <img src="assets/mascota-card.svg" alt="Mascota de GeekPoint, diseñada por Sofía Ayala" width="800">
+</p>
+
+<img src="assets/divider.svg" width="100%" alt="">
+
+<img src="assets/h01.svg" alt="01 Descripción" width="100%">
+
+## 🌐 Sitio web
+
+<p align="center">
+  <a href="https://geekpoint.com.mx" target="_blank">
+    <img src="assets/captura-home.png" alt="GeekPoint — página principal" width="700">
+  </a>
+  <br>
+  <b>👉 <a href="https://geekpoint.com.mx">geekpoint.com.mx</a></b>
+</p>
+
+**GeekPoint** es un portal coleccionable y sistema POS multi-sede para tiendas físicas de cultura geek en México. Combina un catálogo e-commerce de **mangas, figuras, cartas TCG y cómics** (con portadas reales) con un sistema de ventas e inventario donde **cada sucursal maneja su propio stock**.
+
+* Catálogo en línea con filtros por categoría, novedades y preventas.
+* Disponibilidad por sucursal en tiempo real.
+* Vista previa 3D de los productos.
+* Panel de administración, inventario por sucursal y caja registradora.
+* Interfaz bilingüe (ES / EN) y modo claro / oscuro.
+
+> 🎓 Proyecto Integrador de **Ingeniería de Software**, Universidad de Colima — semestre agosto 2026 – enero 2027.
+
+<img src="assets/divider.svg" width="100%" alt="">
+
+<img src="assets/h02.svg" alt="02 Problemática y objetivos" width="100%">
+
+### 📌 Problemática
+
+Muchas tiendas geek con varias sucursales llevan su inventario y sus ventas de forma desconectada, lo que provoca:
+
+- Inventarios desactualizados entre sucursales.
+- Clientes que no saben si un producto está disponible en su ciudad.
+- Ventas en caja sin registro centralizado.
+- Descuentos y promociones difíciles de aplicar de forma uniforme.
+
+### 🎯 Objetivo general
+
+Desarrollar una plataforma web que unifique el **catálogo en línea**, el **inventario por sucursal** y el **punto de venta**, con roles diferenciados y una experiencia visual atractiva para los fans de la cultura geek.
+
+### 🧩 Objetivos específicos
+
+- Diseñar una jerarquía de roles (Administrador General → Sucursales → Gerentes → Cajeros).
+- Implementar inventario independiente por sucursal.
+- Permitir ventas en caja con descuentos y promociones.
+- Ofrecer una interfaz bilingüe, responsiva y con vista 3D de productos.
+- Mostrar portadas reales de productos mediante la API de Jikan (MyAnimeList).
+
+<img src="assets/divider.svg" width="100%" alt="">
+
+<img src="assets/h03.svg" alt="03 Funcionalidades" width="100%">
+
+## 🎮 Funcionalidades principales
+
+<table>
+  <thead>
+    <tr>
+      <th style="background-color: #007FFF; color: white; text-align: center;">Funcionalidad</th>
+      <th style="background-color: #007FFF; color: white; text-align: center;">Descripción</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td><b>🛍️ Catálogo e-commerce</b></td><td>Mangas, figuras, cartas TCG y cómics con filtros, novedades y preventas.</td></tr>
+    <tr><td><b>🏬 Inventario por sucursal</b></td><td>Cada tienda gestiona su propio stock y se muestra su disponibilidad.</td></tr>
+    <tr><td><b>🧊 Vista previa 3D</b></td><td>Visualización interactiva de productos con Three.js.</td></tr>
+    <tr><td><b>🧾 Punto de venta</b></td><td>Registro de ventas desde la caja de cada sucursal.</td></tr>
+    <tr><td><b>🏷️ Descuentos y promociones</b></td><td>Reglas de descuento aplicables al catálogo y a la caja.</td></tr>
+    <tr><td><b>🛠️ Panel de administración</b></td><td>Control de productos, sucursales, usuarios e inventario.</td></tr>
+    <tr><td><b>🔐 Login interactivo</b></td><td>Autenticación con tokens Bearer y sesión de 12 horas.</td></tr>
+    <tr><td><b>🌎 Bilingüe y temas</b></td><td>Interfaz en español e inglés, con modo claro y oscuro.</td></tr>
+  </tbody>
+</table>
+
+<img src="assets/divider.svg" width="100%" alt="">
+
+<img src="assets/h04.svg" alt="04 Roles del sistema" width="100%">
+
+## 👑 Roles del sistema
+
+<p align="center">
+  <img src="assets/roles.svg" alt="Jerarquía: Administrador General, Sucursales, Gerentes, Cajeros" width="100%">
+</p>
+
+| Rol | Alcance | Qué puede hacer |
+| :--- | :--- | :--- |
+| **Administrador General** | Toda la red | Gestiona sucursales, usuarios, catálogo y promociones globales. |
+| **Sucursal** | Una tienda | Mantiene su inventario y su información (horario, dirección, teléfono). |
+| **Gerente** | Una sucursal | Supervisa inventario, cajeros y reportes de su sede. |
+| **Cajero** | Caja | Registra ventas y aplica descuentos vigentes. |
+
+<img src="assets/divider.svg" width="100%" alt="">
+
+<img src="assets/h05.svg" alt="05 Sucursales" width="100%">
+
+## 📍 Sucursales
+
+| Sucursal | Ciudad | Horario | Estado |
+| :--- | :--- | :---: | :---: |
+| **GeekPoint Reforma** `GKP-CDMX` | Ciudad de México | 11:00 – 21:00 | 🟢 Activa |
+| **GeekPoint Chapultepec** `GKP-GDL` | Guadalajara, Jalisco | 11:00 – 21:00 | 🟢 Activa |
+| **GeekPoint Valle** `GKP-MTY` | Monterrey, Nuevo León | 11:00 – 21:00 | 🟢 Activa |
+| **GeekPoint Mérida** `GKP-MID` | Mérida, Yucatán | 11:00 – 21:00 | 🟢 Activa |
+
+<img src="assets/divider.svg" width="100%" alt="">
+
+<img src="assets/h06.svg" alt="06 Tecnología" width="100%">
+
+## 🗄️ Tecnología y arquitectura
+
+### Stack tecnológico
+
+* **Frontend:** HTML, CSS y JavaScript nativo (sin framework, ruteo por hash).
+* **3D y animación:** Three.js para vistas de producto, GSAP + ScrollTrigger para animaciones de scroll.
+* **Backend:** PHP nativo con PDO — API REST con autenticación Bearer (SHA-256).
+* **Base de datos:** MySQL / MariaDB.
+* **Integraciones:** Jikan API (MyAnimeList) para portadas de productos.
+* **Despliegue:** FTP en hosting compartido (Hostinger).
+
+### Flujo general
+
+```text
+Navegador (HTML/CSS/JS + Three.js + GSAP)
+        │  fetch() · Bearer token
+        ▼
+API REST en PHP (PDO)
+        │
+        ▼
+MySQL / MariaDB  ──►  inventario por sucursal, ventas, usuarios
+        ▲
+        └── Jikan API (portadas de manga / anime)
 ```
-punto de venta/
-├── public_html/              ← RAÍZ WEB — sube TODO su contenido a Hostinger tal cual
-│   ├── index.html
-│   ├── .htaccess             ← cabeceras de caché (Apache/LiteSpeed)
-│   ├── assets/css/           ← tokens (Manga Ink + tema oscuro), base, components, store, app
-│   ├── assets/images/        ← placeholders locales (figuras, etc.)
-│   ├── lib/                  ← gsap, ScrollTrigger, three, manifest (locales, sin CDN)
-│   ├── js/
-│   │   ├── config.js         ← detecta la URL de la API (raíz o subcarpeta)
-│   │   ├── i18n.js           ← diccionarios ES / EN
-│   │   ├── catalog.js        ← catálogo de tienda (AniList/Jikan) + portadas "ink" de respaldo
-│   │   ├── three-hero.js     ← hero 3D con interacción estilo "Wii menu"
-│   │   ├── api.js  store.js  ui.js  router.js  main.js
-│   │   ├── services/         ← pokemonApi, figureApi
-│   │   └── views/            ← store, login, admin, manager, pos, shell
-│   └── api/                  ← API REST en PHP (dentro de public_html/)
-│       ├── index.php         ← front controller (todas las rutas entran aquí)
-│       ├── config.php        ← credenciales de la BD  (EDITAR en producción)
-│       ├── config.example.php
-│       ├── .htaccess         ← enruta /api/* a index.php
-│       ├── src/              ← Database, Router, Request, Response, Auth, Validator, Controller
-│       ├── controllers/      ← Auth, Branch, User, Category, Product, Register, Inventory, Sale, Report, Catalog, Pokemon, Figure, Reservation
-│       ├── cache/            ← catálogo + imágenes cacheadas (se regenera solo)
-│       └── tools/hash.php    ← genera hashes bcrypt (dev)
-│
-├── database/                 ← NO subir a public_html (solo para importar en phpMyAdmin)
-│   ├── schema.sql            ← crea todas las tablas
-│   ├── seed.sql              ← datos de demostración
-│   └── migrations/           ← cambios incrementales de esquema/datos
-│
-├── dev-server.php            ← servidor de pruebas local (sirve public_html/; no se usa en producción)
-└── docs/
-    ├── DEPLOY-HOSTINGER.md   ← guía de publicación paso a paso
-    └── API.md                ← referencia de endpoints
-```
 
----
+<img src="assets/divider.svg" width="100%" alt="">
 
-## 2. Probar en tu PC (XAMPP)
+<img src="assets/h07.svg" alt="07 Capturas y demos" width="100%">
 
-Ya tienes **XAMPP** instalado en `C:\xampp`. Pasos:
+## 🖼️ Capturas de pantalla
 
-### a) Arranca MySQL
-Abre **XAMPP Control Panel** y pulsa **Start** en *MySQL*
-(o ejecuta `C:\xampp\mysql_start.bat`).
+| Inicio | Catálogo | Vista 3D |
+|:---:|:---:|:---:|
+| ![Inicio](assets/captura-home.png) | ![Catálogo](assets/captura-catalogo.png) | ![Vista 3D](assets/captura-3d.png) |
 
-### b) Crea la base de datos e importa los datos
+| Panel de administración | Inventario por sucursal | Caja registradora |
+|:---:|:---:|:---:|
+| ![Admin](assets/captura-admin.png) | ![Inventario](assets/captura-inventario.png) | ![Caja](assets/captura-caja.png) |
 
-Opción rápida por consola (Git Bash o CMD):
+### 🎬 Demos
 
+<p align="center">
+  <!-- Pega aquí tus GIFs: sube cada uno al README en GitHub y reemplaza el enlace -->
+  <img src="assets/demo-login.gif" alt="Demo login" width="45%">
+  <img src="assets/demo-inventario.gif" alt="Demo inventario por sucursal" width="45%">
+</p>
+
+<img src="assets/divider.svg" width="100%" alt="">
+
+<img src="assets/h08.svg" alt="08 Equipo" width="100%">
+
+## 👥 Equipo de desarrollo — *Team Six*
+
+**Universidad de Colima — Facultad de Ingeniería Electromecánica**
+**Ingeniería de Software — 3.er semestre, Grupo E**
+**Tutor de equipo:** Mtro. Emilio Ballinas Arteaga
+
+<table>
+  <thead>
+    <tr>
+      <th style="background-color: #005FCC; color: white; text-align: center;">#</th>
+      <th style="background-color: #005FCC; color: white; text-align: center;">Integrante</th>
+      <th style="background-color: #005FCC; color: white; text-align: center;">Rol</th>
+      <th style="background-color: #005FCC; color: white; text-align: center;">GitHub</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td align="center">1</td><td><b>Ramírez Bacelis José Carlo</b></td><td>Scrum Master / Líder · Panel de administración e inventario por sucursal</td><td align="center"><a href="https://github.com/ZaekoRam">@ZaekoRam</a></td></tr>
+    <tr><td align="center">2</td><td><b>Yáñez González Marco Antonio</b></td><td>Investigación de BD · Login interactivo y base de datos</td><td align="center"><a href="https://github.com/Cake-marco">@Cake-marco</a></td></tr>
+    <tr><td align="center">3</td><td><b>Ayala Oliva Fernanda Sofía</b></td><td>Diseño conceptual · Mascota y vista 3D</td><td align="center"><a href="https://github.com/Fernanda-Sofia">@Fernanda-Sofia</a></td></tr>
+    <tr><td align="center">4</td><td><b>Carmona Medina Ernesto</b></td><td>Documentación técnica · Descuentos y promociones</td><td align="center">─</td></tr>
+    <tr><td align="center">5</td><td><b>Serrano Murillo Frida Natalia</b></td><td>Documentación de usuario · Ventas en caja y pruebas</td><td align="center">─</td></tr>
+  </tbody>
+</table>
+
+<img src="assets/divider.svg" width="100%" alt="">
+
+<img src="assets/h09.svg" alt="09 Instalación" width="100%">
+
+## 💻 Requisitos del sistema
+
+| Requisito | Versión recomendada |
+|---|---|
+| PHP | 8.0 o superior |
+| MySQL / MariaDB | 5.7 / 10.4 o superior |
+| XAMPP / Laragon | Última versión |
+| Navegador | Chrome, Edge, Firefox |
+
+## ⚙️ Instalación y ejecución
+
+1. **Clona el repositorio:**
 ```bash
-C:\xampp\mysql\bin\mysql.exe -u root -e "CREATE DATABASE geekpoint_pos CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-C:\xampp\mysql\bin\mysql.exe -u root geekpoint_pos < database/schema.sql
-C:\xampp\mysql\bin\mysql.exe -u root geekpoint_pos < database/seed.sql
+git clone https://github.com/ZaekoRam/GeekPoint.git
+cd GeekPoint
 ```
 
-O con **phpMyAdmin** (`http://localhost/phpmyadmin`): crea la BD `geekpoint_pos`,
-pestaña *Importar* → `database/schema.sql`, luego otra vez → `database/seed.sql`.
+2. **Copia el proyecto a la carpeta pública de tu servidor local** (`htdocs` en XAMPP o `www` en Laragon).
 
-### c) Levanta el servidor de pruebas
+3. **Crea la base de datos e importa los scripts SQL:**
+```sql
+CREATE DATABASE geekpoint CHARACTER SET utf8mb4;
+```
+Importa los archivos de la carpeta de base de datos desde phpMyAdmin.
 
-```bash
-cd "C:\Users\ramir\OneDrive\Desktop\punto de venta"
-C:\xampp\php\php.exe -S localhost:8766 dev-server.php
+4. **Configura las credenciales** de conexión (host, usuario, contraseña y nombre de la BD) en el archivo de configuración del backend.
+
+5. **Abre el sitio** en `http://localhost/GeekPoint/`.
+
+<img src="assets/divider.svg" width="100%" alt="">
+
+<img src="assets/h10.svg" alt="10 Estructura y licencia" width="100%">
+
+## 📁 Estructura del proyecto
+
+<!-- AJUSTA este árbol a las carpetas reales de tu repo -->
+```text
+GeekPoint/
+├── index.html
+├── 📁 assets/        # Imágenes, íconos, modelos 3D
+├── 📁 css/           # Estilos
+├── 📁 js/            # Lógica del frontend, rutas hash, Three.js, GSAP
+├── 📁 api/           # Endpoints REST en PHP (PDO)
+├── 📁 config/        # Conexión a BD y configuración
+├── 📁 database/      # Scripts SQL
+└── README.md
 ```
 
-### d) Abre la app
+## 🙌 Créditos y agradecimientos
 
-<http://localhost:8766/>
+- Proyecto desarrollado para el **Proyecto Integrador** de Ingeniería de Software, Universidad de Colima.
+- Agradecimiento especial al **Mtro. Emilio Ballinas Arteaga** y a nuestros profesores por su guía y retroalimentación.
+- Mascota y diseño conceptual por **Fernanda Sofía Ayala Oliva**.
+- Portadas de manga y anime obtenidas mediante la [Jikan API](https://jikan.moe/).
 
-> El `dev-server.php` sólo se usa para probar sin Apache: sirve `public_html/`
-> como raíz web, igual que Hostinger. En producción no hace falta —
-> Apache + los `.htaccess` hacen el ruteo.
+## 📜 Licencia
 
-### Alternativa: carpeta en `htdocs`
-Copia el **contenido** de `public_html/` dentro de `C:\xampp\htdocs\geekpoint\` y abre
-`http://localhost/geekpoint/`. `config.js` detecta la ruta automáticamente
-(funciona en la raíz del dominio y en subcarpetas).
+Este proyecto está distribuido bajo la licencia **MIT**: eres libre de usar, estudiar, modificar y compartir el código, siempre que se incluya el crédito a los autores originales.
 
----
+<img src="assets/divider.svg" width="100%" alt="">
 
-## 3. Cuentas de demostración
-
-Contraseña de todas: **`password`**
-
-| Rol | Correo | Ve / hace |
-|---|---|---|
-| Administrador General | `admin@geekpoint.mx` | Sucursales, usuarios, inventario y ventas de toda la red |
-| Gerente CDMX | `gerente.cdmx@geekpoint.mx` | Productos, cajas, inventario e historial de *su* sucursal |
-| Gerente GDL | `gerente.gdl@geekpoint.mx` | Ídem, sucursal Guadalajara |
-| Gerente MTY | `gerente.mty@geekpoint.mx` | Ídem, sucursal Monterrey |
-| Cajero CDMX | `caja.cdmx@geekpoint.mx` | Módulo POS de la sucursal Reforma |
-| Cajero GDL | `caja.gdl@geekpoint.mx` | Módulo POS de la sucursal Chapultepec |
-| Cajero MTY | `caja.mty@geekpoint.mx` | Módulo POS de la sucursal Valle |
-| Cliente | `cliente@geekpoint.mx` | Cuenta de cliente: perfil, pedidos y reservas |
-
-> **Producción:** cambia estas contraseñas. Genera un hash nuevo con
-> `http://localhost/api/tools/hash.php?p=TuNuevaClave` y pégalo en
-> `users.password_hash` (phpMyAdmin). Borra o protege `api/tools/` al terminar.
-
----
-
-## 4. Qué hace cada rol (según el protocolo)
-
-### Administrador General
-- Inicio de sesión.
-- **CRUD de sucursales** (crear, consultar, editar, activar/desactivar, eliminar).
-- **Gestión de usuarios:** registrar gerentes/cajeros y asignarlos a una sucursal.
-- **Monitoreo global:** inventarios consolidados y ventas de todas las sedes,
-  ranking por sucursal, productos más vendidos, serie de 14 días.
-
-### Gerente de Sede
-- Administra **sólo su sucursal**.
-- **CRUD de productos** (manga, figuras, TCG, cómics, coleccionables) con categoría,
-  precio, IVA y stock mínimo.
-- **Control de cajas** (alta y baja).
-- **Inventario:** ajuste de existencias (fijar o sumar/restar), alertas de bajo
-  stock, historial de movimientos y de ventas, desempeño por cajero.
-
-### Cajero — Módulo POS
-- **Búsqueda rápida** por nombre, SKU o categoría (sólo su sucursal).
-- **Carrito en tiempo real:** subtotal, IVA (16 % desglosado) y total automáticos.
-- **Método de pago:** efectivo (calcula cambio), tarjeta o transferencia.
-- **Confirmación** con folio consecutivo por sucursal y **ticket digital** imprimible.
-- **Descuento automático de inventario** de la sucursal al cerrar la venta
-  (p. ej. de 20 a 17) y registro del movimiento.
-
-### Bilingüe
-Toggle **ES / EN** en la barra superior; traduce toda la interfaz al instante y
-recuerda la preferencia.
-
-### Tienda (cliente, sin login)
-- Hero 3D: tomos, cartas y cajas flotando. Hover = brinco + giro 360° + neón (Wii).
-- Grid de catálogo con efecto Tilt 3D y luz dinámica; etiquetas *Novedad* / *Preventa*;
-  disponibilidad por sucursal.
-- **Vista Previa 3D**: clic en un producto → modal con la pieza que se gira 360°
-  (arrastra con el cursor).
-- Carrito flotante (drawer) con cantidades y *"Generar cotización"*. Es una compra
-  demo: no procesa pagos reales (el protocolo sólo exige el flujo de venta del POS).
-- Las portadas vienen de **Jikan / MyAnimeList**. Si el servicio está caído, se usan
-  portadas "manga ink" generadas y un aviso lo indica.
-
----
-
-## 5. Publicar en Hostinger
-
-Ver **[docs/DEPLOY-HOSTINGER.md](docs/DEPLOY-HOSTINGER.md)**.
-Resumen: subir **el contenido de `public_html/`** (incluida su carpeta `api/`) a
-`public_html/` de Hostinger, crear la BD MySQL en el panel, importar
-`schema.sql` + `seed.sql`, y editar `public_html/api/config.php` con los datos de la BD.
-
----
-
-## 6. Notas técnicas
-
-- **Sin build:** se sube la carpeta tal cual (FTP o Administrador de archivos).
-- **Caché:** los `.htaccess` marcan HTML/CSS/JS como *no-cache* y las imágenes a
-  1 mes. Los `<script>`/`<link>` llevan `?v=YYYYMMDD`; súbelo cada vez que cambies
-  JS/CSS.
-- **Seguridad del token:** al iniciar sesión se crea un registro en `sessions` con
-  el SHA-256 del token; caduca según `config.php` (`token_ttl_hours`, 12 h por
-  defecto).
-- **Transacciones:** cada venta bloquea las filas de producto (`SELECT ... FOR
-  UPDATE`), valida stock, inserta venta + renglones, descuenta inventario y registra
-  el movimiento, todo dentro de una transacción. Si algo falla, `ROLLBACK`.
+<p align="center"><b>¡Gracias por visitar GeekPoint! 🐾 Cultura geek en cada sucursal.</b></p>

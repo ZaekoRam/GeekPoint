@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 420" width="1200" height="420">
+<defs>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0B0B12"/><stop offset="1" stop-color="#1b1030"/></linearGradient>
+<pattern id="st" width="24" height="24" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="24" fill="#ffffff08"/></pattern>
+<linearGradient id="g1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF2D8A"/><stop offset="1" stop-color="#7a1fff"/></linearGradient>
+<linearGradient id="g2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22E5FF"/><stop offset="1" stop-color="#1a4bff"/></linearGradient>
+<linearGradient id="g3" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFD400"/><stop offset="1" stop-color="#ff7a00"/></linearGradient>
+</defs>
+<style>
+.fl{animation:fl 4s ease-in-out infinite}
+@keyframes fl{0%,100%{translate:0 0}50%{translate:0 -14px}}
+.tw{animation:tw 2.4s ease-in-out infinite}
+@keyframes tw{0%,100%{opacity:.15}50%{opacity:1}}
+.mq{animation:mq 18s linear infinite}
+@keyframes mq{from{transform:translateX(0)}to{transform:translateX(-600px)}}
+.scan{animation:sc 5s linear infinite}
+@keyframes sc{from{transform:translateY(-20px)}to{transform:translateY(440px)}}
+.glow{animation:gl 3s ease-in-out infinite}
+@keyframes gl{0%,100%{filter:drop-shadow(0 0 4px #FFD40088)}50%{filter:drop-shadow(0 0 16px #FFD400)}}
+</style>
+<rect width="1200" height="420" fill="url(#bg)"/><rect width="1200" height="420" fill="url(#st)"/>
+<circle cx="980" cy="190" r="170" fill="#FF2D8A" opacity=".10"/><circle cx="1010" cy="170" r="110" fill="#22E5FF" opacity=".08"/>
+<rect class="scan" x="0" y="0" width="1200" height="3" fill="#22E5FF" opacity=".25"/>
+<g class="tw"><path d="M90 60 l4 10 10 4 -10 4 -4 10 -4 -10 -10 -4 10 -4z" fill="#FFD400"/></g>
+<g class="tw" style="animation-delay:.8s"><path d="M640 50 l3 8 8 3 -8 3 -3 8 -3 -8 -8 -3 8 -3z" fill="#22E5FF"/></g>
+<g class="tw" style="animation-delay:1.6s"><path d="M560 300 l3 8 8 3 -8 3 -3 8 -3 -8 -8 -3 8 -3z" fill="#FF2D8A"/></g>
+<rect x="60" y="62" width="62" height="62" rx="10" fill="#FFD400" stroke="#000" stroke-width="4"/>
+<text x="91" y="110" text-anchor="middle" font-family="Impact,'Arial Black','Anton',sans-serif" font-size="50" fill="#0B0B12">G</text>
+<text x="138" y="108" font-family="'Courier New',Consolas,monospace" font-size="20" fill="#22E5FF" letter-spacing="4">PORTAL COLECCIONABLE</text>
+<g class="glow">
+<text x="66" y="260" font-family="Impact,'Arial Black','Anton',sans-serif" font-size="140" fill="#FF2D8A" textLength="300" lengthAdjust="spacingAndGlyphs">GEEK</text>
+<text x="60" y="254" font-family="Impact,'Arial Black','Anton',sans-serif" font-size="140" fill="#FFD400" textLength="300" lengthAdjust="spacingAndGlyphs">GEEK</text></g>
+<text x="378" y="260" font-family="Impact,'Arial Black','Anton',sans-serif" font-size="140" fill="#22E5FF" textLength="380" lengthAdjust="spacingAndGlyphs" opacity=".9">POINT</text>
+<text x="372" y="254" font-family="Impact,'Arial Black','Anton',sans-serif" font-size="140" fill="#fff" textLength="380" lengthAdjust="spacingAndGlyphs">POINT</text>
+<text x="62" y="305" font-family="'Courier New',Consolas,monospace" font-size="20" textLength="620" fill="#ffffffcc">Manga · Figuras · Cartas TCG · Cómics — en cada sucursal</text>
+<g font-family="'Courier New',Consolas,monospace" font-size="16" font-weight="bold">
+<rect x="62" y="322" width="150" height="30" rx="15" fill="#FF2D8A"/><text x="137" y="342" text-anchor="middle" fill="#fff">SISTEMA POS</text>
+<rect x="224" y="322" width="150" height="30" rx="15" fill="#22E5FF"/><text x="299" y="342" text-anchor="middle" fill="#0B0B12">MULTI-SEDE</text>
+<rect x="386" y="322" width="150" height="30" rx="15" fill="#FFD400"/><text x="461" y="342" text-anchor="middle" fill="#0B0B12">E-COMMERCE</text></g>
+<g class="fl" style="animation-delay:0s" transform="translate(840 170) rotate(-12)">
+<rect x="-70" y="-100" width="140" height="200" rx="10" fill="url(#g1)" stroke="#FF2D8A" stroke-width="4"/>
+<rect x="-58" y="-88" width="116" height="120" rx="6" fill="#00000055"/>
+<text x="0" y="-5" text-anchor="middle" font-family="Impact,'Arial Black','Anton',sans-serif" font-size="64" fill="#ffffffee">漫</text>
+<text x="0" y="68" text-anchor="middle" font-family="Impact,'Arial Black','Anton',sans-serif" font-size="20" fill="#fff" letter-spacing="2">MANGA</text>
+<rect x="-50" y="80" width="100" height="6" rx="3" fill="#FF2D8A"/></g>
+<g class="fl" style="animation-delay:0.6s" transform="translate(990 150) rotate(8)">
+<rect x="-70" y="-100" width="140" height="200" rx="10" fill="url(#g2)" stroke="#22E5FF" stroke-width="4"/>
+<rect x="-58" y="-88" width="116" height="120" rx="6" fill="#00000055"/>
+<path d="M0 -70 l14 30 32 4 -24 22 7 32 -29 -17 -29 17 7 -32 -24 -22 32 -4z" fill="#fff" opacity=".9" transform="translate(0 10) scale(.9)"/>
+<text x="0" y="68" text-anchor="middle" font-family="Impact,'Arial Black','Anton',sans-serif" font-size="20" fill="#fff" letter-spacing="2">TCG</text>
+<rect x="-50" y="80" width="100" height="6" rx="3" fill="#22E5FF"/></g>
+<g class="fl" style="animation-delay:1.2s" transform="translate(1120 185) rotate(-6)">
+<rect x="-70" y="-100" width="140" height="200" rx="10" fill="url(#g3)" stroke="#FFD400" stroke-width="4"/>
+<rect x="-58" y="-88" width="116" height="120" rx="6" fill="#00000055"/>
+<circle cx="0" cy="-45" r="22" fill="#fff" opacity=".9"/><rect x="-26" y="-18" width="52" height="46" rx="12" fill="#fff" opacity=".9"/>
+<text x="0" y="68" text-anchor="middle" font-family="Impact,'Arial Black','Anton',sans-serif" font-size="20" fill="#fff" letter-spacing="2">FIGURA</text>
+<rect x="-50" y="80" width="100" height="6" rx="3" fill="#FFD400"/></g>
+<rect y="376" width="1200" height="44" fill="#FFD400"/>
+<g class="mq" font-family="Impact,'Arial Black','Anton',sans-serif" font-size="22" fill="#0B0B12">
+<text x="20" y="407" textLength="580" lengthAdjust="spacingAndGlyphs">CDMX ★ GUADALAJARA ★ MONTERREY ★ MÉRIDA ★ INVENTARIO POR SUCURSAL ★ VISTA 3D ★ </text>
+<text x="620" y="407" textLength="580" lengthAdjust="spacingAndGlyphs">CDMX ★ GUADALAJARA ★ MONTERREY ★ MÉRIDA ★ INVENTARIO POR SUCURSAL ★ VISTA 3D ★ </text>
+<text x="1220" y="407" textLength="580" lengthAdjust="spacingAndGlyphs">CDMX ★ GUADALAJARA ★ MONTERREY ★ MÉRIDA ★ INVENTARIO POR SUCURSAL ★ VISTA 3D ★ </text></g>
+</svg>
