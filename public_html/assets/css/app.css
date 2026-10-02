@@ -465,6 +465,27 @@ body.in-app [data-static-store] { display: none !important; }
     transition: background .15s var(--ease-out), color .15s var(--ease-out), border-color .15s var(--ease-out);
   }
   .drawer-toggle span { display: block; height: 2px; border-radius: 2px; background: currentColor; }
+  /* FIJA en pantalla: no se va con el scroll. Se coloca justo donde se
+     pintaría dentro del encabezado (cada vista da su margen con
+     --drawer-top / --drawer-left), así que al cargar no "salta". */
+  .drawer-toggle {
+    position: fixed; z-index: calc(var(--z-topbar) - 1);
+    top: calc(var(--topbar-h) + var(--drawer-top, 1.1rem)); left: var(--drawer-left, 1.1rem);
+    box-shadow: 0 6px 18px rgba(0,0,0,.28);
+  }
+  .shell .content__head { --drawer-top: clamp(1.1rem, 3vw, 2rem); --drawer-left: clamp(1.1rem, 3vw, 2rem); }
+  .pos-view .content__head { --drawer-top: 1rem; --drawer-left: clamp(1rem, 3vw, 2rem); }
+  .account__head { --drawer-top: 2rem; --drawer-left: var(--gutter); }
+  /* Su hueco en el encabezado se conserva para que el título no se recorra. */
+  /* El título ocupa una primera línea del alto del botón (centrado con él);
+     los botones extra, si no caben, bajan a la siguiente sin moverlo. */
+  .shell .content__head, .pos-view .content__head, .account__head { align-content: flex-start; }
+  .content__head > .drawer-toggle + h1,
+  .account__head > .drawer-toggle + h1 { min-height: 42px; display: flex; align-items: center; }
+  .content__head > .drawer-toggle + h1 { margin-left: calc(42px + 1rem); }
+  .account__head > .drawer-toggle + h1 { margin-left: calc(42px + .8rem); }
+  /* Separador sin botones visibles detrás: bajaba a una 2ª línea vacía. */
+  .content__head > .spacer:last-child, .pos-view .content__head > .spacer { display: none; }
   .drawer-toggle:hover { background: var(--panini); color: var(--ink-fixed); border-color: var(--ink-fixed); }
   .drawer-toggle:active { transform: translate(1px, 1px); }
 
