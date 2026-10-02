@@ -482,6 +482,10 @@
     // conservan su portada / precio / stock reales.
     var known = {};
     (p.volume_covers || []).forEach(function (c) { known[String(c.v)] = c; });
+    // ¿La serie tiene tomos propios en el inventario? Entonces el selector
+    // ofrece SOLO esos: los extra de MangaDex (Vol. 28-38 de Blue Lock,
+    // "Vol. 1.1"…) no existen en tienda y salían todos "Agotado".
+    var hasLocal = (p.volume_covers || []).some(function (c) { return c && c.id; });
 
     var tomos = parseInt(p.tomos || p.volumes, 10);
     if (!(tomos > 0)) {
@@ -498,7 +502,7 @@
     // Tomos ENTEROS conocidos fuera del rango 1..N (ej. un Vol. 41 con tomos=40).
     // Se ignoran volúmenes decimales/especiales ("28.5") para un selector limpio.
     Object.keys(known).forEach(function (k) {
-      if (/^\d+$/.test(k) && parseInt(k, 10) > tomos) covers.push(known[k]);
+      if (/^\d+$/.test(k) && parseInt(k, 10) > tomos && (!hasLocal || known[k].id)) covers.push(known[k]);
     });
     covers.sort(function (a, b) { return parseFloat(a.v) - parseFloat(b.v); });
 
@@ -721,7 +725,12 @@
           covers.forEach(function (c) { byV[c.v] = c; });
           list.forEach(function (vc) {
             var cur = byV[vc.v];
-            if (!cur) { byV[vc.v] = { v: String(vc.v), url: vc.url, source: "" }; return; }
+            if (!cur) {
+              // Solo portadas para tomos que ya están en el selector: no se
+              // agregan tomos que la tienda no maneja ni volúmenes decimales.
+              if (!hasLocal && /^\d+$/.test(String(vc.v))) byV[vc.v] = { v: String(vc.v), url: vc.url, source: "" };
+              return;
+            }
             // Rellena si está vacía, o si sólo hereda la portada de SERIE
             // (los tomos sueltos del POS copian p.cover) — la de MangaDex es
             // la portada REAL de ese tomo. No pisa una foto local subida.

@@ -30,6 +30,11 @@ class App
         }
         self::$config = require $path;
 
+        // Hora de México en todo el API. Hostinger corre en UTC: sin esto las
+        // fechas salían 6 h adelantadas y "ventas de hoy" cortaba a las 6 p. m.
+        // (Database aplica la misma zona a cada conexión de MySQL.)
+        date_default_timezone_set(self::timezone());
+
         if (self::isDev()) {
             error_reporting(E_ALL);
             ini_set('display_errors', '0'); // nunca romper el JSON; se captura abajo
@@ -48,10 +53,10 @@ class App
         set_exception_handler(function ($e) {
             Database::rollback();
 
-            // ⚠️ TEMPORAL (depuración): expone el error real de PHP/SQL en la
-            //    respuesta JSON. Cuando termines de depurar el alta de productos,
-            //    pon SHOW_REAL_ERRORS = false (o borra este bloque extra).
-            $SHOW_REAL_ERRORS = true;
+            // Depuración: true expone el error real de PHP/SQL (rutas, SQL) en
+            //    la respuesta JSON a CUALQUIER visitante. Solo para depurar;
+            //    en local basta con 'env' => 'dev' en config.php.
+            $SHOW_REAL_ERRORS = false;
             $verbose = App::isDev() || $SHOW_REAL_ERRORS;
 
             $message = $verbose
@@ -88,6 +93,13 @@ class App
     public static function isDev()
     {
         return (self::$config['env'] ?? 'prod') === 'dev';
+    }
+
+    /** Zona horaria del negocio (config 'timezone'; por defecto CDMX). */
+    public static function timezone()
+    {
+        $tz = (string) (self::$config['timezone'] ?? '');
+        return in_array($tz, timezone_identifiers_list(), true) ? $tz : 'America/Mexico_City';
     }
 }
 

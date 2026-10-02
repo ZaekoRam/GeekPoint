@@ -37,7 +37,23 @@ class Database
             );
         }
 
+        self::initSession(self::$pdo);
         return self::$pdo;
+    }
+
+    /**
+     * La sesión de MySQL usa la MISMA zona que PHP (App::timezone): NOW(),
+     * CURDATE() y los DEFAULT CURRENT_TIMESTAMP quedan en hora de México
+     * aunque el servidor (Hostinger) esté en UTC. Se usa el desfase
+     * ("-06:00") porque el hosting puede no tener cargadas las zonas por nombre.
+     */
+    private static function initSession(PDO $pdo)
+    {
+        try {
+            $pdo->exec("SET time_zone = '" . (new DateTime('now'))->format('P') . "'");
+        } catch (\Throwable $e) {
+            // Sin permiso para cambiarla: se sigue con la del servidor.
+        }
     }
 
     /**
@@ -73,6 +89,7 @@ class Database
                 PDO::ATTR_EMULATE_PREPARES   => false,
                 PDO::ATTR_TIMEOUT            => 3,
             ]);
+            self::initSession(self::$pdo);
             return true;
         } catch (\Throwable $e) {
             self::$pingFailed = true;
