@@ -205,7 +205,7 @@ class SaleController extends Controller
     /** GET /sales — historial filtrable */
     public function index()
     {
-        $user = $this->auth();
+        $user = $this->authRole(['cashier', 'manager', 'admin']);
 
         $where  = ['1=1'];
         $params = [];
@@ -251,7 +251,9 @@ class SaleController extends Controller
     /** GET /sales/{id} — venta completa con renglones (ticket) */
     public function show($id)
     {
-        $user = $this->auth();
+        // Solo personal: un cliente (registro público) no debe poder leer
+        // tickets ajenos recorriendo los id.
+        $user = $this->authRole(['cashier', 'manager', 'admin']);
         $sale = $this->fullSale((int) $id);
         if (!$sale) Response::notFound('Venta no encontrada.');
 

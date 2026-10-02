@@ -159,6 +159,22 @@
     shopTotal: function () {
       return Math.round(this.shopCart.reduce(function (s, l) { return s + l.price * l.qty; }, 0) * 100) / 100;
     },
+    /* Quita del carrito las líneas de SERIE de manga sin tomo ("One Piece" a
+       secas, id local-manga-mng-s-…): antes el botón rápido las agregaba y no
+       se pueden apartar. Devuelve los títulos quitados para avisar. */
+    shopDropSeries: function () {
+      var removed = [];
+      this.shopCart = this.shopCart.filter(function (l) {
+        var series = /^local-manga-mng-s-[a-z0-9]+$/i.test(String(l.id));
+        if (series) removed.push(l.title);
+        return !series;
+      });
+      if (removed.length) {
+        saveShop(this.shopCart);
+        emit("shop", this.shopCart);
+      }
+      return removed;
+    },
     shopReconcile: function (catalog, branchCode) {
       var changed = 0;
       catalog = catalog || [];

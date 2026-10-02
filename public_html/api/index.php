@@ -191,6 +191,7 @@ $router->post('products',           function () use ($request) { (new ProductCon
 $router->post('products/import',    function () use ($request) { (new ProductController($request))->import(); });
 $router->post('products/upload',    function () use ($request) { (new ProductController($request))->upload(); });
 $router->delete('products/sku/{sku}', function ($p) use ($request) { (new ProductController($request))->destroyBySku($p['sku']); });
+$router->get('products/stock',      function () use ($request) { (new ProductController($request))->stock(); });   // antes de products/{id}
 $router->get('products/{id}',       function ($p) use ($request) { (new ProductController($request))->show($p['id']); });
 $router->put('products/{id}',       function ($p) use ($request) { (new ProductController($request))->update($p['id']); });
 $router->patch('products/{id}/stock', function ($p) use ($request) { (new ProductController($request))->adjustStock($p['id']); });

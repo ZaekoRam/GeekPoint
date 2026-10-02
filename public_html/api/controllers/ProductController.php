@@ -55,6 +55,42 @@ class ProductController extends Controller
         Response::ok(['products' => array_map([$this, 'cast'], $rows)]);
     }
 
+    /**
+     * GET /products/stock?since=AAAA-MM-DD HH:MM:SS — SOLO el stock
+     * ([id, branch_id, sku, stock]) para refrescar el inventario EN VIVO sin
+     * bajar el catálogo completo. `since` = el `now` de la llamada anterior:
+     * devuelve únicamente lo que cambió desde entonces (updated_at).
+     */
+    public function stock()
+    {
+        $user = $this->authRole(['admin', 'manager', 'cashier']);
+        $branchId = Auth::scopedBranchId($user, $this->query('branch_id'));
+
+        $where  = ['p.status <> "deleted"'];
+        $params = [];
+        if ($branchId !== null) {
+            $where[] = 'p.branch_id = ?';
+            $params[] = $branchId;
+        }
+        $since = (string) $this->query('since', '');
+        if (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $since)) {
+            $where[] = 'p.updated_at >= ?';      // >= : no perder cambios del mismo segundo
+            $params[] = $since;
+        }
+
+        $now  = Database::scalar('SELECT NOW()');
+        $rows = Database::all(
+            'SELECT p.id, p.branch_id, p.sku, p.stock FROM products p WHERE ' . implode(' AND ', $where),
+            $params
+        );
+        Response::ok([
+            'now'   => $now,
+            'stock' => array_map(function ($r) {
+                return [(int) $r['id'], (int) $r['branch_id'], $r['sku'], (int) $r['stock']];
+            }, $rows),
+        ]);
+    }
+
     public function show($id)
     {
         $user = $this->auth();

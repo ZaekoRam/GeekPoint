@@ -746,6 +746,88 @@ a.kpi--link:hover .kpi__go { opacity: 1; transform: translateX(0); }
 .invcard__media { position: relative; aspect-ratio: 3 / 4; background: #0b0c10; }
 .invcard__media img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .invcard__stock { position: absolute; top: .5rem; right: .5rem; font-family: var(--mono); font-weight: 700; }
+
+/* ---------- Stock visible (ver stockFx en shell.js) ----------
+   Zoom + conteo del número, verde si sube / rojo si baja, chip "+N ▲ / −N ▼"
+   y brillo de la tarjeta. Pensado para que en la demo se NOTE el cambio. */
+.stockfx { display: inline-block; transform-origin: center; }
+.invcard__stock.stockfx, .prod__badge.stockfx { transform-origin: top right; z-index: 2; }
+.stockfx--up, .stockfx--down { animation: stockZoom 1.2s cubic-bezier(.2,.8,.2,1); }
+.stockfx--up { color: #19d27c; }
+.stockfx--down { color: #ff4d5e; }
+.badge.stockfx--up, .prod__badge.stockfx--up { background: #19d27c; color: #04130b; }
+.badge.stockfx--down, .prod__badge.stockfx--down { background: #ff4d5e; color: #fff; }
+@keyframes stockZoom {
+  0%   { transform: scale(1); }
+  22%  { transform: scale(2.1); }
+  55%  { transform: scale(1.4); }
+  100% { transform: scale(1); }
+}
+.stockfx-chip {
+  position: absolute; top: 2.7rem; right: .5rem; z-index: 3; pointer-events: none;
+  font-family: var(--mono); font-size: .82rem; font-weight: 800; white-space: nowrap;
+  padding: .18rem .5rem; border-radius: 999px; box-shadow: 0 4px 14px rgba(0,0,0,.35);
+  animation: stockChip 4.2s ease-out forwards;
+}
+.stockfx-chip.is-up { background: #19d27c; color: #04130b; }
+.stockfx-chip.is-down { background: #ff4d5e; color: #fff; }
+@keyframes stockChip {
+  0%   { opacity: 0; transform: translateY(10px) scale(.6); }
+  10%  { opacity: 1; transform: translateY(0) scale(1.2); }
+  18%  { transform: scale(1); }
+  80%  { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-14px); }
+}
+.invcard.stockfx-card--up, .prod.stockfx-card--up { box-shadow: 0 0 0 2px #19d27c, 0 0 26px rgba(25,210,124,.55); }
+.invcard.stockfx-card--down, .prod.stockfx-card--down { box-shadow: 0 0 0 2px #ff4d5e, 0 0 26px rgba(255,77,94,.55); }
+.invcard, .prod { transition: transform .14s var(--ease-out), box-shadow .4s var(--ease-out); }
+
+/* "● En vivo" del inventario: late siempre; destella al detectar un cambio. */
+.live-pill {
+  display: inline-flex; align-items: center; gap: .4rem;
+  font-size: .66rem; text-transform: uppercase; letter-spacing: .12em; color: var(--muted);
+}
+.live-pill::before {
+  content: ""; width: 8px; height: 8px; border-radius: 50%; background: #19d27c;
+  animation: livePulse 2s ease-out infinite;
+}
+.live-pill.is-hit { animation: liveHit 1.6s ease-out; }
+@keyframes livePulse {
+  0%   { box-shadow: 0 0 0 0 rgba(25,210,124,.6); }
+  70%  { box-shadow: 0 0 0 8px rgba(25,210,124,0); }
+  100% { box-shadow: 0 0 0 0 rgba(25,210,124,0); }
+}
+@keyframes liveHit { 0%, 60% { color: #19d27c; } 100% { color: var(--muted); } }
+
+/* Aviso del POS tras cobrar: "antes → después" por producto vendido. */
+.stock-flash {
+  position: fixed; left: 1rem; bottom: 1rem; z-index: 650;
+  width: min(360px, calc(100vw - 2rem)); padding: .8rem .95rem .5rem;
+  background: var(--surface); color: var(--text); border: 2px solid var(--line);
+  box-shadow: 0 14px 44px rgba(0,0,0,.5);
+  opacity: 0; transform: translateY(18px);
+  transition: opacity .3s var(--ease-out), transform .3s var(--ease-out);
+}
+.stock-flash.is-in { opacity: 1; transform: none; }
+.stock-flash__head {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: .35rem;
+  font-family: var(--mono); font-size: .7rem; text-transform: uppercase; letter-spacing: .12em; color: var(--muted);
+}
+.stock-flash__x { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: .9rem; padding: .2rem; }
+.stock-flash__x:hover { color: var(--text); }
+.stock-flash__row {
+  display: flex; align-items: center; justify-content: space-between; gap: .8rem;
+  padding: .5rem 0; border-top: 1px dashed var(--line-soft);
+}
+.stock-flash__name { font-size: .86rem; font-weight: 600; line-height: 1.25; }
+.stock-flash__nums { position: relative; display: flex; align-items: center; gap: .5rem; white-space: nowrap; }
+.stock-flash__num { font-family: var(--mono); font-size: 1.7rem; line-height: 1; min-width: 2ch; text-align: right; }
+.stock-flash .stockfx-chip { top: auto; bottom: calc(100% + 2px); right: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .stockfx--up, .stockfx--down, .stockfx-chip, .live-pill::before, .live-pill.is-hit { animation: none; }
+  .stock-flash { transition: none; }
+}
 .invcard__off {
   position: absolute; left: 0; bottom: 0; width: 100%; text-align: center;
   font-family: var(--mono); font-size: .6rem; letter-spacing: .12em; text-transform: uppercase;

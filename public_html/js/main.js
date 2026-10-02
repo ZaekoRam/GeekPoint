@@ -196,8 +196,10 @@
 
     /* ---- Apartar: crea una reserva real (POST) y muestra el ticket con folio + código de barras ---- */
     function quote() {
+      var dropped = STORE.shopDropSeries();   // "One Piece" sin tomo: no se puede apartar
+      dropped.forEach(function (title) { UI.toast(I18N.t("cart.pickVolumeRemoved", { name: title }), "warn"); });
       var c = STORE.shopCart;
-      if (!c.length) { UI.toast(I18N.t("cart.empty"), "warn"); return; }
+      if (!c.length) { if (!dropped.length) UI.toast(I18N.t("cart.empty"), "warn"); return; }
       var repriced = STORE.shopReconcile(window.Catalog ? Catalog.all() : []);
       if (repriced) UI.toast(I18N.t("discount.cartUpdated", { n: repriced }), "warn");
       c = STORE.shopCart;

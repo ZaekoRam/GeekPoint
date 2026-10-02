@@ -1138,6 +1138,7 @@ class CatalogController extends Controller
             'upload.wikimedia.org', 'commons.wikimedia.org', 'en.wikipedia.org',
             'api.scryfall.com', 'cards.scryfall.io', 'c1.scryfall.com',
             'images.pokemontcg.io', 'img.pokemontcg.io',
+            'images.scrydex.com',                     // la API de Pokémon TCG ahora sirve las cartas desde aquí
         ];
         $ok = $src && (in_array($host, $allowed, true)
             || preg_match('/\.(wikimedia|wikipedia)\.org$/', $host));

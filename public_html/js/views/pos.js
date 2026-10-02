@@ -212,8 +212,20 @@
         : { list: d.products.map(function (p) { return { sku: p.sku, sample: p, name: p.name, category_slug: p.category_slug, price: p.price, effective_price: p.effective_price, discount_status: p.discount_status, discount_percent: p.discount_percent, total: p.stock }; }), bySku: {} };
       ctx.products = folded.list;
       ctx.bySku = folded.bySku;
+      // Stock por id (de ESTA sucursal): para el aviso "antes → después" al cobrar.
+      ctx.stockById = {};
+      d.products.forEach(function (p) { ctx.stockById[p.id] = Number(p.stock) || 0; });
       grid.innerHTML = ctx.products.length ? ctx.products.map(cardHTML).join("")
         : '<div class="state"><div class="state__icon">🔍</div><p>' + esc(I18N.t("empty.none")) + '</p></div>';
+      // Productos sueltos cuyo stock cambió desde la última vez: zoom al número.
+      if (V._stockFx) {
+        Array.prototype.forEach.call(grid.querySelectorAll("[data-add]"), function (b) {
+          var id = b.getAttribute("data-add"), v = ctx.stockById[id];
+          var prev = V._stockFx.swap("pos:" + id, v);
+          var num = b.querySelector("[data-stock-num]");
+          if (num && prev !== undefined && prev !== v) V._stockFx.bump(num, prev, v, { card: b, suffix: " u" });
+        });
+      }
       // Portadas reales del catálogo de la tienda: si aún no cargó, repinta.
       if (ctx.products.length && window.Catalog && Catalog.load && !Catalog.ready) {
         var snapshot = ctx.products;
@@ -249,7 +261,9 @@
           (cover
             ? '<img src="' + esc(cover) + '" alt="" loading="lazy" decoding="async" onerror="this.remove()">'
             : '<span class="prod__art">' + art + '</span>') +
-          '<span class="prod__badge">' + (isSeries ? esc(I18N.t("prod.pickVolume")) : (out ? esc(I18N.t("pos.outOfStock")) : (total + " u"))) + '</span>' +
+          (isSeries || out
+            ? '<span class="prod__badge">' + esc(I18N.t(isSeries ? "prod.pickVolume" : "pos.outOfStock")) + '</span>'
+            : '<span class="prod__badge" data-stock-num>' + total + ' u</span>') +
         '</span>' +
         '<span class="prod__body">' +
           '<span class="prod__name">' + esc(name) + '</span>' +
@@ -351,6 +365,7 @@
         ? V._productCover({ name: r.name, category_slug: g.category_slug, image_url: r.generic ? "" : r.sample.image_url })
         : "") || "";
     }
+    var stockSuffix = " " + I18N.t("col.stock").toLowerCase();
     function cardFor(r, i) {
       var s = r.sample;
       var out = (s.stock || 0) === 0;
@@ -360,13 +375,13 @@
         : UI.money(s.effective_price != null ? s.effective_price : s.price, true);
       var cover = coverFor(r);
       var stockLabel = out ? esc(I18N.t("pos.outOfStock"))
-        : (s.stock + " " + esc(I18N.t("col.stock").toLowerCase()) + (r.virtual ? " " + esc(I18N.t("volumes.seriesStock")) : ""));
+        : (s.stock + stockSuffix + (r.virtual ? " " + esc(I18N.t("volumes.seriesStock")) : ""));
       return '<button type="button" class="prod' + (out ? " is-out" : "") + '" data-vol-idx="' + i + '"' + (out ? " disabled" : "") + '>' +
         '<span class="prod__media' + (cover ? " skeleton" : "") + '">' +
           (cover
             ? '<img src="' + esc(cover) + '" alt="" decoding="async" data-vol-img>'
             : '<span class="prod__art">' + art + '</span>') +
-          '<span class="prod__badge">' + stockLabel + '</span>' +
+          '<span class="prod__badge"' + (out || r.virtual ? "" : " data-stock-num") + '>' + stockLabel + '</span>' +
         '</span>' +
         '<span class="prod__body">' +
           '<span class="prod__name">' + esc(r.name) + '</span>' +
@@ -444,6 +459,25 @@
       while (tmp.firstChild) frag.appendChild(tmp.firstChild);
       bindImgs(frag);
       grid.insertBefore(frag, moreBtn);
+      // Tomo cuyo stock cambió desde la última vez que se vio (p. ej. se
+      // acaba de vender): el número hace zoom de lo viejo a lo nuevo.
+      if (V._stockFx) {
+        for (var j = shown; j < n; j++) {
+          var rr = rows[j];
+          if (rr.virtual) continue;
+          var v = Number(rr.sample.stock) || 0;
+          var prev = V._stockFx.swap("pos:" + rr.sample.id, v);
+          var btn = grid.querySelector('[data-vol-idx="' + j + '"]');
+          var num = btn && btn.querySelector("[data-stock-num]");
+          if (btn && prev !== undefined && prev !== v) {
+            if (num) V._stockFx.bump(num, prev, v, { card: btn, suffix: stockSuffix });
+            else {
+              var badge = btn.querySelector(".prod__badge");
+              V._stockFx.bump(badge, prev, v, { card: btn, suffix: stockSuffix, endText: badge.textContent });
+            }
+          }
+        }
+      }
       shown = n;
       updateMore();
       preload(shown, shown + blockSize());          // el siguiente bloque, por detrás
@@ -635,6 +669,11 @@
       items: STORE.cart.map(function (l) { return { product_id: l.id, quantity: l.qty }; })
     };
 
+    // Stock ANTES de cobrar, para mostrar "antes → después" al terminar.
+    var sold = STORE.cart.map(function (l) {
+      return { id: l.id, name: l.name, before: ctx.stockById ? ctx.stockById[l.id] : undefined };
+    });
+
     var btn = $("[data-charge]", host);
     btn.classList.add("is-loading");
     API.post("sales", payload).then(function (d) {
@@ -642,7 +681,7 @@
       STORE.cartClear();
       UI.toast(I18N.t("pos.done") + " · " + d.sale.folio, "ok");
       showTicketModal(d.sale);
-      loadProducts(root);
+      Promise.resolve(loadProducts(root)).then(function () { stockFlash(sold); });
     }).catch(function (err) {
       btn.classList.remove("is-loading");
       if (err && err.data && err.data.error === "price_changed") {
@@ -661,6 +700,46 @@
       UI.toast(err.message || I18N.t("toast.error"), "error");
       loadProducts(root);
     });
+  }
+
+  /* Aviso tras cobrar: cada producto vendido con su stock "antes → después"
+     (el número hace zoom y cuenta hacia abajo). Va por encima del ticket y se
+     quita solo a los 8 s, o con la ✕. */
+  function stockFlash(sold) {
+    if (!V._stockFx || !ctx.stockById) return;
+    var rows = sold.filter(function (s) {
+      var now = ctx.stockById[s.id];
+      return s.before != null && now != null && now !== s.before;
+    });
+    if (!rows.length) return;
+    var old = document.querySelector(".stock-flash");
+    if (old) old.remove();
+    var box = document.createElement("div");
+    box.className = "stock-flash";
+    box.setAttribute("role", "status");
+    box.innerHTML =
+      '<div class="stock-flash__head"><b>' + esc(I18N.t("pos.stockFlash")) + '</b>' +
+        '<button type="button" class="stock-flash__x" aria-label="' + esc(I18N.t("btn.close")) + '">✕</button></div>' +
+      rows.map(function (r, i) {
+        return '<div class="stock-flash__row">' +
+          '<span class="stock-flash__name">' + esc(r.name) + '</span>' +
+          '<span class="stock-flash__nums"><span class="mono muted">' + r.before + ' →</span>' +
+            '<b class="stock-flash__num" data-flash="' + i + '">' + r.before + '</b></span>' +
+        '</div>';
+      }).join("");
+    document.body.appendChild(box);
+    var close = function () { box.classList.remove("is-in"); setTimeout(function () { box.remove(); }, 350); };
+    box.querySelector(".stock-flash__x").addEventListener("click", close);
+    requestAnimationFrame(function () {
+      box.classList.add("is-in");
+      setTimeout(function () {
+        rows.forEach(function (r, i) {
+          var num = box.querySelector('[data-flash="' + i + '"]');
+          V._stockFx.bump(num, r.before, ctx.stockById[r.id], { chipHost: num.parentNode });
+        });
+      }, 250);
+    });
+    setTimeout(close, 8000);
   }
 
   /* ---------------- Ticket ---------------- */

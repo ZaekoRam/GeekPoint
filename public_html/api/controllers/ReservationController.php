@@ -51,6 +51,12 @@ class ReservationController extends Controller
                 ? $this->localProductById($productId, $branchId, $qty)
                 : $this->localProductForRef($ref, $branchId, $qty);
             if ($productId > 0) $ref = 'product-' . $productId;
+            // La ficha de SERIE de manga (MNG-S-*) solo agrupa a sus tomos: no
+            // es un artículo apartable. Se debe elegir el tomo concreto.
+            if ($local && preg_match('/^MNG-S-/i', (string) $local['sku'])) {
+                Response::error(422, 'pick_volume',
+                    'Elige qué tomo de «' . $local['name'] . '» quieres apartar.', ['product_ref' => $ref]);
+            }
             if ($local) {
                 $pricing = Pricing::calculate($local);
                 $listPrice = $pricing['price'];

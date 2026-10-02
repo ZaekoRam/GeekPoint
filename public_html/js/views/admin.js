@@ -309,9 +309,11 @@
     ]).then(function (res) {
       var brs = res[0].branches;
       var cats = res[1].categories;
-      var folded = foldSeries(groupBySku(res[2].products, brs));
+      var rawRows = res[2].products;  // filas crudas (1 por SKU y sucursal) — base del refresco en vivo
+      var folded = foldSeries(groupBySku(rawRows, brs));
       var prods = folded.list;      // tarjetas visibles: 1 por serie / cómic / producto suelto
       var bySku = folded.bySku;     // TODOS los SKU (series + tomos ocultos) para las acciones
+      var fx = V._stockFx;
 
       // Sucursal activa para "Tomos y precios" (se elige aquí, no dentro del modal).
       var activeBranchId = (window.STORE && STORE.user && STORE.user.branch_id) || (brs[0] && brs[0].id) || null;
@@ -329,15 +331,37 @@
               }).join("") + '</select>'
             : "") +
           '<input class="input" type="search" data-search placeholder="' + esc(I18N.t("prodadm.searchPh")) + '" style="max-width:15rem">' +
+          '<label class="muted mono" style="font-size:.75rem">' + esc(I18N.t("inv.sort")) + '</label>' +
+          '<select class="select" data-sort>' + ["recent", "az", "stockAsc", "stockDesc"].map(function (o) {
+            return '<option value="' + o + '">' + esc(I18N.t("inv.sort." + o)) + '</option>';
+          }).join("") + '</select>' +
           '<span class="spacer"></span>' +
+          '<span class="live-pill mono" data-live title="' + esc(I18N.t("inv.liveHint")) + '">' + esc(I18N.t("inv.live")) + '</span>' +
           '<span class="mono muted" style="font-size:.72rem" data-prod-count>' + prods.length + ' ' + esc(I18N.t("nav.products").toLowerCase()) + '</span>' +
         '</div>' +
-        '<div data-prod-table>' + productsTable(prods, brs, activeBranchId) + '</div>' +
+        '<div data-prod-table></div>' +
         '<h2 class="mono" style="font-size:.9rem;color:var(--faint);margin:1.6rem 0 .6rem">' + esc(I18N.t("misc.alerts")) + '</h2>' +
         '<div data-alerts>' + alertsTable(res[3].alerts) + '</div>';
 
       var tableBox = $("[data-prod-table]", panel);
+      var sortSel = $("[data-sort]", panel);
 
+      function fxKey(g) { return "inv:" + g.sku + "@" + activeBranchId; }
+      function byName(a, b) { return String(a.displayName || a.name).localeCompare(String(b.displayName || b.name)); }
+      function sortList(list) {
+        var mode = sortSel.value;
+        return list.slice().sort(function (a, b) {
+          if (mode === "stockAsc") return branchStock(a, activeBranchId) - branchStock(b, activeBranchId) || byName(a, b);
+          if (mode === "stockDesc") return branchStock(b, activeBranchId) - branchStock(a, activeBranchId) || byName(a, b);
+          if (mode === "recent") return fx.changedAt(fxKey(b)) - fx.changedAt(fxKey(a)) || byName(a, b);
+          return byName(a, b);
+        });
+      }
+
+      /* Pinta la grilla. Antes de pintar compara el stock de cada tarjeta con
+         el último que se mostró: lo que cambió sube al inicio ("Cambios
+         recientes"), las tarjetas se deslizan a su nuevo lugar y el número
+         hace zoom contando del valor viejo al nuevo. */
       function redrawTable() {
         var slug = ($("[data-cat-filter]", panel) || {}).value || "";
         var q = _fold(($("[data-search]", panel) || {}).value || "");
@@ -346,10 +370,82 @@
           if (q && _fold(p.displayName || p.name).indexOf(q) === -1 && _fold(p.sku).indexOf(q) === -1) return false;
           return true;
         });
+        var changes = {};
+        list.forEach(function (g) {
+          var v = branchStock(g, activeBranchId);
+          var prev = fx.swap(fxKey(g), v);
+          if (prev !== undefined && prev !== v) changes[g.sku] = [prev, v];
+        });
+        list = sortList(list);
+
+        var before = fx.flipCapture(tableBox);
         tableBox.innerHTML = productsTable(list, brs, activeBranchId);
+        fx.flipPlay(tableBox, before);
+        Object.keys(changes).forEach(function (sku) {
+          var card = tableBox.querySelector('[data-fx-key="' + (window.CSS && CSS.escape ? CSS.escape(sku) : sku) + '"]');
+          if (card) fx.bump(card.querySelector("[data-stock-num]"), changes[sku][0], changes[sku][1], { card: card });
+        });
+        if (Object.keys(changes).length) {
+          var live = $("[data-live]", panel);
+          if (live) { live.classList.remove("is-hit"); void live.offsetWidth; live.classList.add("is-hit"); }
+        }
         var cnt = $("[data-prod-count]", panel);
         if (cnt) cnt.textContent = list.length + " " + I18N.t("nav.products").toLowerCase();
       }
+
+      function applyRows(rows) {
+        rawRows = rows;
+        var f = foldSeries(groupBySku(rawRows, brs));
+        prods = f.list;
+        bySku = f.bySku;
+        redrawTable();
+      }
+      /* Refresco SIN recargar la vista (tras ajustar stock / editar): así la
+         grilla anterior sigue en pantalla y se ve el movimiento. */
+      function reload() {
+        return Promise.all([API.get("products?status=all&limit=5000"), API.get("inventory/alerts")]).then(function (r) {
+          if (!tableBox.isConnected) return;
+          applyRows(r[0].products);
+          var al = $("[data-alerts]", panel);
+          if (al) al.innerHTML = alertsTable(r[1].alerts);
+        }).catch(apiToast);
+      }
+
+      /* EN VIVO: cada 5 s pide solo el stock que cambió (products/stock) — si
+         el cajero vende en otra pantalla, aquí se ve el número bajar. */
+      var since = null, polling = false, timer = null;
+      function poll() {
+        if (!tableBox.isConnected) { clearInterval(timer); return; }   // se salió de la vista
+        if (document.hidden || polling) return;
+        polling = true;
+        API.get("products/stock" + (since ? "?since=" + encodeURIComponent(since) : "")).then(function (d) {
+          since = d.now;
+          var byId = {};
+          rawRows.forEach(function (r) { byId[r.id] = r; });
+          var changed = false, unknown = false;
+          (d.stock || []).forEach(function (s) {
+            var r = byId[s[0]];
+            if (!r) { unknown = true; return; }
+            if (Number(r.stock) !== s[3]) { r.stock = s[3]; changed = true; }
+          });
+          if (unknown) return reload();               // producto nuevo en otra pantalla
+          if (changed) applyRows(rawRows);
+        }).catch(function () { /* sin red: se reintenta en el siguiente ciclo */ })
+          .then(function () { polling = false; });
+      }
+      clearInterval(panel.__live);            // la vista se volvió a pintar en el mismo panel
+      timer = panel.__live = setInterval(poll, 5000);
+      poll();
+      // Pestaña oculta = pausa; al volver a verla se pone al día al instante.
+      document.removeEventListener("visibilitychange", panel.__vis || poll);
+      panel.__vis = function () {
+        if (!tableBox.isConnected) { document.removeEventListener("visibilitychange", panel.__vis); return; }
+        if (!document.hidden) poll();
+      };
+      document.addEventListener("visibilitychange", panel.__vis);
+
+      redrawTable();
+      sortSel.addEventListener("change", redrawTable);
       $("[data-cat-filter]", panel).addEventListener("change", redrawTable);
       $("[data-search]", panel).addEventListener("input", UI.debounce(redrawTable, 150));
       var branchFilter = $("[data-branch-filter]", panel);
@@ -368,7 +464,7 @@
         var ed = e.target.closest("[data-edit-sku]");
         if (ed) {
           var ge = bySku[ed.getAttribute("data-edit-sku")];
-          if (ge) editProductModal(ge, cats, function () { inventory(panel, root); });
+          if (ge) editProductModal(ge, cats, reload);
           return;
         }
         var rst = e.target.closest("[data-restock]");
@@ -378,9 +474,9 @@
             // Manga y cómics -> modal de tomos (stock + precio por volumen).
             // El resto -> ajuste de stock por sucursal de siempre.
             if (g.category_slug === "manga" || g.category_slug === "comics")
-              volumesModal(g, brs, function () { inventory(panel, root); }, activeBranchId);
+              volumesModal(g, brs, reload, activeBranchId);
             else
-              restockModal(g, brs, function () { inventory(panel, root); });
+              restockModal(g, brs, reload);
           }
           return;
         }
@@ -576,6 +672,12 @@
      Cada tarjeta agrupa un SKU: portada, categoría, precio, stock TOTAL y el
      stock de la sucursal activa. Al pulsarla (o "± Ajustar stock") abre el
      modal de reabastecer por sucursal — nunca "comprar". */
+  /** Stock de una tarjeta en una sucursal (serie plegada = suma de sus tomos). */
+  function branchStock(g, branchId) {
+    var brMap = (g.children && g.children.length) ? g.groupByBranch : g.byBranch;
+    return Number((brMap || {})[branchId]) || 0;
+  }
+
   function productsTable(list, branches, activeBranchId) {
     if (!list.length) {
       return '<div class="state">' + (V._icon ? V._icon.empty : "") + '<p>' + esc(I18N.t("empty.none")) + '</p></div>';
@@ -585,7 +687,7 @@
       var kids = g.children || [];
       var brMap = kids.length ? g.groupByBranch : g.byBranch;
       // La insignia muestra el stock de la SUCURSAL seleccionada, no el total.
-      var total = Number((brMap || {})[activeBranchId]) || 0;
+      var total = branchStock(g, activeBranchId);
       var totalCls = total === 0 ? "badge--danger" : (total <= 6 ? "badge--warn" : "badge--ok");
       var cat = esc(PRV_LABEL[g.category_slug] || g.category_slug || "—");
       var perBranch = branchDigest(brMap, branches, activeBranchId);
@@ -599,11 +701,11 @@
         ? '<span class="price-old">' + UI.money(g.price, true) + '</span> <span>' + UI.money(g.effective_price, true) + '</span>'
         : UI.money(g.price, true);
       return '' +
-        '<article class="invcard' + (g.status !== "active" ? " is-inactive" : "") + '">' +
+        '<article class="invcard' + (g.status !== "active" ? " is-inactive" : "") + '" data-fx-key="' + esc(g.sku) + '">' +
           '<div class="invcard__main" data-edit-sku="' + esc(g.sku) + '" title="' + esc(I18N.t("btn.edit")) + '">' +
             '<div class="invcard__media">' +
               '<img src="' + esc(V._productCover(g)) + '" alt="" loading="lazy" decoding="async" onerror="this.style.visibility=\'hidden\'">' +
-              '<span class="invcard__stock badge ' + totalCls + '">' + total + '</span>' +
+              '<span class="invcard__stock badge ' + totalCls + '" data-stock-num>' + total + '</span>' +
               (g.status !== "active" ? '<span class="invcard__off">' + esc(I18N.t("status.inactive")) + '</span>' : "") +
             '</div>' +
             '<div class="invcard__body">' +

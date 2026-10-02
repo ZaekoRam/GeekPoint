@@ -102,6 +102,118 @@
     });
   })();
 
+  /* ---------- Stock visible (inventario / POS) ----------
+     Para que SE NOTE cuando el stock cambia:
+       · bump(): el número hace zoom y cuenta del valor anterior al nuevo,
+         verde si sube / rojo si baja, con un chip "+N ▲" / "−N ▼";
+       · la tarjeta brilla unos segundos;
+       · flipCapture()/flipPlay(): las tarjetas que cambian de lugar se
+         deslizan a su nueva posición en vez de saltar.
+     Recuerda el último valor mostrado por clave (localStorage) para detectar
+     el cambio aunque se cambie de vista o se recargue la página. */
+  var stockFx = (function () {
+    var KEY = "gp.stockfx.v1";
+    var mem = { v: {}, t: {} };                 // v: último valor · t: cuándo cambió
+    try { var raw = localStorage.getItem(KEY); if (raw) mem = JSON.parse(raw) || mem; } catch (e) { /* sin storage */ }
+    mem.v = mem.v || {}; mem.t = mem.t || {};
+    var saveTimer = null;
+    function save() {
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(function () {
+        try { localStorage.setItem(KEY, JSON.stringify(mem)); } catch (e) { /* lleno / bloqueado */ }
+      }, 300);
+    }
+    function reduced() {
+      return window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    }
+
+    /** Guarda el valor actual y devuelve el anterior (undefined si es la primera vez). */
+    function swap(key, val) {
+      var prev = mem.v[key];
+      if (prev !== val) {
+        if (prev !== undefined) mem.t[key] = Date.now();
+        mem.v[key] = val;
+        save();
+      }
+      return prev;
+    }
+    function changedAt(key) { return mem.t[key] || 0; }
+
+    /** Anima el número `el` de `from` a `to`.
+        opts: { chipHost, card, suffix, endText (texto final, p. ej. "Sin stock") } */
+    function bump(el, from, to, opts) {
+      if (!el || from === undefined || from === null || from === to) return;
+      opts = opts || {};
+      var up = to > from, suffix = opts.suffix || "";
+      var endText = opts.endText != null ? opts.endText : to + suffix;
+      var card = opts.card;
+      el.classList.remove("stockfx--up", "stockfx--down");
+      void el.offsetWidth;                                // reinicia la animación
+      el.classList.add("stockfx", up ? "stockfx--up" : "stockfx--down");
+      clearTimeout(el.__fxT);
+      el.__fxT = setTimeout(function () { el.classList.remove("stockfx--up", "stockfx--down"); }, 4200);
+
+      if (reduced()) {
+        el.textContent = endText;
+      } else {
+        var t0 = null, dur = 900;
+        (function step(ts) {
+          if (t0 === null) t0 = ts;
+          var k = Math.min(1, (ts - t0) / dur);
+          var e = 1 - Math.pow(1 - k, 3);
+          el.textContent = k < 1 ? Math.round(from + (to - from) * e) + suffix : endText;
+          if (k < 1) requestAnimationFrame(step);
+        })(performance.now());
+      }
+
+      var host = opts.chipHost || el.parentNode;
+      if (host) {
+        var chip = document.createElement("span");
+        chip.className = "stockfx-chip " + (up ? "is-up" : "is-down");
+        chip.textContent = (up ? "+" : "−") + Math.abs(to - from) + (up ? " ▲" : " ▼");
+        host.appendChild(chip);
+        setTimeout(function () { chip.remove(); }, 4200);
+      }
+      if (card) {
+        card.classList.remove("stockfx-card--up", "stockfx-card--down");
+        void card.offsetWidth;
+        card.classList.add(up ? "stockfx-card--up" : "stockfx-card--down");
+        clearTimeout(card.__fxT);
+        card.__fxT = setTimeout(function () { card.classList.remove("stockfx-card--up", "stockfx-card--down"); }, 4200);
+      }
+    }
+
+    /** Posiciones actuales de los hijos con [data-fx-key]. */
+    function flipCapture(container) {
+      var m = {};
+      if (!container) return m;
+      Array.prototype.forEach.call(container.querySelectorAll("[data-fx-key]"), function (el) {
+        m[el.getAttribute("data-fx-key")] = el.getBoundingClientRect();
+      });
+      return m;
+    }
+    /** Desliza cada tarjeta desde donde estaba (flipCapture) hasta donde quedó. */
+    function flipPlay(container, before) {
+      if (!container || !before || reduced() || !Element.prototype.animate) return;
+      var vh = window.innerHeight;
+      Array.prototype.forEach.call(container.querySelectorAll("[data-fx-key]"), function (el) {
+        var b = before[el.getAttribute("data-fx-key")];
+        if (!b) return;
+        var a = el.getBoundingClientRect();
+        // Solo lo que se ve (o venía de verse): 2000 tarjetas animando no aportan nada.
+        if ((a.bottom < 0 || a.top > vh) && (b.bottom < 0 || b.top > vh)) return;
+        var dx = b.left - a.left, dy = b.top - a.top;
+        if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
+        el.animate(
+          [{ transform: "translate(" + dx + "px," + dy + "px)" }, { transform: "none" }],
+          { duration: 650, easing: "cubic-bezier(.2,.8,.2,1)" }
+        );
+      });
+    }
+
+    return { swap: swap, changedAt: changedAt, bump: bump, flipCapture: flipCapture, flipPlay: flipPlay };
+  })();
+
   function kpi(list) {
     return '<div class="kpis">' + list.map(function (k) {
       var inner =
@@ -371,6 +483,7 @@
   Views._shell = shell;
   Views._drawerToggle = drawerToggle;
   Views._drawerClose = drawerClose;
+  Views._stockFx = stockFx;
   Views._delButton = delButton;
   Views._productCover = productCover;
   Views._catalogChanged = catalogChanged;

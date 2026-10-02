@@ -304,7 +304,8 @@
           (p.author ? '<span class="pcard__author">' + esc(p.author) + '</span>' : "") +
           '<div class="pcard__foot">' +
             '<span class="pcard__price">' + priceHTML(p, p.price_varies) + '</span>' +
-            '<button class="pcard__add" data-add>' + esc(I18N.t("prod.add")) + '</button>' +
+            // Manga = serie: el botón no agrega "One Piece" a secas, lleva a elegir tomo.
+            '<button class="pcard__add" data-add>' + esc(I18N.t(p.category === "manga" ? "prod.chooseVolume" : "prod.add")) + '</button>' +
           '</div>' +
           '<span class="pcard__stock">' + (totalStock > 0
             ? '<b>' + totalStock + '</b> ' + esc(I18N.t("prod.available")).toLowerCase() + ' ' + (p.branches || []).filter(function(b){return b.stock>0;}).map(function(b){return esc(b.name);}).join(", ")
@@ -338,6 +339,7 @@
       if (e.target.closest("[data-add]")) {
         e.stopPropagation();
         var p = Catalog.get(id);
+        if (p && p.category === "manga") { openPreview(id, { pickVolume: true }); return; }
         if (p) { STORE.shopAdd(p); UI.toast(I18N.t("prod.added") + " · " + p.title, "ok"); }
         return;
       }
@@ -455,7 +457,9 @@
     }).join("");
   }
 
-  function openPreview(id) {
+  /** opts.pickVolume: viene del botón "Elegir tomo" -> resalta el selector de tomo. */
+  function openPreview(id, opts) {
+    opts = opts || {};
     var p = Catalog.get(id);
     if (!p) return;
 
@@ -758,6 +762,18 @@
       });
 
       if (volSel) refresh();
+
+      // Desde "Elegir tomo": lleva la vista al selector y lo hace destellar
+      // para que quede claro que primero hay que escoger el tomo.
+      if (opts.pickVolume && volSel) {
+        var pickBox = volSel.closest(".vol-select");
+        if (pickBox) {
+          pickBox.scrollIntoView({ block: "nearest", behavior: UI.reduced ? "auto" : "smooth" });
+          pickBox.classList.add("is-attn");
+          setTimeout(function () { pickBox.classList.remove("is-attn"); }, 2400);
+        }
+        try { volSel.focus({ preventScroll: true }); } catch (e) { volSel.focus(); }
+      }
     }});
   }
 
@@ -1283,6 +1299,9 @@
     }
 
     Catalog.load().then(function () {
+      STORE.shopDropSeries().forEach(function (title) {
+        UI.toast(I18N.t("cart.pickVolumeRemoved", { name: title }), "warn");
+      });
       var repriced = STORE.shopReconcile(Catalog.all());
       if (repriced) UI.toast(I18N.t("discount.cartUpdated", { n: repriced }), "warn");
       // Al resolver, pinta la categoría ACTUAL (el usuario pudo navegar durante

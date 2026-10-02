@@ -96,7 +96,7 @@
       "prod.manufacturer": "Fabricante", "prod.scale": "Escala / Línea",
       "prod.volumes": "Tomos", "prod.score": "Puntuación", "prod.buy": "Agregar al carrito",
       "prod.soldout": "Agotado",
-      "prod.volume": "Vol.", "prod.pickVolume": "Elige tomo",
+      "prod.volume": "Vol.", "prod.pickVolume": "Elige tomo", "prod.chooseVolume": "Elegir tomo", "cart.pickVolumeRemoved": "Quitamos «{name}» del carrito: elige qué tomo quieres en la vista previa.",
       "prod.stockByBranch": "Stock por sucursal",
       "volumes.title": "Tomos y precios",
       "volumes.count": "Número de tomos",
@@ -245,6 +245,7 @@
       "pos.done": "Venta registrada", "pos.lowWarn": "Stock bajo",
       "pos.outOfStock": "Sin stock", "pos.needPayment": "El efectivo recibido es menor que el total.",
       "pos.pickVolumeHint": "Toca un tomo para agregarlo a la venta actual",
+      "pos.stockFlash": "Stock actualizado", "inv.sort": "Orden", "inv.sort.recent": "Cambios recientes", "inv.sort.az": "Nombre A–Z", "inv.sort.stockAsc": "Stock: menor a mayor", "inv.sort.stockDesc": "Stock: mayor a menor", "inv.live": "En vivo", "inv.liveHint": "Se actualiza solo cada 5 s: si se vende o se surte en otra pantalla, aquí se ve el cambio",
       "pos.moreVolumes": "Ver más tomos", "pos.volNumber": "Tomo #", "pos.volAdd": "Agregar", "pos.volNotFound": "Ese tomo no existe en esta serie",
 
       "ticket.title": "COMPROBANTE DE VENTA", "ticket.thanks": "¡Gracias por tu compra!",
@@ -412,7 +413,7 @@
       "prod.manufacturer": "Manufacturer", "prod.scale": "Scale / Line",
       "prod.volumes": "Volumes", "prod.score": "Score", "prod.buy": "Add to cart",
       "prod.soldout": "Sold out",
-      "prod.volume": "Vol.", "prod.pickVolume": "Pick volume",
+      "prod.volume": "Vol.", "prod.pickVolume": "Pick volume", "prod.chooseVolume": "Choose volume", "cart.pickVolumeRemoved": "We removed «{name}» from your cart: pick which volume you want in the preview.",
       "prod.stockByBranch": "Stock by branch",
       "volumes.title": "Volumes & prices",
       "volumes.count": "Number of volumes",
@@ -561,6 +562,7 @@
       "pos.done": "Sale recorded", "pos.lowWarn": "Low stock",
       "pos.outOfStock": "Out of stock", "pos.needPayment": "Cash received is less than the total.",
       "pos.pickVolumeHint": "Tap a volume to add it to the current sale",
+      "pos.stockFlash": "Stock updated", "inv.sort": "Sort", "inv.sort.recent": "Recent changes", "inv.sort.az": "Name A–Z", "inv.sort.stockAsc": "Stock: low to high", "inv.sort.stockDesc": "Stock: high to low", "inv.live": "Live", "inv.liveHint": "Refreshes every 5 s: sales or restocks made on another screen show up here",
       "pos.moreVolumes": "Show more volumes", "pos.volNumber": "Volume #", "pos.volAdd": "Add", "pos.volNotFound": "That volume is not in this series",
 
       "ticket.title": "SALES RECEIPT", "ticket.thanks": "Thank you for your purchase!",
