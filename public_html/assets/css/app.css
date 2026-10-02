@@ -920,6 +920,7 @@ a.kpi--link:hover .kpi__go { opacity: 1; transform: translateX(0); }
 .pkm-branch { display: flex; align-items: center; justify-content: space-between; gap: .6rem; background: var(--surface-2); padding: .5rem .7rem; border-radius: var(--radius-sm); }
 .pkm-branch span { font-size: .82rem; }
 .pkm-branch .input { width: 5rem; text-align: right; }
+.pkm-branch .vol-acts { display: flex; gap: .35rem; flex: none; }
 
 /* ---------- Campo de imagen: URL o archivo local ---------- */
 .uplfield { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; margin-top: .4rem; }
