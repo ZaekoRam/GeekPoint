@@ -23,8 +23,9 @@
     }).join("");
 
     return (
-      '<div class="shell">' +
-        '<aside class="side">' +
+      '<div class="shell" data-drawer-root>' +
+        '<aside class="side" id="panel-side" data-drawer>' +
+          drawerClose() +
           '<div class="side__user">' +
             '<b>' + esc(u.name) + '</b>' +
             '<span>' + esc(roleLabel) + (branchName ? ' · ' + esc(branchName) : "") + '</span>' +
@@ -34,8 +35,10 @@
           '<a class="side__link" href="#/" data-link><span class="ico">↗</span><span>' + esc(I18N.t("nav.home")) + '</span></a>' +
           '<button class="side__link" type="button" data-logout><span class="ico">⏻</span><span>' + esc(I18N.t("cta.logout")) + '</span></button>' +
         '</aside>' +
+        '<div class="drawer-backdrop" data-drawer-close></div>' +
         '<section class="content" data-content>' +
           '<div class="content__head">' +
+            drawerToggle("panel-side") +
             '<h1>' + esc(opts.title) + '</h1>' +
             '<span class="spacer"></span>' +
             (opts.headExtra || "") +
@@ -45,6 +48,59 @@
       '</div>'
     );
   }
+
+  /* ---------- Menú lateral móvil (hamburguesa) ----------
+     Bajo 900px la barra lateral deja de ser una tira horizontal y pasa a
+     ser un cajón que se abre con el botón de hamburguesa.  Marcado:
+       [data-drawer-root]   contenedor; recibe .is-drawer-open
+       [data-drawer]        el cajón (barra lateral / pestañas)
+       [data-drawer-toggle] botón que abre/cierra
+       [data-drawer-close]  fondo oscuro y botón ✕
+     Lo usan los paneles (shell) y "Mi cuenta" (account.js). */
+  function drawerToggle(target) {
+    return '<button type="button" class="drawer-toggle" data-drawer-toggle aria-controls="' + target + '"' +
+      ' aria-expanded="false" aria-label="' + esc(I18N.t("nav.menu")) + '">' +
+      '<span></span><span></span><span></span></button>';
+  }
+  function drawerClose() {
+    return '<button type="button" class="drawer-close" data-drawer-close aria-label="' + esc(I18N.t("btn.close")) + '">✕</button>';
+  }
+
+  (function bindDrawer() {
+    if (typeof document === "undefined") return;
+    function setOpen(root, open) {
+      if (!root) return;
+      root.classList.toggle("is-drawer-open", open);
+      var t = root.querySelector("[data-drawer-toggle]");
+      if (t) t.setAttribute("aria-expanded", open ? "true" : "false");
+      document.documentElement.classList.toggle("drawer-locked", open);
+    }
+    document.addEventListener("click", function (e) {
+      var el = e.target;
+      if (!el || !el.closest) return;
+      var t = el.closest("[data-drawer-toggle]");
+      if (t) {
+        var root = t.closest("[data-drawer-root]");
+        setOpen(root, !root.classList.contains("is-drawer-open"));
+        return;
+      }
+      // ✕, fondo, o cualquier opción del menú -> cierra
+      var c = el.closest("[data-drawer-close], [data-drawer] a, [data-drawer] button");
+      if (c) {
+        var r = c.closest("[data-drawer-root]");
+        if (r && r.classList.contains("is-drawer-open")) setOpen(r, false);
+      }
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key !== "Escape") return;
+      var open = document.querySelector("[data-drawer-root].is-drawer-open");
+      if (open) setOpen(open, false);
+    });
+    // Al navegar la vista se vuelve a pintar (cajón cerrado): suelta el bloqueo de scroll.
+    window.addEventListener("hashchange", function () {
+      document.documentElement.classList.remove("drawer-locked");
+    });
+  })();
 
   function kpi(list) {
     return '<div class="kpis">' + list.map(function (k) {
@@ -313,6 +369,8 @@
   }
 
   Views._shell = shell;
+  Views._drawerToggle = drawerToggle;
+  Views._drawerClose = drawerClose;
   Views._delButton = delButton;
   Views._productCover = productCover;
   Views._catalogChanged = catalogChanged;

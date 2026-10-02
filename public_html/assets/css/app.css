@@ -451,10 +451,59 @@ body.in-app [data-static-store] { display: none !important; }
    todo el panel. */
 .side__link[data-logout] { border: 2px solid var(--line); margin-top: .4rem; }
 .side__link[data-logout]:hover { background: var(--panini); color: var(--ink-fixed); border-color: var(--ink-fixed); }
+/* ---------- Menú lateral móvil (hamburguesa) ----------
+   Bajo 900px la barra lateral de los paneles, las acciones del POS y las pestañas de "Mi cuenta"
+   se vuelven un cajón que entra por la izquierda (ver bindDrawer en shell.js). */
+.drawer-toggle, .drawer-close, .drawer-backdrop { display: none; }
+/* POS en escritorio: las acciones se quedan en la fila del título como antes. */
+.pos-actions { display: contents; }
 @media (max-width: 899px) {
-  .side { flex-direction: row; overflow-x: auto; gap: .5rem; padding: .7rem; }
-  .side__user, .side__spacer { display: none; }
-  .side__link { white-space: nowrap; }
+  .drawer-toggle {
+    display: inline-flex; flex-direction: column; justify-content: center; gap: 4px;
+    width: 42px; height: 42px; padding: 0 10px; flex: none;
+    background: var(--surface); border: 2px solid var(--line); color: var(--text); cursor: pointer;
+    transition: background .15s var(--ease-out), color .15s var(--ease-out), border-color .15s var(--ease-out);
+  }
+  .drawer-toggle span { display: block; height: 2px; border-radius: 2px; background: currentColor; }
+  .drawer-toggle:hover { background: var(--panini); color: var(--ink-fixed); border-color: var(--ink-fixed); }
+  .drawer-toggle:active { transform: translate(1px, 1px); }
+
+  [data-drawer] {
+    position: fixed; top: 0; left: 0; bottom: 0; z-index: var(--z-drawer);
+    width: min(290px, 84vw); overflow-y: auto;
+    display: flex; flex-direction: column; gap: .3rem;
+    padding: 1rem .9rem calc(1rem + env(safe-area-inset-bottom, 0px));
+    background: var(--surface); border-right: 1px solid var(--line-soft);
+    box-shadow: 8px 0 32px rgba(0,0,0,.35);
+    transform: translateX(-105%); visibility: hidden;
+    transition: transform .28s var(--ease-out), visibility 0s linear .28s;
+  }
+  .is-drawer-open [data-drawer] {
+    transform: none; visibility: visible;
+    transition: transform .28s var(--ease-out), visibility 0s;
+  }
+  .drawer-close {
+    display: flex; align-items: center; justify-content: center; align-self: flex-end;
+    width: 34px; height: 34px; margin-bottom: .4rem; flex: none;
+    background: none; border: 2px solid var(--line); color: var(--muted); cursor: pointer; font-size: .95rem;
+  }
+  .drawer-close:hover { color: var(--text); border-color: var(--text); }
+  .drawer-backdrop {
+    display: block; position: fixed; inset: 0; z-index: calc(var(--z-drawer) - 1);
+    background: rgba(12,12,14,.55); opacity: 0; visibility: hidden;
+    transition: opacity .25s var(--ease-out), visibility 0s linear .25s;
+  }
+  .is-drawer-open .drawer-backdrop { opacity: 1; visibility: visible; transition: opacity .25s var(--ease-out), visibility 0s; }
+  html.drawer-locked { overflow: hidden; }
+
+  .side { border-right: 1px solid var(--line-soft); }
+  .pos-actions[data-drawer] { display: flex; align-items: stretch; }
+  .pos-actions .btn { justify-content: flex-start; }
+  .pos-actions [data-branch-slot] { margin-bottom: .6rem; }
+  .pos-actions [data-logout] { margin-top: auto; }
+}
+@media (max-width: 899px) and (prefers-reduced-motion: reduce) {
+  [data-drawer], .is-drawer-open [data-drawer], .drawer-backdrop { transition: none; }
 }
 
 .content { padding: clamp(1.1rem, 3vw, 2rem); overflow: hidden; }
@@ -530,6 +579,36 @@ a.kpi--link:hover .kpi__go { opacity: 1; transform: translateX(0); }
 .prod__media { position: relative; aspect-ratio: 3 / 4; background: #0b0c10; }
 .prod__media img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .prod__art { position: absolute; inset: 0; display: grid; place-items: center; font-size: 2.4rem; opacity: .5; }
+
+/* Selector de tomos del POS: skeleton mientras llega la portada,
+   "Ver más" a todo lo ancho y campo "Tomo #" para agregar directo. */
+.vol-grid .prod__media.skeleton {
+  background: linear-gradient(90deg, var(--surface-2), var(--surface-3), var(--surface-2));
+  background-size: 200% 100%; animation: sk 1.3s linear infinite;
+}
+.vol-grid .prod__media img { transition: opacity .25s var(--ease-out); }
+.vol-grid .prod__media.skeleton img { opacity: 0; }
+.vol-more {
+  grid-column: 1 / -1; display: flex; align-items: center; justify-content: center; gap: .5rem;
+  padding: .7rem 1rem; margin-top: .2rem; cursor: pointer;
+  font-family: var(--mono); font-size: .74rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em;
+  background: transparent; color: var(--text); border: 2px solid var(--line);
+  transition: background .15s var(--ease-out), color .15s var(--ease-out), border-color .15s var(--ease-out);
+}
+.vol-more:hover { background: var(--panini); color: var(--ink-fixed); border-color: var(--ink-fixed); }
+.vol-more:active { transform: translate(1px, 1px); }
+.vol-more__arrow { font-size: 1rem; line-height: 1; }
+.vol-more[hidden] { display: none; }
+.vol-jump { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin: .2rem 0 .4rem; }
+.vol-jump label { font-size: .7rem; color: var(--muted); text-transform: uppercase; letter-spacing: .1em; }
+.vol-jump .input { width: 7.5rem; padding-top: .45rem; padding-bottom: .45rem; }
+/* Celular: el modal no llega a 2×150px — 2 columnas en vez de 1 gigante. */
+@media (max-width: 560px) {
+  .vol-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .6rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vol-grid .prod__media.skeleton { animation: none; }
+}
 .prod__badge {
   position: absolute; top: .4rem; right: .4rem;
   font-family: var(--mono); font-size: .62rem; font-weight: 700;
@@ -784,6 +863,17 @@ a.kpi--link:hover .kpi__go { opacity: 1; transform: translateX(0); }
 .account__tab.is-active { background: var(--surface-2); color: var(--accent-text); box-shadow: var(--nm-out-sm); }
 .account__tab--logout { margin-left: auto; color: var(--danger); border-radius: 0; border-color: var(--danger); text-transform: uppercase; font-weight: 700; }
 .account__tab--logout:hover { background: var(--danger); color: #fff; }
+/* Móvil: las pestañas viven en el cajón de la hamburguesa (ver [data-drawer]). */
+@media (max-width: 899px) {
+  .account__head { justify-content: flex-start; gap: .8rem; }
+  .account__head h1 { margin-right: auto; }
+  .account__tabs {
+    flex-wrap: nowrap; margin: 0; border-bottom: 0;
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+  }
+  .account__tab { text-align: left; padding: .7rem .8rem; font-size: .9rem; }
+  .account__tab--logout { margin: auto 0 0; text-align: center; }
+}
 
 .account__row { display: flex; justify-content: space-between; gap: 1rem; padding: .55rem 0; border-bottom: 1px dashed var(--line-soft); font-size: .88rem; }
 .account__row:last-of-type { border-bottom: 0; }

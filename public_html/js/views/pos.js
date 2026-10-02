@@ -53,14 +53,20 @@
 
   function render() {
     return (
-      '<div class="pos-view">' +
+      '<div class="pos-view" data-drawer-root>' +
         '<div class="content__head" style="padding:1rem clamp(1rem,3vw,2rem) 0">' +
+          V._drawerToggle("pos-menu") +
           '<h1>' + esc(I18N.t("pos.title")) + '</h1>' +
           '<span class="spacer"></span>' +
-          '<span data-branch-slot></span>' +
-          '<button class="btn btn--ghost btn--sm" data-resv-open>🎫 ' + esc(I18N.t("resv.pos")) + '</button>' +
-          '<a class="btn btn--ghost btn--sm" href="#/" data-link>← ' + esc(I18N.t("nav.home")) + '</a>' +
-          '<button class="btn btn--ghost btn--sm" data-logout>' + esc(I18N.t("cta.logout")) + '</button>' +
+          // En escritorio estas acciones van en la fila del título; en móvil, en el cajón.
+          '<div class="pos-actions" id="pos-menu" data-drawer>' +
+            V._drawerClose() +
+            '<span data-branch-slot></span>' +
+            '<button class="btn btn--ghost btn--sm" data-resv-open>🎫 ' + esc(I18N.t("resv.pos")) + '</button>' +
+            '<a class="btn btn--ghost btn--sm" href="#/" data-link>← ' + esc(I18N.t("nav.home")) + '</a>' +
+            '<button class="btn btn--ghost btn--sm" data-logout>' + esc(I18N.t("cta.logout")) + '</button>' +
+          '</div>' +
+          '<div class="drawer-backdrop" data-drawer-close></div>' +
         '</div>' +
         '<div class="content"><div class="pos">' +
           '<div>' +
@@ -191,9 +197,11 @@
   function loadProducts(root) {
     var grid = $("[data-grid]", root);
     if (!ctx.branchId) { grid.innerHTML = '<p class="muted">' + esc(I18N.t("empty.none")) + '</p>'; return; }
-    // Límite más alto que antes: al plegar por serie se necesitan las filas
-    // crudas de TODOS los tomos/números para poder ofrecerlos en el selector.
-    var qs = "?status=active&limit=300&branch_id=" + ctx.branchId;
+    // Sin tope bajo (mismo que Admin/Gerente): al plegar por serie se necesitan
+    // TODAS las filas. El API ordena primero lo de stock bajo, así que con un
+    // límite corto los tomos en 0 llenaban la página, la ficha de serie
+    // (MNG-S-*) quedaba fuera y los tomos salían sueltos sin agruparse.
+    var qs = "?status=active&limit=5000&branch_id=" + ctx.branchId;
     if (ctx.filter.q) qs += "&q=" + encodeURIComponent(ctx.filter.q);
     if (ctx.filter.cat) qs += "&category_id=" + ctx.filter.cat;
     return API.get("products" + qs).then(function (d) {
@@ -286,7 +294,9 @@
     });
     var maxExisting = Object.keys(byNum).reduce(function (m, k) { return Math.max(m, +k); }, 0);
     var descMatch = String((g.sample && g.sample.description) || "").match(/(\d{1,3})\s*tomos?/i);
-    var total = descMatch ? Math.min(parseInt(descMatch[1], 10), 80) : (maxExisting || 12);
+    // El tope de 80 solo aplica a tomos "virtuales"; los que ya tienen ficha
+    // propia (p. ej. One Piece 1-108) se listan todos.
+    var total = Math.max(descMatch ? Math.min(parseInt(descMatch[1], 10), 80) : 12, maxExisting);
     var base = String(g.sku || "").replace(/-S-/i, "-").replace(/-\d{1,3}$/, "").replace(/[^A-Za-z0-9]+$/, "");
     var seriesName = g.displayName || g.name;
     var seriesSample = g.sample || g;
@@ -321,82 +331,198 @@
     // agrega ese tomo a la venta actual (misma lógica de antes, solo cambia
     // el marcado/estética de la fila).
     var art = EMOJI[g.category_slug] || "📦";
+    var seriesImg = String(seriesSample.image_url || "");
+
+    /* Carga por bloques de 2 FILAS COMPLETAS (las columnas salen del ancho
+       real del modal: 5 en grande, 4 en mediano, 2-3 en celular) + "Ver más".
+       El bloque siguiente se precarga por detrás para que, al abrirlo, sus
+       portadas ya estén en caché; mientras una portada no llega se ve un
+       skeleton, nunca un hueco vacío. */
+    var byV = null;                                // portadas por tomo (MangaDex), cuando lleguen
+    var shown = 0;
+    rows.forEach(function (r) {
+      // "Genérica" = sin portada propia: virtual, sin imagen, o con la misma
+      // imagen de la serie (los tomos independizados la heredan).
+      r.generic = r.virtual || !r.sample.image_url || String(r.sample.image_url) === seriesImg;
+    });
+    function coverFor(r) {
+      if (r.generic && byV && byV[String(r.v)]) return byV[String(r.v)];
+      return (V._productCover
+        ? V._productCover({ name: r.name, category_slug: g.category_slug, image_url: r.generic ? "" : r.sample.image_url })
+        : "") || "";
+    }
+    function cardFor(r, i) {
+      var s = r.sample;
+      var out = (s.stock || 0) === 0;
+      var discounted = !r.virtual && s.discount_status === "active" && Number(s.effective_price) < Number(s.price);
+      var priceHTML = discounted
+        ? '<del>' + UI.money(s.price, true) + '</del><strong>' + UI.money(s.effective_price, true) + '</strong>'
+        : UI.money(s.effective_price != null ? s.effective_price : s.price, true);
+      var cover = coverFor(r);
+      var stockLabel = out ? esc(I18N.t("pos.outOfStock"))
+        : (s.stock + " " + esc(I18N.t("col.stock").toLowerCase()) + (r.virtual ? " " + esc(I18N.t("volumes.seriesStock")) : ""));
+      return '<button type="button" class="prod' + (out ? " is-out" : "") + '" data-vol-idx="' + i + '"' + (out ? " disabled" : "") + '>' +
+        '<span class="prod__media' + (cover ? " skeleton" : "") + '">' +
+          (cover
+            ? '<img src="' + esc(cover) + '" alt="" decoding="async" data-vol-img>'
+            : '<span class="prod__art">' + art + '</span>') +
+          '<span class="prod__badge">' + stockLabel + '</span>' +
+        '</span>' +
+        '<span class="prod__body">' +
+          '<span class="prod__name">' + esc(r.name) + '</span>' +
+          '<span class="muted mono" style="font-size:.62rem">' + esc(s.sku) + '</span>' +
+          '<span class="prod__price">' + priceHTML + '</span>' +
+        '</span>' +
+      '</button>';
+    }
+
     var c = document.createElement("div");
     c.innerHTML =
       '<p class="muted" style="margin-bottom:.6rem">' + esc(seriesName) +
         ' · <span class="mono">' + esc(g.sku) + '</span></p>' +
+      '<form class="vol-jump" data-vol-jump>' +
+        '<label class="mono" for="vol-jump-n">' + esc(I18N.t("pos.volNumber")) + '</label>' +
+        '<input class="input" id="vol-jump-n" type="number" inputmode="numeric" min="1" max="' + rows.length + '" placeholder="1–' + rows.length + '" autocomplete="off">' +
+        '<button type="submit" class="btn btn--neon btn--sm">' + esc(I18N.t("pos.volAdd")) + '</button>' +
+      '</form>' +
       '<p class="field__label mono" style="font-size:.7rem;color:var(--faint);text-transform:uppercase;letter-spacing:.1em;margin:.6rem 0 .5rem">' +
         esc(I18N.t("pos.pickVolumeHint")) + '</p>' +
-      '<div class="pos__grid" style="max-height:60vh">' + rows.map(function (r, i) {
-        var s = r.sample;
-        var out = (s.stock || 0) === 0;
-        var discounted = !r.virtual && s.discount_status === "active" && Number(s.effective_price) < Number(s.price);
-        var priceHTML = discounted
-          ? '<del>' + UI.money(s.price, true) + '</del><strong>' + UI.money(s.effective_price, true) + '</strong>'
-          : UI.money(s.effective_price != null ? s.effective_price : s.price, true);
-        r.generic = r.virtual || !s.image_url;
-        var cover = (V._productCover
-          ? V._productCover({ name: r.name, category_slug: g.category_slug, image_url: r.virtual ? "" : s.image_url })
-          : "") || "";
-        var stockLabel = out ? esc(I18N.t("pos.outOfStock"))
-          : (s.stock + " " + esc(I18N.t("col.stock").toLowerCase()) + (r.virtual ? " " + esc(I18N.t("volumes.seriesStock")) : ""));
-        return '<button type="button" class="prod' + (out ? " is-out" : "") + '" data-vol-idx="' + i + '"' + (out ? " disabled" : "") + '>' +
-          '<span class="prod__media">' +
-            (cover
-              ? '<img src="' + esc(cover) + '" alt="" loading="lazy" decoding="async" onerror="this.remove()">'
-              : '<span class="prod__art">' + art + '</span>') +
-            '<span class="prod__badge">' + stockLabel + '</span>' +
-          '</span>' +
-          '<span class="prod__body">' +
-            '<span class="prod__name">' + esc(r.name) + '</span>' +
-            '<span class="muted mono" style="font-size:.62rem">' + esc(s.sku) + '</span>' +
-            '<span class="prod__price">' + priceHTML + '</span>' +
-          '</span>' +
-        '</button>';
-      }).join("") + '</div>';
+      '<div class="pos__grid vol-grid" data-vol-grid style="max-height:60vh">' +
+        '<button type="button" class="vol-more" data-vol-more hidden>' +
+          '<span data-vol-more-label></span><span class="vol-more__arrow" aria-hidden="true">▾</span>' +
+        '</button>' +
+      '</div>';
     UI.modal({ title: I18N.t("prod.pickVolume") + " · " + esc(seriesName), content: c, wide: true });
+
+    var grid = c.querySelector("[data-vol-grid]");
+    var moreBtn = c.querySelector("[data-vol-more]");
+
+    function cols() {
+      var n = getComputedStyle(grid).gridTemplateColumns.split(" ").filter(Boolean).length;
+      return Math.max(1, n || 1);
+    }
+    function blockSize() { return cols() * 2; }
+    function bindImgs(scope) {
+      Array.prototype.forEach.call(scope.querySelectorAll("img[data-vol-img]"), function (img) {
+        var media = img.parentNode;
+        function done() { media.classList.remove("skeleton"); }
+        if (img.complete && img.naturalWidth) { done(); return; }
+        img.addEventListener("load", done, { once: true });
+        img.addEventListener("error", function () {
+          img.remove(); done();
+          if (!media.querySelector(".prod__art")) {
+            var a = document.createElement("span");
+            a.className = "prod__art"; a.textContent = art;
+            media.insertBefore(a, media.firstChild);
+          }
+        }, { once: true });
+      });
+    }
+    var preloaded = {};
+    function preload(from, to) {
+      for (var i = from; i < Math.min(to, rows.length); i++) {
+        var url = coverFor(rows[i]);
+        if (!url || preloaded[url]) continue;
+        preloaded[url] = true;
+        var im = new Image(); im.decoding = "async"; im.src = url;
+      }
+    }
+    function updateMore() {
+      var left = rows.length - shown;
+      moreBtn.hidden = left <= 0;
+      moreBtn.querySelector("[data-vol-more-label]").textContent =
+        I18N.t("pos.moreVolumes") + " (" + left + ")";
+    }
+    function showUpTo(n) {
+      n = Math.min(n, rows.length);
+      if (n <= shown) return;
+      var html = "";
+      for (var i = shown; i < n; i++) html += cardFor(rows[i], i);
+      var tmp = document.createElement("div");
+      tmp.innerHTML = html;
+      var frag = document.createDocumentFragment();
+      while (tmp.firstChild) frag.appendChild(tmp.firstChild);
+      bindImgs(frag);
+      grid.insertBefore(frag, moreBtn);
+      shown = n;
+      updateMore();
+      preload(shown, shown + blockSize());          // el siguiente bloque, por detrás
+    }
+    showUpTo(blockSize());
+
+    moreBtn.addEventListener("click", function () {
+      var first = shown;
+      showUpTo(shown + blockSize());
+      var el = grid.querySelector('[data-vol-idx="' + first + '"]');
+      if (el && el.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+
+    // Si cambia el ancho (gira el teléfono / redimensiona), completa la fila
+    // para que nunca quede un tomo solo.
+    if (window.ResizeObserver) {
+      var ro = new ResizeObserver(function () {
+        if (!c.isConnected) { ro.disconnect(); return; }
+        var k = cols();
+        if (shown % k) showUpTo(Math.ceil(shown / k) * k);
+      });
+      ro.observe(grid);
+    }
+
+    function addRow(row) {
+      STORE.cartAdd(mapProduct(row.cartSample));
+      // Confirma cuál tomo se eligió aunque en el carrito quede agrupado bajo
+      // la serie (un tomo virtual no tiene línea propia: comparte el stock).
+      UI.toast(I18N.t("prod.added") + ": " + row.name, "ok");
+      // El modal NO se cierra: se puede seguir agregando varios tomos de la
+      // misma serie de un tirón. Se cierra con la ✕ o el fondo, como siempre.
+    }
     c.addEventListener("click", function (e) {
       var b = e.target.closest("[data-vol-idx]");
       if (!b || b.disabled) return;
       var row = rows[parseInt(b.getAttribute("data-vol-idx"), 10)];
-      if (!row) return;
-      STORE.cartAdd(mapProduct(row.cartSample));
-      // Confirma cuál tomo se eligió aunque en el carrito quede agrupado bajo
-      // la serie (un tomo virtual no tiene línea propia: comparte el stock).
-      UI.toast(I18N.t("prod.added") + (row.virtual ? ": " + row.name : ""), "ok");
-      // El modal NO se cierra: se puede seguir agregando varios tomos de la
-      // misma serie de un tirón. Se cierra con la ✕ o el fondo, como siempre.
+      if (row) addRow(row);
     });
 
-    // Portadas reales por tomo (MangaDex), igual que el modal de la tienda:
-    // las filas "virtuales" (sin ficha propia) sólo tienen la portada de
-    // SERIE repetida — aquí se piden las de cada tomo y se sustituyen en
-    // el DOM ya pintado, sin bloquear la apertura del selector.
+    // "Tomo #": escribe el número y Enter -> se agrega directo, sin buscarlo.
+    var jump = c.querySelector("[data-vol-jump]");
+    jump.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var input = jump.querySelector("input");
+      var n = parseInt(input.value, 10);
+      var row = rows.filter(function (r) { return r.v === n; })[0];
+      if (!row) { UI.toast(I18N.t("pos.volNotFound"), "error"); input.select(); return; }
+      if ((row.sample.stock || 0) === 0) { UI.toast(I18N.t("pos.outOfStock") + ": " + row.name, "error"); input.select(); return; }
+      addRow(row);
+      input.value = "";
+      input.focus();
+    });
+
+    // Portadas reales por tomo (MangaDex), igual que el modal de la tienda.
+    // Llegan una sola vez por serie: se aplican a lo ya pintado y lo que
+    // falta por mostrar ya las usa (y se precargan).
     if (window.Catalog && Catalog.volumeCovers) {
       Catalog.volumeCovers(seriesName).then(function (list) {
         if (!list.length || !c.isConnected) return;
-        var byV = {};
+        byV = {};
         list.forEach(function (vc) { byV[String(vc.v)] = vc.url; });
-        rows.forEach(function (r, i) {
-          if (!r.generic) return;
-          var url = byV[String(r.v)];
-          if (!url) return;
-          var btn = c.querySelector('[data-vol-idx="' + i + '"]');
-          var media = btn && btn.querySelector(".prod__media");
-          if (!media) return;
+        for (var i = 0; i < shown; i++) {
+          var r = rows[i];
+          if (!r.generic || !byV[String(r.v)]) continue;
+          var media = grid.querySelector('[data-vol-idx="' + i + '"] .prod__media');
+          if (!media) continue;
           var img = media.querySelector("img");
-          if (img) {
-            img.src = url;
-          } else {
+          if (!img) {
+            img = document.createElement("img");
+            img.alt = ""; img.decoding = "async"; img.setAttribute("data-vol-img", "");
             var artSpan = media.querySelector(".prod__art");
-            var el = document.createElement("img");
-            el.alt = ""; el.loading = "lazy"; el.decoding = "async";
-            el.onerror = function () { el.remove(); };
-            el.src = url;
-            if (artSpan) media.replaceChild(el, artSpan);
-            else media.insertBefore(el, media.firstChild);
+            if (artSpan) media.replaceChild(img, artSpan);
+            else media.insertBefore(img, media.firstChild);
           }
-        });
+          media.classList.add("skeleton");
+          img.src = byV[String(r.v)];
+          bindImgs(media);
+        }
+        preload(shown, shown + blockSize());
       }).catch(function () {});
     }
   }

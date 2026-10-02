@@ -205,7 +205,7 @@
 
       "nav.overview": "Resumen", "nav.branches": "Sucursales", "nav.users": "Usuarios",
       "nav.inventory": "Inventario", "nav.products": "Productos", "nav.registers": "Cajas",
-      "nav.sales": "Ventas", "nav.pos": "Punto de venta", "nav.home": "Inicio",
+      "nav.sales": "Ventas", "nav.pos": "Punto de venta", "nav.home": "Inicio", "nav.menu": "Menú",
 
       "admin.title": "Panel del Administrador General",
       "manager.title": "Panel de Gerencia",
@@ -245,6 +245,7 @@
       "pos.done": "Venta registrada", "pos.lowWarn": "Stock bajo",
       "pos.outOfStock": "Sin stock", "pos.needPayment": "El efectivo recibido es menor que el total.",
       "pos.pickVolumeHint": "Toca un tomo para agregarlo a la venta actual",
+      "pos.moreVolumes": "Ver más tomos", "pos.volNumber": "Tomo #", "pos.volAdd": "Agregar", "pos.volNotFound": "Ese tomo no existe en esta serie",
 
       "ticket.title": "COMPROBANTE DE VENTA", "ticket.thanks": "¡Gracias por tu compra!",
       "ticket.folio": "Folio", "ticket.branch": "Sucursal", "ticket.cashier": "Atendió",
@@ -520,7 +521,7 @@
 
       "nav.overview": "Overview", "nav.branches": "Branches", "nav.users": "Users",
       "nav.inventory": "Inventory", "nav.products": "Products", "nav.registers": "Registers",
-      "nav.sales": "Sales", "nav.pos": "Point of sale", "nav.home": "Home",
+      "nav.sales": "Sales", "nav.pos": "Point of sale", "nav.home": "Home", "nav.menu": "Menu",
 
       "admin.title": "General Administrator Panel",
       "manager.title": "Management Panel",
@@ -560,6 +561,7 @@
       "pos.done": "Sale recorded", "pos.lowWarn": "Low stock",
       "pos.outOfStock": "Out of stock", "pos.needPayment": "Cash received is less than the total.",
       "pos.pickVolumeHint": "Tap a volume to add it to the current sale",
+      "pos.moreVolumes": "Show more volumes", "pos.volNumber": "Volume #", "pos.volAdd": "Add", "pos.volNotFound": "That volume is not in this series",
 
       "ticket.title": "SALES RECEIPT", "ticket.thanks": "Thank you for your purchase!",
       "ticket.folio": "Folio", "ticket.branch": "Branch", "ticket.cashier": "Served by",

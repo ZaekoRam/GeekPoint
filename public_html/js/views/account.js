@@ -291,17 +291,20 @@
   /* ---------------- Shell ---------------- */
   function render() {
     return (
-      '<section class="account">' +
+      '<section class="account" data-drawer-root>' +
         '<div class="account__head">' +
+          V._drawerToggle("account-tabs") +
           '<h1 data-i18n="account.title">Mi cuenta</h1>' +
           '<a href="#/" data-link class="mono account__back">← ' + esc(I18N.lang === "en" ? "Back to store" : "Volver a la tienda") + '</a>' +
         '</div>' +
-        '<nav class="account__tabs" data-account-tabs>' +
+        '<nav class="account__tabs" id="account-tabs" data-account-tabs data-drawer>' +
+          V._drawerClose() +
           '<button type="button" class="account__tab is-active" data-tab="info" data-i18n="account.tab.info">Información personal</button>' +
           '<button type="button" class="account__tab" data-tab="orders" data-i18n="account.tab.orders">Mis pedidos</button>' +
           '<button type="button" class="account__tab" data-tab="security" data-i18n="account.tab.security">Seguridad</button>' +
           '<button type="button" class="account__tab account__tab--logout" data-logout data-i18n="cta.logout">Cerrar sesión</button>' +
         '</nav>' +
+        '<div class="drawer-backdrop" data-drawer-close></div>' +
         '<div class="account__panel card" data-tab-panel="info">' + infoPanelHTML() + '</div>' +
         '<div class="account__panel card" data-tab-panel="orders" hidden>' + ordersPanelHTML() + '</div>' +
         '<div class="account__panel card" data-tab-panel="security" hidden>' + securityPanelHTML() + '</div>' +
