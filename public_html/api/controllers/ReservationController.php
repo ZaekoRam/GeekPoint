@@ -22,6 +22,13 @@ class ReservationController extends Controller
         // invitados. Si SÍ hay una sesión de cliente activa, se vincula.
         $authUser = Auth::attempt($this->req);
 
+        // Con sesión de cliente no hace falta escribir nombre ni correo:
+        // se toman de la cuenta (el formulario ya no los pide).
+        if ($authUser) {
+            if (trim((string) ($d['customer_name'] ?? '')) === '') $d['customer_name'] = $authUser['name'];
+            if (trim((string) ($d['customer_email'] ?? '')) === '') $d['customer_email'] = $authUser['email'];
+        }
+
         Validator::make($d)
             ->required('customer_name', 'El nombre del cliente')
             ->validateOrFail();
@@ -141,7 +148,16 @@ class ReservationController extends Controller
             throw $e;
         }
 
-        Response::ok($this->hydrate($this->findByFolio($folio)), 201);
+        $reservation = $this->hydrate($this->findByFolio($folio));
+
+        // Confirmación por correo (Resend). Va DESPUÉS del commit: el apartado
+        // ya está guardado, y Mailer nunca lanza, así que un fallo de correo
+        // no afecta la respuesta. Solo si el cliente dejó su email.
+        if ($this->canEmail($reservation)) {
+            $reservation['email_sent'] = Mailer::reservationConfirmation($reservation, $this->branchInfo($branchId));
+        }
+
+        Response::ok($reservation, 201);
     }
 
     /** GET /reservations */
@@ -243,10 +259,36 @@ class ReservationController extends Controller
             );
         }
 
-        Response::ok($this->hydrate($this->findByFolio($folio)));
+        $updated = $this->hydrate($this->findByFolio($folio));
+        // Aviso por correo del nuevo estado (listo / entregado / cancelado).
+        if ($this->canEmail($updated)) {
+            $updated['email_sent'] = Mailer::reservationStatus($updated, $this->branchInfo($updated['branch_id']));
+        }
+        Response::ok($updated);
     }
 
     // ---------------------------------------------------------------
+
+    /**
+     * ¿Se le puede escribir al cliente de este apartado? Invitados: al correo
+     * que dejaron. Clientes con cuenta: solo si su correo está verificado
+     * (así una cuenta con un correo ajeno no sirve para mandarle correos).
+     */
+    private function canEmail($r)
+    {
+        if (empty($r['customer_email']) || !Mailer::enabled()) return false;
+        if (empty($r['user_id'])) return true;
+        try {
+            return (bool) Database::scalar('SELECT email_verified_at IS NOT NULL FROM users WHERE id = ?', [(int) $r['user_id']]);
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    private function branchInfo($branchId)
+    {
+        return $branchId ? Database::one('SELECT name, address, phone, hours FROM branches WHERE id = ?', [(int) $branchId]) : null;
+    }
 
     private function uniqueFolio()
     {

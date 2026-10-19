@@ -240,14 +240,75 @@
     });
   }
 
+  /* ---------- Aviso de versión nueva ----------
+     Una app instalada (Android / iPhone) casi nunca recarga la página: al
+     abrirla, el sistema la trae del segundo plano con el código viejo en
+     memoria. Al volver a primer plano (y cada 10 min si sigue abierta) se
+     pide index.html al servidor sin caché y se comparan las versiones ?v=
+     de sus JS/CSS con las cargadas; si cambiaron, se ofrece "Actualizar". */
+  var CHECK_EVERY = 10 * 60 * 1000;
+  var lastCheck = Date.now();
+  var updateEl = null;
+
+  function buildOf(root) {
+    return Array.prototype.slice.call(root.querySelectorAll("script[src], link[rel='stylesheet'][href]"))
+      .map(function (el) { return el.getAttribute("src") || el.getAttribute("href"); })
+      .filter(function (u) { return /[?&]v=/.test(u); })
+      .sort().join("|");
+  }
+  var BUILD = buildOf(document);
+
+  function showUpdate() {
+    if (updateEl) return;
+    var el = document.createElement("div");
+    el.className = "pwa-update";
+    el.setAttribute("role", "status");
+    el.innerHTML = '<span data-i18n="pwa.update.text"></span>' +
+      '<button type="button" class="btn btn--panini btn--sm" data-pwa-reload data-i18n="pwa.update.cta"></button>';
+    I18N.apply(el);
+    el.querySelector("[data-pwa-reload]").addEventListener("click", function () { location.reload(); });
+    document.body.appendChild(el);
+    updateEl = el;
+  }
+
+  function checkForUpdate(force) {
+    if (updateEl || !window.fetch || !window.DOMParser || navigator.onLine === false) return;
+    if (!force && Date.now() - lastCheck < 60000) return;   // máx. 1 vez por minuto
+    lastCheck = Date.now();
+    // Trae también el sw.js nuevo si lo hay (se activa solo: skipWaiting).
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.getRegistration().then(function (r) { if (r) r.update(); }).catch(function () {});
+    }
+    fetch("./?_build=" + Date.now(), { cache: "no-store", credentials: "same-origin" })
+      .then(function (r) { return r.ok ? r.text() : ""; })
+      .then(function (html) {
+        if (!html) return;
+        var next = buildOf(new DOMParser().parseFromString(html, "text/html"));
+        if (next && next !== BUILD) showUpdate();
+      })
+      .catch(function () {});
+  }
+
+  function bindUpdates() {
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState === "visible") checkForUpdate(false);
+    });
+    window.addEventListener("online", function () { checkForUpdate(true); });
+    setInterval(function () {
+      if (document.visibilityState === "visible") checkForUpdate(true);
+    }, CHECK_EVERY);
+  }
+
   function boot() {
     bind();
     paint();
     registerSW();
+    bindUpdates();
     scheduleHint();   // iOS / Safari macOS: no hay evento, la disponibilidad se conoce ya
   }
 
   window.PWA = {
+    checkForUpdate: function () { checkForUpdate(true); },
     install: install,
     isStandalone: isStandalone,
     get mode() { return installMode(); }

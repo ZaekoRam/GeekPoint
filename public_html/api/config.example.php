@@ -43,6 +43,15 @@ return [
         'pokemontcg_key' => '',
     ],
 
+    // ---- Correo (Resend) ----
+    // Confirmaciones de apartado por email. Crea una API key de "Sending
+    // access" en resend.com y verifica el dominio. Vacío = no se envían correos.
+    'mail' => [
+        'resend_key' => '',
+        'from'       => 'GeekPoint <noreply@tudominio.com>',
+        'reply_to'   => '',
+    ],
+
     // ---- Entorno ----
     // 'dev' muestra errores detallados; 'prod' los oculta.
     'env' => 'dev',

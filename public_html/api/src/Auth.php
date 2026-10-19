@@ -162,6 +162,7 @@ class Auth
             'email'      => $u['email'],
             'role'       => $u['role'],
             'branch_id'  => $u['branch_id'] !== null ? (int) $u['branch_id'] : null,
+            'email_verified' => !empty($u['email_verified_at']),
             'created_at' => $u['created_at'] ?? null,
         ];
     }

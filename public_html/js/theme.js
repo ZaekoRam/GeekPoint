@@ -130,10 +130,19 @@
     // error en consola.
     if (transition.ready) transition.ready.then(function () {
       try {
+        // En PORCENTAJES de la pantalla, no en px: con el escalado de
+        // Windows (125 %, 150 %…) Chrome interpretaba los px del recorte en
+        // otra escala y el círculo salía desplazado (posición ÷ 1.5).
+        // circle(): la posición en % es relativa al ancho/alto, y el radio
+        // en % a la diagonal / √2.
+        var vw = window.innerWidth || 1, vh = window.innerHeight || 1;
+        var px = (x / vw * 100).toFixed(3) + "%";
+        var py = (y / vh * 100).toFixed(3) + "%";
+        var pr = (radius / (Math.hypot(vw, vh) / Math.SQRT2) * 100 + 1).toFixed(3) + "%";
         root.animate({
           clipPath: [
-            "circle(0px at " + x + "px " + y + "px)",
-            "circle(" + radius + "px at " + x + "px " + y + "px)"
+            "circle(0% at " + px + " " + py + ")",
+            "circle(" + pr + " at " + px + " " + py + ")"
           ]
         }, {
           duration: reduced ? 0 : 550,

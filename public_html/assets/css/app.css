@@ -982,7 +982,7 @@ a.kpi--link:hover .kpi__go { opacity: 1; transform: translateX(0); }
 .account__row { display: flex; justify-content: space-between; gap: 1rem; padding: .55rem 0; border-bottom: 1px dashed var(--line-soft); font-size: .88rem; }
 .account__row:last-of-type { border-bottom: 0; }
 .account__row-label { color: var(--muted); }
-.account__row-value { font-weight: 600; text-align: right; }
+.account__row-value { font-weight: 600; text-align: right; min-width: 0; overflow-wrap: anywhere; }  /* correos largos: parten línea en vez de salirse */
 .account__edit .field { margin-bottom: .7rem; }
 
 .myorders__filters { display: flex; gap: .4rem; flex-wrap: wrap; margin-bottom: 1rem; }
@@ -1036,4 +1036,47 @@ a.kpi--link:hover .kpi__go { opacity: 1; transform: translateX(0); }
   .account__tab--logout { margin-left: 0; }
   .ordercard__foot { flex-direction: column; align-items: stretch; }
   .ordercard__foot .btn { width: 100%; }
+}
+
+/* ---------- Mi cuenta: correo sin verificar ---------- */
+.verify-banner {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .8rem;
+  margin: 0 0 1.2rem; padding: .85rem 1rem; border-radius: var(--radius-sm);
+  background: rgba(255,212,0,.14); border: 1px solid rgba(255,212,0,.55); color: var(--text);
+}
+.verify-banner p { margin: 0; flex: 1 1 260px; font-size: .9rem; line-height: 1.45; }
+
+/* =============================================================
+   Ajustes para pantallas táctiles (celular / tablet)
+   Solo con (pointer: coarse): en PC con mouse no cambia nada.
+   ============================================================= */
+@media (pointer: coarse) {
+  /* iPhone hace zoom automático al enfocar un campo con letra < 16px y la
+     página queda descuadrada: todos los campos a 16px. */
+  input, select, textarea,
+  .catsearch__input, .vs-search__input, .select--sm { font-size: 16px; }
+
+  /* Zonas de toque mínimas (~36-40px) sin cambiar el diseño visible. */
+  .dr-item__qty button, .dr-item__rm { min-width: 36px; min-height: 36px; }
+  .pcard__add { min-height: 36px; }
+  .lang-toggle button { min-height: 34px; min-width: 34px; justify-content: center; }
+  .qbtn { width: 36px; height: 36px; }
+  .citem__rm { min-height: 36px; padding-inline: .45rem; }
+  .vs-search { padding-block: .25rem; }
+  .tip { width: 24px; height: 24px; }
+
+  /* Enlaces de texto pequeños: se amplía el área tocable con padding y
+     margen negativo, así el texto no se mueve de su lugar. */
+  .topbar .brand { padding: .55rem .35rem; margin: -.55rem -.35rem; }
+  .auth__switch a,
+  .auth__card a.mono[data-link],
+  .account__back {
+    display: inline-block;
+    padding: .6rem .35rem; margin: -.6rem -.35rem;
+  }
+}
+/* Celulares muy angostos (≤360px): sin el ancho extra de las banderas, el
+   topbar con sesión de cliente ("Mi cuenta" + salir) se pasaba 2px. */
+@media (pointer: coarse) and (max-width: 360px) {
+  .lang-toggle button { min-width: 0; }
 }

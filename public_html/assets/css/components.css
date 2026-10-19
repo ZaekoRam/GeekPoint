@@ -5,7 +5,7 @@
 /* ---------- Splash ---------- */
 .splash {
   position: fixed; inset: 0; z-index: var(--z-splash);
-  display: grid; place-content: center; gap: 1.4rem;
+  display: grid; place-content: center; justify-items: center; gap: 1.4rem;
   background: var(--paper);
   transition: opacity .5s var(--ease-out), visibility .5s;
   animation: splashSafety .01s 4.5s forwards;
@@ -14,7 +14,7 @@
 @keyframes splashSafety { to { opacity: 0; visibility: hidden; pointer-events: none; } }
 .splash__mark { font-family: var(--comic); font-size: clamp(2.4rem, 9vw, 4rem); letter-spacing: .04em; color: var(--ink); display: flex; align-items: center; gap: .5rem; }
 .splash__mark b { color: var(--ink-fixed); -webkit-text-stroke: 2px var(--ink-fixed); background: var(--panini); padding: 0 .25em; box-shadow: var(--shadow-hard-sm); }
-.splash__bar { width: 220px; height: 8px; border: 2px solid var(--ink); overflow: hidden; }
+.splash__bar { justify-self: center; width: 220px; height: 8px; border: 2px solid var(--ink); overflow: hidden; }
 .splash__bar i { display: block; height: 100%; width: 38%; background: var(--ink); animation: load 1s var(--ease-soft) infinite; }
 @keyframes load { 0% { transform: translateX(-110%); } 100% { transform: translateX(360%); } }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -1057,4 +1057,15 @@ body.in-app .pwa-steps__ico { background: var(--surface-2); color: var(--accent)
 [data-display-mode="standalone"] .toasts { bottom: calc(1rem + env(safe-area-inset-bottom, 0px)); }
 [data-display-mode="standalone"] .cart-drawer__foot { padding-bottom: calc(1.1rem + env(safe-area-inset-bottom, 0px)); }
 
-@media print { .pwa-hint { display: none !important; } }
+/* Aviso de versión nueva (js/pwa.js): abajo al centro, encima del contenido. */
+.pwa-update {
+  position: fixed; z-index: 350; left: 50%; transform: translateX(-50%);
+  bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+  width: max-content; max-width: calc(100vw - 2rem);
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: .6rem 1rem;
+  padding: .7rem .9rem; background: var(--surface); color: var(--text);
+  border: 2px solid var(--ink); box-shadow: var(--shadow-hard);
+  font-size: .9rem; font-weight: 600;
+}
+body.in-app .pwa-update { border: 0; border-radius: 12px; box-shadow: var(--nm-out); }
+@media print { .pwa-hint, .pwa-update { display: none !important; } }

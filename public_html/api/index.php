@@ -164,6 +164,8 @@ $router->post('auth/logout', function () use ($request) { (new AuthController($r
 $router->get('auth/me',      function () use ($request) { (new AuthController($request))->me(); });
 $router->put('auth/me',      function () use ($request) { (new AuthController($request))->updateMe(); });
 $router->patch('auth/password', function () use ($request) { (new AuthController($request))->changePassword(); });
+$router->get('auth/verify',          function () use ($request) { (new AuthController($request))->verifyEmail(); });
+$router->post('auth/verify/resend',  function () use ($request) { (new AuthController($request))->resendVerification(); });
 
 // --- Sucursales ---
 $router->get('branches',            function () use ($request) { (new BranchController($request))->index(); });
@@ -219,6 +221,11 @@ $router->get('inventory/alerts',    function () use ($request) { (new InventoryC
 $router->get('inventory/movements', function () use ($request) { (new InventoryController($request))->movements(); });
 
 // --- Apartados / reservas ---
+// Avisos de stock ("Notifícame"). confirm/unsubscribe ANTES de cualquier ruta con {param}.
+$router->post('stock-alerts',             function () use ($request) { (new StockAlertController($request))->store(); });
+$router->get('stock-alerts/confirm',      function () use ($request) { (new StockAlertController($request))->confirm(); });
+$router->get('stock-alerts/unsubscribe',  function () use ($request) { (new StockAlertController($request))->unsubscribe(); });
+
 $router->post('reservations',                 function () use ($request) { (new ReservationController($request))->store(); });
 $router->get('reservations',                  function () use ($request) { (new ReservationController($request))->index(); });
 // "mine" debe registrarse ANTES de reservations/{folio}: el router hace match

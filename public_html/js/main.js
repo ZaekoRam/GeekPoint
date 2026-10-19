@@ -102,6 +102,8 @@
       else if (e.target.closest("[data-cart-quote]")) quote();
     });
     document.addEventListener("keydown", function (e) { if (e.key === "Escape") close(); });
+    // Un enlace dentro del apartado (p. ej. Términos) lleva fuera de la tienda: cerrar el carrito.
+    window.addEventListener("route:change", function (e) { if (e.detail && e.detail.view !== "store") close(); });
 
     function renderItems() {
       var c = STORE.shopCart;
@@ -223,22 +225,30 @@
       var form = document.createElement("form");
       form.className = "resv-form";
       form.setAttribute("novalidate", "");
+      var logged = STORE.isLogged();
+      var acct = logged ? STORE.user : null;
       form.innerHTML =
         '<p class="muted" style="margin-bottom:1rem">' + UI.escHTML(I18N.t("resv.intro")) + '</p>' +
         '<div class="table-wrap"><table class="data quote-table"><tbody data-quote-body>' + rows +
           '<tr class="quote-total"><td><b>' + UI.escHTML(I18N.t("cart.total")) + '</b></td><td></td><td class="num qcol-total"><b>' +
           UI.money(STORE.shopTotal(), true) + '</b></td></tr></tbody></table></div>' +
-        '<div class="field"><label>' + UI.escHTML(I18N.t("resv.name")) + '</label>' +
-          '<input class="input" name="customer_name" required maxlength="120" autocomplete="name"></div>' +
-        '<div class="resv-grid">' +
-          '<div class="field"><label>' + UI.escHTML(I18N.t("resv.email")) +
-              ' <button type="button" class="tip" data-tip="' + UI.escHTML(I18N.t("resv.emailTip")) + '" ' +
-                'aria-label="' + UI.escHTML(I18N.t("resv.emailTip")) + '">i</button>' +
-            '</label>' +
-            '<input class="input" type="email" name="customer_email" maxlength="160" autocomplete="email"></div>' +
-          '<div class="field"><label>' + UI.escHTML(I18N.t("resv.phone")) + '</label>' +
-            '<input class="input" name="customer_phone" maxlength="40" autocomplete="tel"></div>' +
-        '</div>' +
+        // Con sesión: nombre y correo salen de la cuenta (el servidor los
+        // completa); solo se muestra a dónde llegará la confirmación.
+        (logged
+          ? '<p class="resv-account">' + UI.escHTML(I18N.t(acct.email_verified === false ? "resv.accountUnverified" : "resv.accountEmail", { email: acct.email })) + '</p>' +
+            '<div class="field"><label>' + UI.escHTML(I18N.t("resv.phone")) + '</label>' +
+              '<input class="input" name="customer_phone" maxlength="40" autocomplete="tel"></div>'
+          : '<div class="field"><label>' + UI.escHTML(I18N.t("resv.name")) + '</label>' +
+              '<input class="input" name="customer_name" required maxlength="120" autocomplete="name"></div>' +
+            '<div class="resv-grid">' +
+              '<div class="field"><label>' + UI.escHTML(I18N.t("resv.email")) +
+                  ' <button type="button" class="tip" data-tip="' + UI.escHTML(I18N.t("resv.emailTip")) + '" ' +
+                    'aria-label="' + UI.escHTML(I18N.t("resv.emailTip")) + '">i</button>' +
+                '</label>' +
+                '<input class="input" type="email" name="customer_email" maxlength="160" autocomplete="email"></div>' +
+              '<div class="field"><label>' + UI.escHTML(I18N.t("resv.phone")) + '</label>' +
+                '<input class="input" name="customer_phone" maxlength="40" autocomplete="tel"></div>' +
+            '</div>') +
         '<div class="field"><label>' + UI.escHTML(I18N.t("resv.branch")) + '</label>' +
           '<select class="select" name="branch_code" required><option value="" disabled selected>' + UI.escHTML(I18N.t("resv.pickBranch")) + '</option>' +
           branches.map(function (b) {
@@ -247,6 +257,7 @@
           }).join("") +
           '</select></div>' +
         '<p class="field__error" data-resv-error hidden></p>' +
+        Legal.consentHTML() +
         '<button class="btn btn--panini btn--block btn--lg" type="submit">' + UI.escHTML(I18N.t("resv.submit")) + '</button>';
 
       UI.modal({ title: I18N.t("resv.title"), content: form });
@@ -288,8 +299,8 @@
 
         btn.classList.add("is-loading");
         API.post("reservations", {
-          customer_name: form.customer_name.value.trim(),
-          customer_email: form.customer_email.value.trim(),
+          customer_name: form.customer_name ? form.customer_name.value.trim() : "",
+          customer_email: form.customer_email ? form.customer_email.value.trim() : "",
           customer_phone: form.customer_phone.value.trim(),
           branch_code: form.branch_code.value,
           expected_total: STORE.shopTotal(),
@@ -443,6 +454,29 @@
     });
   }
 
+  /* ---------- Regreso desde un enlace de correo ----------
+     /api/auth/verify y /api/stock-alerts/* redirigen a la tienda con
+     ?verificado=1|0 o ?aviso=confirmado|cancelado|invalido. Se muestra el
+     aviso y se limpia la URL para que no se repita al recargar. */
+  function initMailLinks() {
+    var q;
+    try { q = new URLSearchParams(location.search); } catch (e) { return; }
+    var v = q.get("verificado"), a = q.get("aviso");
+    if (v === null && a === null) return;
+    try { history.replaceState(null, "", location.pathname + location.hash); } catch (e) {}
+    if (v === "1") {
+      UI.toast(I18N.t("verify.ok"), "ok", 5000);
+      if (STORE.isLogged()) API.get("auth/me").then(function (d) {
+        STORE.setSession(STORE.session.token, d.user, d.branch || STORE.session.branch);
+      }).catch(function () {});
+    } else if (v !== null) {
+      UI.toast(I18N.t("verify.bad"), "warn", 6000);
+    }
+    if (a === "confirmado") UI.toast(I18N.t("notify.confirmed"), "ok", 5000);
+    else if (a === "cancelado") UI.toast(I18N.t("notify.cancelled"), "ok", 5000);
+    else if (a !== null) UI.toast(I18N.t("notify.invalid"), "warn", 6000);
+  }
+
   function boot() {
     UI.safe(initSplash, "initSplash");
     UI.safe(initLang, "initLang");
@@ -450,6 +484,7 @@
     UI.safe(initApi, "initApi");
     UI.safe(initLogout, "initLogout");
     UI.safe(initNavFx, "initNavFx");
+    UI.safe(initMailLinks, "initMailLinks");
 
     UI.safe(function () { I18N.apply(document); }, "i18n.apply");
     paintSession();
@@ -463,7 +498,7 @@
     window.addEventListener("i18n:change", function () {
       paintSession(); paintNav();
       var v = window.Router ? Router.current().view : "store";
-      if (v === "admin" || v === "manager" || v === "ticket") Router.go(location.hash || "#/");
+      if (v === "admin" || v === "manager" || v === "ticket" || v === "legal") Router.go(location.hash || "#/");
       else UI.safe(function () { I18N.apply(document); }, "i18n.apply");
     });
 

@@ -167,6 +167,7 @@ class ProductController extends Controller
             throw $e;
         }
 
+        StockAlerts::notifyIfRestockedById($id);   // avisos "Notifícame"
         Response::ok(['product' => $this->cast($this->findFull($id))], 201);
     }
 
@@ -290,6 +291,7 @@ class ProductController extends Controller
             throw $e;
         }
 
+        if (array_sum($entries) > 0) StockAlerts::notifyIfRestocked($sku);   // avisos "Notifícame"
         Response::ok($out, 201);
     }
 
@@ -375,6 +377,7 @@ class ProductController extends Controller
             Database::rollback();
             throw $e;
         }
+        StockAlerts::notifyIfRestockedById($id);   // p. ej. reactivar un producto con stock
         Response::ok(['product' => $this->cast($this->findFull($id)), 'discount_affected' => $discountAffected]);
     }
 
@@ -414,6 +417,7 @@ class ProductController extends Controller
             Database::rollback();
             throw $e;
         }
+        if ($delta > 0) StockAlerts::notifyIfRestockedById($id);   // avisos "Notifícame"
         Response::ok(['product' => $this->cast($this->findFull($id)), 'delta' => $delta]);
     }
 

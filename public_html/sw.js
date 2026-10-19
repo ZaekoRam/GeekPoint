@@ -14,11 +14,10 @@
        operaciones (ventas, apartados, login) que el backend no podría
        sincronizar.
      · Estáticos de la app (js/, lib/, assets/css/, assets/images/):
-         - URL versionada (?v=…)  -> stale-while-revalidate: la URL ya
-           identifica la versión; al publicar cambios se sube ?v= en
-           index.html (convención actual del proyecto).
-         - sin versión            -> red primero; la caché solo es respaldo
-           si la red falla (misma semántica que el "no-cache" del .htaccess).
+       red primero; la caché solo es respaldo si la red falla (misma
+       semántica que el "no-cache" del .htaccess). Antes los ?v= iban
+       stale-while-revalidate, pero un archivo subido sin cambiar su ?v=
+       se veía viejo en la app instalada; así siempre gana el servidor.
 
    Nunca se guarda una respuesta con Cache-Control no-store/private, ni
    redirecciones, ni algo que no sea un 200 del mismo origen. En desarrollo
@@ -30,7 +29,7 @@
    ============================================================= */
 "use strict";
 
-var SW_VERSION = "2026-10-01.1";
+var SW_VERSION = "2026-10-08.1";
 var PRECACHE = "gp-precache-" + SW_VERSION;
 var RUNTIME = "gp-static-" + SW_VERSION;
 var RUNTIME_MAX_ENTRIES = 120;
@@ -118,20 +117,6 @@ function handleNavigation(event) {
   return networkOnly(event).catch(offlineFallback);
 }
 
-function staleWhileRevalidate(event) {
-  var request = event.request;
-  var network = fetch(request);
-  // El clon se toma ANTES de entregar la respuesta a la página.
-  event.waitUntil(network.then(function (res) {
-    if (isCacheable(res)) return putRuntime(request, res.clone());
-  }).catch(noop));
-  return caches.open(RUNTIME).then(function (cache) {
-    return cache.match(request);
-  }).then(function (cached) {
-    return cached || network;
-  });
-}
-
 function networkFirst(event) {
   var request = event.request;
   var network = fetch(request);
@@ -169,6 +154,6 @@ self.addEventListener("fetch", function (event) {
   if (bypass) return;
 
   if (startsWithAny(path, STATIC_PREFIXES)) {
-    event.respondWith(url.searchParams.has("v") ? staleWhileRevalidate(event) : networkFirst(event));
+    event.respondWith(networkFirst(event));
   }
 });

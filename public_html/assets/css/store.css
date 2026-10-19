@@ -669,3 +669,68 @@ body.in-app [data-static-store] { display: none !important; }
   .pcard__add { width: 100%; }
   .pcard__foot { flex-direction: column; align-items: stretch; }
 }
+
+/* ---------- Mascota difuminada de fondo (solo tienda) ----------
+   Capa fija detrás del contenido: se ve tras el catálogo y las sucursales
+   (secciones transparentes); el hero 3D la tapa con su propio fondo.
+   PNG/WebP con fondo transparente para que funcione en claro y oscuro. */
+body:not(.in-app)::before {
+  content: "";
+  position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background: url("../images/mascot/fondo-mascota.webp") no-repeat right 5vw center / auto 90vh;
+  filter: blur(7px);
+  opacity: .2;
+}
+:root[data-theme="dark"] body:not(.in-app)::before { opacity: .14; }
+@media (max-width: 768px) {
+  body:not(.in-app)::before { background-position: center; background-size: auto 75vh; opacity: .13; }
+}
+@media print { body::before { display: none !important; } }
+
+/* ---------- "Notifícame" (producto sin stock) ---------- */
+.pcard__add--notify { background: var(--paper-2); color: var(--ink); border-color: var(--ink); }
+.btn.btn--notify { background: var(--paper-2); color: var(--ink); border-color: var(--ink); }
+/* Formulario de apartar con sesión: a dónde llega la confirmación */
+.resv-account {
+  margin: 0 0 1rem; padding: .7rem .85rem; font-size: .88rem; line-height: 1.45;
+  background: var(--paper-3); border-left: 3px solid var(--panini-deep); color: var(--text);
+}
+
+/* ---------- Footer: enlaces legales ---------- */
+.foot__links { display: flex; justify-content: center; flex-wrap: wrap; gap: .4rem 1.4rem; margin-top: .9rem; }
+.foot__links a {
+  font-family: var(--mono); font-size: .74rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--text); border-bottom: 2px solid var(--panini-deep); padding-block: .3rem .1rem;
+}
+.foot__links a:hover { background: var(--panini); color: var(--ink-fixed); }
+
+/* ---------- Aviso de privacidad / Términos (#/privacidad, #/terminos) ---------- */
+.legal { max-width: 860px; padding-block: clamp(2rem, 6vh, 3.5rem) clamp(3rem, 8vh, 5rem); }
+.legal__tabs { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1.6rem; }
+.legal__tabs .catbar__btn.is-active { pointer-events: none; }
+.legal__head { border-bottom: 3px solid var(--ink); padding-bottom: 1.2rem; margin-bottom: 1.6rem; }
+.legal__head h1 { font-size: clamp(2.2rem, 7vw, 4rem); margin-top: .5rem; }
+.legal__updated { font-size: .74rem; color: var(--muted); margin-top: .5rem; }
+.legal__intro { font-size: 1.05rem; line-height: 1.6; margin-top: 1rem; max-width: 65ch; }
+.legal__body { display: grid; gap: 1.1rem; }
+.legal__body section {
+  background: var(--paper-2); border: 3px solid var(--ink); box-shadow: 6px 6px 0 var(--ink);
+  padding: 1.2rem 1.3rem 1.3rem;
+}
+.legal__body h2 { display: flex; align-items: center; gap: .7rem; font-size: clamp(1.15rem, 3vw, 1.45rem); margin-bottom: .7rem; }
+.legal__num {
+  flex: none; display: grid; place-items: center; width: 2rem; height: 2rem;
+  background: var(--panini); color: var(--ink-fixed); border: 2px solid var(--ink); font-size: 1rem;
+}
+.legal__body p, .legal__body li { line-height: 1.6; max-width: 70ch; }
+.legal__body p + p, .legal__body ul + p, .legal__body p + ul { margin-top: .7rem; }
+.legal__body ul { padding-left: 1.2rem; display: grid; gap: .35rem; }
+.legal__body li::marker { color: var(--panini-deep); }
+.legal__body a, .legal__intro a { font-weight: 700; text-decoration: underline; text-decoration-color: var(--panini-deep); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+@media (max-width: 520px) {
+  .legal__body section { padding: 1rem; box-shadow: 4px 4px 0 var(--ink); }
+}
+
+/* Nota de consentimiento en formularios que piden datos */
+.legal-consent { font-size: .78rem; line-height: 1.45; color: var(--muted); margin: .2rem 0 .9rem; }
+.legal-consent a { color: inherit; font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }

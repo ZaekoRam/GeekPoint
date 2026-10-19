@@ -18,7 +18,9 @@
       params: function (h) { return { sub: h.replace(/^\/manager\/?/, "") }; } },
     { test: function (h) { return h.indexOf("/ticket/") === 0; }, view: "ticket",
       params: function (h) { return { id: h.split("/")[2] }; } },
-    { test: function (h) { return h === "/pos"; }, view: "pos", params: function () { return {}; } }
+    { test: function (h) { return h === "/pos"; }, view: "pos", params: function () { return {}; } },
+    { test: function (h) { return h === "/privacidad"; }, view: "legal", params: function () { return { doc: "privacy" }; } },
+    { test: function (h) { return h === "/terminos"; }, view: "legal", params: function () { return { doc: "terms" }; } }
   ];
 
   var appEl, currentRoot = null, currentView = null, rendering = false;
@@ -88,7 +90,8 @@
       UI.safe(currentRoot.__cleanup, "view.cleanup");
     }
     UI.closeModal();
-    document.body.classList.toggle("in-app", match.view !== "store");
+    // Las vistas con storeLook (p. ej. legal) conservan el aspecto de la tienda.
+    document.body.classList.toggle("in-app", match.view !== "store" && !view.storeLook);
 
     var fresh = document.createElement("div");
     fresh.className = "view view--" + match.view;

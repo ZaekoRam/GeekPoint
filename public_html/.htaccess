@@ -82,6 +82,20 @@
   AddOutputFilterByType DEFLATE text/html text/css text/javascript application/javascript application/json application/manifest+json image/svg+xml font/woff font/woff2
 </IfModule>
 
+# ----- Un solo dominio: www.geekpoint.com.mx -> geekpoint.com.mx -----
+# Para el navegador www y sin www son sitios distintos (sesión, carrito y
+# app instalada por separado), así que se redirige todo al dominio sin www.
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteCond %{HTTP_HOST} ^www\.(.+)$ [NC]
+  RewriteRule ^ https://%1%{REQUEST_URI} [R=301,L]
+</IfModule>
+
+# ----- HTTPS siempre (HSTS): el sitio ya redirige http -> https -----
+<IfModule mod_headers.c>
+  Header always set Strict-Transport-Security "max-age=15552000"
+</IfModule>
+
 # ----- HTTPS redirect (uncomment if your domain has SSL) -----
 # <IfModule mod_rewrite.c>
 #   RewriteEngine On

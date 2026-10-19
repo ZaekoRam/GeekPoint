@@ -78,6 +78,7 @@
           '<input class="input" type="email" id="rg-email" name="email" autocomplete="email" required maxlength="160" value="' + esc(pEmail) + '" />' +
         '</div>' +
         '<p class="field__error" data-auth-error hidden></p>' +
+        Legal.consentHTML() +
         '<button class="btn btn--neon btn--block btn--lg" type="submit" data-i18n="register.continue">Continuar</button>' +
         '<p class="auth__switch"><span data-i18n="register.haveAccount"></span> ' +
           '<a href="#" data-auth-switch="login" data-i18n="register.toLogin"></a></p>';
@@ -426,7 +427,11 @@
          los triángulos (--tri-end en app.css), para quedar escondida
          debajo de él. CSS no puede dividir longitudes, por eso va aquí. */
       var triEnd = parseFloat(getComputedStyle(card).getPropertyValue("--tri-end")) || 110;
-      card.style.setProperty("--pinch-end", Math.min(1, triEnd / card.offsetWidth).toFixed(4));
+      // Se usa el lado MÁS LARGO: en celular la tarjeta es más alta que
+      // ancha y, escalando por el ancho, su borde superior ("Volver a la
+      // tienda") quedaba asomando por encima del cuadro amarillo.
+      var longest = Math.max(card.offsetWidth, card.offsetHeight) || 1;
+      card.style.setProperty("--pinch-end", Math.min(1, triEnd / longest).toFixed(4));
       card.classList.add("is-closing");
       card.addEventListener("animationend", function onClose() {
         card.removeEventListener("animationend", onClose);
@@ -482,7 +487,9 @@
           password_confirmation: card.password_confirmation.value
         }, { noAuthRedirect: true }).then(function (data) {
           STORE.setSession(data.token, data.user, null);
-          UI.toast(I18N.t("register.success"), "ok");
+          UI.toast(data.verification_sent
+            ? I18N.t("verify.sentOnRegister", { email: data.user.email })
+            : I18N.t("register.success"), "ok", 7000);
           afterLoginRedirect();
         }).catch(function (err) {
           btn.classList.remove("is-loading");

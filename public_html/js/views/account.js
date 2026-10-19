@@ -122,6 +122,12 @@
   function infoPanelHTML() {
     var u = STORE.user || {};
     return (
+      // Aviso de correo sin verificar (lo muestra/oculta paintVerify()).
+      '<div class="verify-banner" data-verify-banner' + (u.email_verified === false ? '' : ' hidden') + '>' +
+        '<p><b data-i18n="verify.bannerTitle">Verifica tu correo</b> ' +
+          '<span data-i18n="verify.bannerBody">Te enviamos un enlace al registrarte. Sin verificarlo no recibirás tus pedidos ni avisos de stock.</span></p>' +
+        '<button type="button" class="btn btn--panini btn--sm" data-verify-resend data-i18n="verify.resend">Reenviar enlace</button>' +
+      '</div>' +
       '<div class="account__view" data-info-view>' +
         '<div class="account__row"><span class="account__row-label" data-i18n="account.name">Nombre</span><span class="account__row-value" data-info-name>' + esc(u.name || "") + '</span></div>' +
         '<div class="account__row"><span class="account__row-label" data-i18n="account.email">Correo electrónico</span><span class="account__row-value" data-info-email>' + esc(u.email || "") + '</span></div>' +
@@ -142,7 +148,29 @@
     );
   }
 
+  function paintVerify(panel) {
+    var b = $("[data-verify-banner]", panel);
+    if (b) b.hidden = !(STORE.user && STORE.user.email_verified === false);
+  }
+
   function bindInfoPanel(panel) {
+    var resend = $("[data-verify-resend]", panel);
+    if (resend) resend.addEventListener("click", function () {
+      resend.classList.add("is-loading");
+      API.post("auth/verify/resend", {}).then(function (r) {
+        resend.classList.remove("is-loading");
+        if (r.verified) {
+          STORE.user.email_verified = true;
+          STORE.setSession(STORE.session.token, STORE.user, STORE.session.branch);
+          paintVerify(panel);
+        }
+        UI.toast(r.verified ? I18N.t("verify.already") : I18N.t("verify.resent", { email: STORE.user.email }), "ok", 5000);
+      }).catch(function (err) {
+        resend.classList.remove("is-loading");
+        UI.toast((err && err.message) || I18N.t("toast.error"), "warn");
+      });
+    });
+
     var view = $("[data-info-view]", panel);
     var form = $("[data-info-form]", panel);
     var errBox = $("[data-info-error]", panel);
@@ -166,7 +194,10 @@
         $("[data-info-name]", panel).textContent = d.user.name;
         $("[data-info-email]", panel).textContent = d.user.email;
         form.hidden = true; view.hidden = false;
-        UI.toast(I18N.t("account.updateOk"), "ok");
+        paintVerify(panel);
+        UI.toast(d.verification_sent !== undefined
+          ? I18N.t("verify.emailChanged", { email: d.user.email })
+          : I18N.t("account.updateOk"), "ok", 6000);
       }).catch(function (err) {
         btn.classList.remove("is-loading");
         errBox.textContent = (err && err.message) || I18N.t("toast.error");
@@ -336,6 +367,7 @@
       $("[data-info-created]", panel).textContent = fmtDate(d.user.created_at);
       var form = $("[data-info-form]", panel);
       form.name.value = d.user.name; form.email.value = d.user.email;
+      paintVerify(panel);
     }).catch(function () { /* si falla, se queda con lo que ya había en sesión */ });
   }
 

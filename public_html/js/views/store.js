@@ -130,12 +130,17 @@
     var toggle = $("[data-search-toggle]", box);
     if (!input || !toggle) return;
 
+    // "Fijado": el usuario hizo clic en la barra (o en la lupa para abrirla).
+    // Desde ese momento ya no se cierra al sacar el mouse ni al perder el
+    // foco: solo con clic fuera de la barra, Esc o la lupa.
+    var pinned = false;
     function setOpen(open) {
       box.classList.toggle("is-open", open);
       toggle.setAttribute("aria-expanded", open ? "true" : "false");
+      if (!open) pinned = false;
     }
     function collapseIfEmpty() {
-      if (!input.value) setOpen(false);
+      if (!input.value && !pinned) setOpen(false);
     }
     function runFilter() {
       searchQ = input.value || "";
@@ -184,9 +189,20 @@
         setOpen(false);
       } else {
         setOpen(true);
+        pinned = true;
         input.focus();
       }
     });
+    input.addEventListener("pointerdown", function () { pinned = true; });
+
+    // Clic fuera de la barra: se suelta y, si está vacía, se cierra.
+    function onOutside(e) {
+      if (!box.isConnected) { document.removeEventListener("pointerdown", onOutside); return; }
+      if (compact() || box.contains(e.target)) return;
+      pinned = false;
+      collapseIfEmpty();
+    }
+    document.addEventListener("pointerdown", onOutside);
 
     // Abrir en :hover (puntero fino, ventana no compacta). No parpadea: la barra
     // flota (position:absolute), al desplegarse no refluye la fila ni cambia de
@@ -305,7 +321,9 @@
           '<div class="pcard__foot">' +
             '<span class="pcard__price">' + priceHTML(p, p.price_varies) + '</span>' +
             // Manga = serie: el botón no agrega "One Piece" a secas, lleva a elegir tomo.
-            '<button class="pcard__add" data-add>' + esc(I18N.t(p.category === "manga" ? "prod.chooseVolume" : "prod.add")) + '</button>' +
+            (p.category !== "manga" && totalStock === 0 && /^local-/.test(String(p.id))
+              ? '<button class="pcard__add pcard__add--notify" data-notify>' + esc(I18N.t("notify.button")) + '</button>'
+              : '<button class="pcard__add" data-add>' + esc(I18N.t(p.category === "manga" ? "prod.chooseVolume" : "prod.add")) + '</button>') +
           '</div>' +
           '<span class="pcard__stock">' + (totalStock > 0
             ? '<b>' + totalStock + '</b> ' + esc(I18N.t("prod.available")).toLowerCase() + ' ' + (p.branches || []).filter(function(b){return b.stock>0;}).map(function(b){return esc(b.name);}).join(", ")
@@ -336,6 +354,12 @@
       });
     }
     card.addEventListener("click", function (e) {
+      if (e.target.closest("[data-notify]")) {
+        e.stopPropagation();
+        var np = Catalog.get(id);
+        if (np) notifyMe(np.id, null, np.title);
+        return;
+      }
       if (e.target.closest("[data-add]")) {
         e.stopPropagation();
         var p = Catalog.get(id);
@@ -344,6 +368,48 @@
         return;
       }
       openPreview(id);
+    });
+  }
+
+  /* ---------------- "Notifícame" (sin stock) ----------------
+     Con sesión: se usa el correo de la cuenta, sin preguntar nada.
+     Sin sesión: un modal pide el correo y el servidor manda un enlace de
+     confirmación (doble opt-in), para que nadie suscriba correos ajenos. */
+  function notifyMe(ref, vol, title) {
+    function send(body, btn) {
+      if (btn) btn.classList.add("is-loading");
+      return API.post("stock-alerts", body, { noAuthRedirect: true }).then(function (r) {
+        UI.closeModal();
+        if (r.status === "in_stock") UI.toast(I18N.t("notify.inStock"), "ok");
+        else if (r.status === "pending") UI.toast(I18N.t("notify.confirmSent", { email: r.email }), "ok", 6000);
+        else if (r.verified === false) UI.toast(I18N.t("notify.verifyFirst"), "warn", 6000);
+        else UI.toast(I18N.t("notify.done"), "ok", 5000);
+      }).catch(function (err) {
+        if (btn) btn.classList.remove("is-loading");
+        UI.toast((err && err.data && err.data.fields && err.data.fields.email && err.data.fields.email[0]) ||
+          (err && err.message) || I18N.t("toast.error"), "error");
+        throw err;
+      });
+    }
+    var body = { ref: ref, vol: vol || null, title: title };
+    if (STORE.isLogged()) { send(body).catch(function () {}); return; }
+
+    var form = document.createElement("form");
+    form.className = "notify-form";
+    form.setAttribute("novalidate", "");
+    form.innerHTML =
+      '<p class="muted" style="margin-bottom:1rem">' + esc(I18N.t("notify.intro", { title: title })) + '</p>' +
+      '<div class="field"><label for="notify-email">' + esc(I18N.t("notify.emailLabel")) + '</label>' +
+        '<input class="input" type="email" id="notify-email" name="email" required maxlength="160" autocomplete="email"></div>' +
+      '<p class="muted" style="font-size:.8rem;margin:.2rem 0 .6rem">' + esc(I18N.t("notify.guestNote")) + '</p>' +
+      Legal.consentHTML() +
+      '<button class="btn btn--panini btn--block" type="submit">' + esc(I18N.t("notify.submit")) + '</button>';
+    UI.modal({ title: I18N.t("notify.modalTitle"), content: form });
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      if (!form.reportValidity()) return;
+      body.email = form.email.value.trim();
+      send(body, form.querySelector('button[type="submit"]')).catch(function () {});
     });
   }
 
@@ -689,11 +755,13 @@
       // Tomo sin stock en ninguna sucursal: no se puede añadir al carrito.
       var buyBtn = wrap.querySelector("[data-buy]");
       function paintBuy(c) {
-        if (!buyBtn || !showVolumePicker) return;
+        if (!buyBtn) return;
         var total = totalStockFor(p, c);
-        var out = total === 0;
-        buyBtn.disabled = out;
-        buyBtn.textContent = I18N.t(out ? "prod.soldout" : "prod.buy");
+        var out = total === 0;        // null = catálogo externo: se compra normal
+        buyBtn.disabled = false;
+        buyBtn.setAttribute("data-mode", out ? "notify" : "buy");
+        buyBtn.classList.toggle("btn--notify", out);
+        buyBtn.textContent = I18N.t(out ? "notify.button" : "prod.buy");
       }
 
       function refresh() {
@@ -750,6 +818,13 @@
 
       wrap.querySelector("[data-buy]").addEventListener("click", function () {
         var c = currentVol();
+        if (buyBtn.getAttribute("data-mode") === "notify") {
+          // Tomo con ficha propia -> su id; tomo sin ficha -> serie + número.
+          if (c.id) notifyMe(c.id, null, p.title + " " + I18N.t("prod.volume") + " " + c.v);
+          else if (showVolumePicker) notifyMe(p.id, c.v, p.title + " " + I18N.t("prod.volume") + " " + c.v);
+          else notifyMe(p.id, null, p.title);
+          return;
+        }
         var item;
         if (c.id) {
           // Tomo REAL del inventario POS (id, precio y stock propios).
@@ -770,7 +845,7 @@
         openCartDrawer();
       });
 
-      if (volSel) refresh();
+      if (volSel) refresh(); else paintBuy(currentVol());
 
       // Desde "Elegir tomo": lleva la vista al selector y lo hace destellar
       // para que quede claro que primero hay que escoger el tomo.
@@ -815,6 +890,38 @@
     var tex = new THREE.CanvasTexture(c);
     if ("colorSpace" in tex && THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
     _backTex[label] = tex;
+    return tex;
+  }
+
+  /* Reverso de carta TCG con marca GeekPoint (misma idea que la contraportada
+     de tomos/cómics, pero con proporción y marco de carta: sin código de barras). */
+  var _cardBackTex = null;
+  function cardBackTexture() {
+    if (_cardBackTex) return _cardBackTex;
+    var c = document.createElement("canvas");
+    c.width = 512; c.height = 716;                       // proporción 1.6 : 2.24
+    var g = c.getContext("2d");
+    g.fillStyle = "#0c0c0e"; g.fillRect(0, 0, 512, 716);
+    g.strokeStyle = "#ffd400"; g.lineWidth = 14;
+    g.strokeRect(22, 22, 468, 672);
+    g.strokeStyle = "#2a2a33"; g.lineWidth = 4;
+    g.strokeRect(46, 46, 420, 624);
+    // trama diagonal discreta
+    g.save(); g.beginPath(); g.rect(48, 48, 416, 620); g.clip();
+    g.strokeStyle = "rgba(255,212,0,.07)"; g.lineWidth = 10;
+    for (var d = -716; d < 512; d += 34) { g.beginPath(); g.moveTo(d, 716); g.lineTo(d + 716, 0); g.stroke(); }
+    g.restore();
+    g.fillStyle = "#ffd400"; g.fillRect(40, 288, 432, 140);
+    g.fillStyle = "#0c0c0e";
+    g.textAlign = "center"; g.textBaseline = "middle";
+    g.font = "900 92px Bangers, 'Arial Black', sans-serif";
+    g.fillText("GEEKPOINT", 256, 360);
+    g.fillStyle = "#efe9d8";
+    g.font = "700 22px 'JetBrains Mono', monospace";
+    g.fillText("TRADING CARD GAME", 256, 470);
+    var tex = new THREE.CanvasTexture(c);
+    if ("colorSpace" in tex && THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
+    _cardBackTex = tex;
     return tex;
   }
 
@@ -920,14 +1027,16 @@
       t.needsUpdate = true; t.repeat.set(1, repV || 1);
       return new THREE.MeshStandardMaterial({ map: t, color: "#fff", roughness: .95 });
     }
-    // Contraportada con marca GEEKPOINT para todo tomo/cómic (nunca negra vacía).
-    // TCG/figuras: cara trasera lisa.
+    // Contraportada con marca GEEKPOINT para todo tomo/cómic y reverso de carta
+    // para TCG (nunca negra vacía). Figuras: cara trasera lisa.
     var backMat = isTome
       ? new THREE.MeshStandardMaterial({
           map: backCoverTexture(isManga ? "MANGA INK EDITION" : "COMIC COLOR EDITION"),
           color: "#ffffff", roughness: .85
         })
-      : new THREE.MeshStandardMaterial({ color: "#15151a", roughness: .8 });
+      : (p.category === "tcg"
+        ? new THREE.MeshStandardMaterial({ map: cardBackTexture(), color: "#ffffff", roughness: .6 })
+        : new THREE.MeshStandardMaterial({ color: "#15151a", roughness: .8 }));
 
     // [+X foreEdge, -X spine, +Y head, -Y tail, +Z front, -Z back]
     var mats = [

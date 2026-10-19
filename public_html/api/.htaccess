@@ -5,6 +5,10 @@
 <IfModule mod_rewrite.c>
   RewriteEngine On
 
+  # Código interno y herramientas: nunca accesibles directo desde el navegador
+  # (solo se cargan desde index.php). Incluye tools/hash.php.
+  RewriteRule ^(src|controllers|tools|cache)(/|$) - [F,L]
+
   # No reescribir archivos o carpetas que existen de verdad
   RewriteCond %{REQUEST_FILENAME} -f [OR]
   RewriteCond %{REQUEST_FILENAME} -d
