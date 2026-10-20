@@ -16,3 +16,16 @@ public_html/assets/uploads/
 public_html/uploads/products/*
 !public_html/uploads/products/.gitkeep
 !public_html/uploads/.htaccess
+
+# Configuración MCP local (contiene la API key de Obsidian)
+.mcp.json
+
+# Respaldos de la base de datos de producción (datos de usuarios y sesiones)
+u498388917_*.sql
+*.sql.gz
+/*.sql
+
+# Documentos con cuentas demo y archivos de depuración local
+docs/Cuentas-demo-GeekPoint.docx
+public_html/assets/debug/
+public_html/mascot-debug-respaldo.html

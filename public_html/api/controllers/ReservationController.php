@@ -89,6 +89,7 @@ class ReservationController extends Controller
             $line = round($price * $qty, 2);
             $clean[] = [
                 'ref'   => $ref,
+                'catalog_id' => $local ? (int) $local['product_id'] : null,
                 'title' => $title,
                 'list_price' => $listPrice,
                 'discount_percent' => $percent,
@@ -135,10 +136,10 @@ class ReservationController extends Controller
             foreach ($clean as $c) {
                 Database::run(
                     'INSERT INTO reservation_items
-                       (reservation_id, product_ref, is_preventa, title, list_unit_price, discount_percent,
+                       (reservation_id, product_id, product_ref, is_preventa, title, list_unit_price, discount_percent,
                         unit_discount, unit_price, quantity, line_total)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                    [$rid, $c['ref'], $c['is_preventa'] ? 1 : 0, $c['title'], $c['list_price'], $c['discount_percent'],
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    [$rid, $c['catalog_id'], $c['ref'], $c['is_preventa'] ? 1 : 0, $c['title'], $c['list_price'], $c['discount_percent'],
                      $c['unit_discount'], $c['price'], $c['qty'], $c['line']]
                 );
             }
@@ -372,7 +373,7 @@ class ReservationController extends Controller
             $params[] = (int) $branchId;
         }
         return Database::one(
-            'SELECT p.*, c.slug AS category_slug FROM products p
+            'SELECT p.*, c.slug AS category_slug FROM v_inventory p
              LEFT JOIN categories c ON c.id = p.category_id
              WHERE ' . $where . ' LIMIT 1',
             $params
@@ -392,7 +393,7 @@ class ReservationController extends Controller
             $params[] = (int) $branchId;
         }
         $rows = Database::all(
-            'SELECT p.*, c.slug AS category_slug FROM products p
+            'SELECT p.*, c.slug AS category_slug FROM v_inventory p
              LEFT JOIN categories c ON c.id = p.category_id
              WHERE ' . $where . ' ORDER BY p.id',
             $params

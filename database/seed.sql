@@ -13,6 +13,10 @@ TRUNCATE TABLE `stock_movements`;
 TRUNCATE TABLE `sale_items`;
 TRUNCATE TABLE `sales`;
 TRUNCATE TABLE `registers`;
+TRUNCATE TABLE `product_tags`;
+TRUNCATE TABLE `tags`;
+TRUNCATE TABLE `product_images`;
+TRUNCATE TABLE `inventory`;
 TRUNCATE TABLE `products`;
 TRUNCATE TABLE `categories`;
 TRUNCATE TABLE `sessions`;
@@ -20,6 +24,26 @@ TRUNCATE TABLE `users`;
 TRUNCATE TABLE `branches`;
 
 SET FOREIGN_KEY_CHECKS = 1;
+
+-- Los productos de demo se escriben en formato "una fila por sucursal"
+-- (más fácil de leer y editar) y al final se reparten en el modelo
+-- normalizado: products + inventory + product_images. El id de cada fila
+-- de aquí es el id de inventario que usan las ventas de ejemplo.
+DROP TABLE IF EXISTS `_seed_products`;
+CREATE TABLE `_seed_products` (
+  `id`          INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `branch_id`   INT UNSIGNED NOT NULL,
+  `sku`         VARCHAR(40)  NOT NULL,
+  `name`        VARCHAR(180) NOT NULL,
+  `category_id` INT UNSIGNED NULL,
+  `description` VARCHAR(500) NOT NULL DEFAULT '',
+  `price`       DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+  `tax_rate`    DECIMAL(4,3)  NOT NULL DEFAULT 0.160,
+  `stock`       INT NOT NULL DEFAULT 0,
+  `min_stock`   INT NOT NULL DEFAULT 3,
+  `image_url`   VARCHAR(1000) NOT NULL DEFAULT '',
+  `status`      ENUM('active','inactive') NOT NULL DEFAULT 'active'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------
 --  Sucursales
@@ -67,7 +91,7 @@ INSERT INTO `registers` (`id`,`branch_id`,`name`,`status`) VALUES
 --  Productos  (inventario independiente por sucursal)
 --  Algunos con stock <= min_stock para disparar alertas.
 -- ---------------------------------------------------------------------
-INSERT INTO `products`
+INSERT INTO `_seed_products`
   (`branch_id`,`sku`,`name`,`category_id`,`description`,`price`,`tax_rate`,`stock`,`min_stock`,`image_url`,`status`) VALUES
   -- Sucursal 1 — CDMX Reforma
   (1,'MNG-JJK-01','Jujutsu Kaisen Vol. 1',1,'Edición español, Panini Manga.',149.00,0.160,24,6,'','active'),
@@ -103,7 +127,7 @@ INSERT INTO `products`
 --  "<sinopsis> · <N> tomos" → el API extrae el nº de tomos.
 --  Ver también: migrations/2026_08_29_000003_manga_catalog.sql
 -- ---------------------------------------------------------------------
-INSERT INTO `products`
+INSERT INTO `_seed_products`
   (`branch_id`,`sku`,`name`,`category_id`,`description`,`price`,`tax_rate`,`stock`,`min_stock`,`image_url`,`status`)
 SELECT b.id, s.sku, s.name,
        (SELECT id FROM `categories` WHERE `slug`='manga' LIMIT 1),
@@ -133,12 +157,12 @@ CROSS JOIN (
   UNION ALL SELECT 'MNG-S-KGY','Kaguya-sama: Love is War',169.00,28,'Dos genios del consejo estudiantil se enamoran, pero ninguno confesará primero: sería admitir la derrota.'
   UNION ALL SELECT 'MNG-S-FRN','Frieren: Beyond Journey''s End',175.00,13,'La maga elfa Frieren sobrevive siglos a sus compañeros de aventura y emprende un viaje para entender lo que los humanos sentían.'
 ) s
-WHERE NOT EXISTS (SELECT 1 FROM `products` p WHERE p.branch_id=b.id AND p.sku=s.sku);
+WHERE NOT EXISTS (SELECT 1 FROM `_seed_products` p WHERE p.branch_id=b.id AND p.sku=s.sku);
 
 -- ---------------------------------------------------------------------
 --  Cómics (25 títulos emblemáticos · portadas reales a color)
 -- ---------------------------------------------------------------------
-INSERT INTO `products`
+INSERT INTO `_seed_products`
   (`branch_id`,`sku`,`name`,`category_id`,`description`,`price`,`tax_rate`,`stock`,`min_stock`,`image_url`,`status`) VALUES
   (1,'CMC-BAT-142','Batman #142 (variante)',4,'DC Comics · edición individual a color.',89.00,0.160,10,4,'https://upload.wikimedia.org/wikipedia/en/4/4d/BatmanComicIssue1%2C1940.png','active'),
   (2,'CMC-BAT-142','Batman #142 (variante)',4,'DC Comics · edición individual a color.',89.00,0.160,6,4,'https://upload.wikimedia.org/wikipedia/en/4/4d/BatmanComicIssue1%2C1940.png','active'),
@@ -218,7 +242,7 @@ INSERT INTO `products`
 -- ---------------------------------------------------------------------
 --  Cómics extra (Gwenpool, Deadpool #45, UXM #266) + mangas de volumen alto
 -- ---------------------------------------------------------------------
-INSERT INTO `products`
+INSERT INTO `_seed_products`
   (`branch_id`,`sku`,`name`,`category_id`,`description`,`price`,`tax_rate`,`stock`,`min_stock`,`image_url`,`status`) VALUES
   (1,'CMC-GWEN-1','Gwenpool #1',4,'Marvel Comics · edición individual a color.',99.00,0.160,9,4,'https://upload.wikimedia.org/wikipedia/en/b/b6/Gwenpool_2.jpg','active'),
   (2,'CMC-GWEN-1','Gwenpool #1',4,'Marvel Comics · edición individual a color.',99.00,0.160,6,4,'https://upload.wikimedia.org/wikipedia/en/b/b6/Gwenpool_2.jpg','active'),
@@ -250,7 +274,7 @@ INSERT INTO `products`
 --  Figuras de colección (also en migración 2026_08_28_000005_figures_seed.sql)
 --  description = "<Fabricante> · <Escala/Línea> · <detalle>"
 -- ---------------------------------------------------------------------
-INSERT INTO `products`
+INSERT INTO `_seed_products`
   (`branch_id`,`sku`,`name`,`category_id`,`description`,`price`,`tax_rate`,`stock`,`min_stock`,`image_url`,`status`) VALUES
   (1,'FIG-GSC-GOJO17','Gojo Satoru 1/7',2,'Good Smile Company · Escala 1/7 · Jujutsu Kaisen, con efecto de Infinito y base temática. PVC pintado a mano, ~26 cm.',2490.00,0.160,5,2,'catalog/cover?kind=figura&t=Gojo%20Satoru%201%2F7&pub=GOOD%20SMILE%20COMPANY&accent=%238b5bff&a=front,catalog/cover?kind=figura&t=Gojo%20Satoru%201%2F7&pub=GOOD%20SMILE%20COMPANY&accent=%238b5bff&a=side,catalog/cover?kind=figura&t=Gojo%20Satoru%201%2F7&pub=GOOD%20SMILE%20COMPANY&accent=%238b5bff&a=back','active'),
   (2,'FIG-GSC-GOJO17','Gojo Satoru 1/7',2,'Good Smile Company · Escala 1/7 · Jujutsu Kaisen, con efecto de Infinito y base temática. PVC pintado a mano, ~26 cm.',2490.00,0.160,3,2,'catalog/cover?kind=figura&t=Gojo%20Satoru%201%2F7&pub=GOOD%20SMILE%20COMPANY&accent=%238b5bff&a=front,catalog/cover?kind=figura&t=Gojo%20Satoru%201%2F7&pub=GOOD%20SMILE%20COMPANY&accent=%238b5bff&a=side,catalog/cover?kind=figura&t=Gojo%20Satoru%201%2F7&pub=GOOD%20SMILE%20COMPANY&accent=%238b5bff&a=back','active'),
@@ -269,8 +293,31 @@ INSERT INTO `products`
   (3,'FIG-KOTO-ARTORIA17','Artoria Pendragon 1/7',2,'Kotobukiya · Escala 1/7 · Fate, línea ArtFX J. PVC, ~25 cm.',3800.00,0.160,2,2,'catalog/cover?kind=figura&t=Artoria%20Pendragon%201%2F7&pub=KOTOBUKIYA&accent=%23ffd400&a=front,catalog/cover?kind=figura&t=Artoria%20Pendragon%201%2F7&pub=KOTOBUKIYA&accent=%23ffd400&a=side,catalog/cover?kind=figura&t=Artoria%20Pendragon%201%2F7&pub=KOTOBUKIYA&accent=%23ffd400&a=back','active');
 
 -- ---------------------------------------------------------------------
---  Ventas de ejemplo (para historial y reportes)
+--  Reparto al modelo normalizado
 -- ---------------------------------------------------------------------
+INSERT INTO `products` (`sku`, `name`, `category_id`, `description`, `price`, `tax_rate`, `status`)
+SELECT s.`sku`, s.`name`, s.`category_id`, s.`description`, s.`price`, s.`tax_rate`,
+       IF(EXISTS (SELECT 1 FROM `_seed_products` a WHERE a.`sku` = s.`sku` AND a.`status` = 'active'), 'active', 'inactive')
+  FROM `_seed_products` s
+ WHERE s.`id` = (SELECT MIN(a.`id`) FROM `_seed_products` a WHERE a.`sku` = s.`sku`);
+
+INSERT INTO `inventory` (`id`, `branch_id`, `product_id`, `stock`, `min_stock`, `status`)
+SELECT s.`id`, s.`branch_id`, p.`id`, s.`stock`, s.`min_stock`, s.`status`
+  FROM `_seed_products` s JOIN `products` p ON p.`sku` = s.`sku`;
+
+INSERT INTO `product_images` (`product_id`, `url`, `sort_order`)
+SELECT p.`id`, TRIM(SUBSTRING_INDEX(SUBSTRING_INDEX(s.`image_url`, ',', n.n), ',', -1)), n.n - 1
+  FROM `products` p
+  JOIN `_seed_products` s ON s.`id` = (SELECT MIN(a.`id`) FROM `_seed_products` a WHERE a.`sku` = p.`sku`)
+  JOIN (SELECT 1 n UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6) n
+    ON n.n <= 1 + LENGTH(s.`image_url`) - LENGTH(REPLACE(s.`image_url`, ',', ''))
+ WHERE s.`image_url` <> '';
+
+-- ---------------------------------------------------------------------
+--  Ventas de ejemplo (para historial y reportes)
+--  product_id se escribe con el id de inventario y se traduce al final.
+-- ---------------------------------------------------------------------
+SET FOREIGN_KEY_CHECKS = 0;
 INSERT INTO `sales`
   (`id`,`folio`,`branch_id`,`register_id`,`user_id`,`customer_name`,`subtotal`,`tax`,`total`,`payment_method`,`amount_paid`,`change_due`,`created_at`) VALUES
   (1,'CDMX-000001',1,1,5,'Mostrador',298.00,47.68,345.68,'cash',400.00,54.32, DATE_SUB(NOW(), INTERVAL 2 DAY)),
@@ -300,3 +347,10 @@ INSERT INTO `stock_movements`
   (2,19,6,'sale',-1, 2,'GDL-000002','Venta mostrador', DATE_SUB(NOW(), INTERVAL 3 HOUR)),
   (3,25,7,'sale',-1, 6,'MTY-000001','Venta mostrador', DATE_SUB(NOW(), INTERVAL 5 HOUR)),
   (1, 2,2,'restock',12, 4,'OC-2291','Recepción parcial proveedor', DATE_SUB(NOW(), INTERVAL 4 DAY));
+
+-- Las ventas de ejemplo se ligan por SKU (los ids escritos a mano no siempre coincidían).
+UPDATE `sale_items` si JOIN `products` p ON p.`sku` = si.`sku` SET si.`product_id` = p.`id`;
+UPDATE `stock_movements` m JOIN `inventory` i ON i.`id` = m.`product_id` SET m.`product_id` = i.`product_id`;
+SET FOREIGN_KEY_CHECKS = 1;
+
+DROP TABLE IF EXISTS `_seed_products`;

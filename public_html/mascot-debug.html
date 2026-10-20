@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="assets/css/tokens.css" />
 <link rel="stylesheet" href="assets/css/base.css" />
 <link rel="stylesheet" href="assets/css/components.css" />
-<link rel="stylesheet" href="assets/css/app.css" />
+<link rel="stylesheet" href="assets/css/app.css?v=20260930_v160" />
 <style>
   :root { --panel-w: 340px; }
   * { box-sizing: border-box; }
@@ -24,6 +24,10 @@
      body para el layout del sitio — sin este override el panel se
      apilaba debajo del escenario en vez de al lado. */
   body { display: flex; flex-direction: row; }
+  /* Alto = la ventana: el panel y el escenario hacen scroll cada uno por
+     su lado. Sin esto el escenario se estiraba al alto del panel (muy
+     largo) y la tarjeta quedaba centrada miles de px más abajo. */
+  body { height: 100vh; overflow: hidden; }
 
   /* ---------- Escenario: personaje + tarjeta de referencia ---------- */
   .stage {
@@ -60,7 +64,25 @@
   .mascot.is-animating .mascot-hip      { animation: mascotHipSway   calc(6s   / var(--anim-speed)) ease-in-out infinite; }
   .mascot.is-animating .mascot-torso    { animation: mascotBreathe   calc(4s   / var(--anim-speed)) ease-in-out infinite; }
   .mascot.is-animating .mascot-head     { animation: mascotHeadMove  calc(5s   / var(--anim-speed)) ease-in-out infinite; }
-  .mascot.is-animating .mascot-arm-l    { animation: mascotArmL      calc(4.4s / var(--anim-speed)) ease-in-out infinite; }
+  /* Brazo izquierdo: su balanceo propio + la rotación CONTRARIA a la de la
+     cadera y el torso (mismas duraciones y curva, así se cancelan): el
+     brazo deja de heredar el giro del cuerpo y la mano casi no se mueve —
+     solo la acompaña lo que se mueve el hombro. animation-composition:add
+     SUMA las tres en vez de que la última pise a las otras. .no-steady
+     (checkbox) quita la compensación para comparar. */
+  .mascot.is-animating .mascot-rig-1,
+  .mascot.is-animating .mascot-rig-b {
+    animation: mascotArmL calc(var(--armL-dur, 6.6s) / var(--anim-speed)) ease-in-out infinite,
+               mascotHipCounter calc(6s / var(--anim-speed)) ease-in-out infinite,
+               mascotBreatheCounter calc(4s / var(--anim-speed)) ease-in-out infinite;
+    animation-composition: replace, add, add;
+  }
+  .mascot.is-animating.no-steady .mascot-rig-1,
+  .mascot.is-animating.no-steady .mascot-rig-b {
+    animation: mascotArmL calc(var(--armL-dur, 6.6s) / var(--anim-speed)) ease-in-out infinite;
+  }
+  @keyframes mascotHipCounter     { 0%, 100% { transform: rotate(.6deg); } 50% { transform: rotate(-.6deg); } }
+  @keyframes mascotBreatheCounter { 0%, 100% { transform: rotate(.5deg); } 50% { transform: rotate(-.5deg); } }
   .mascot.is-animating .mascot-arm-r    { animation: mascotArmR      calc(3.8s / var(--anim-speed)) ease-in-out infinite; }
   /* .mascot-hand-l NO lleva "animation": se sincroniza por JS (ver
      syncHandRotation() más abajo), igual que en producción — el brazo
@@ -76,7 +98,9 @@
     30%      { transform: rotate(-1.4deg) translateY(-1px); }
     60%      { transform: rotate(1.6deg)  translateY(.5px); }
   }
-  @keyframes mascotArmL { 0%, 100% { transform: rotate(-2.5deg); } 50% { transform: rotate(2deg); } }
+  /* Igual que app.css (−1° ↔ .8° en 6.6s) pero con variables para
+     ajustarlo con los sliders "Balanceo mano izq" (JS las pone en .mascot). */
+  @keyframes mascotArmL { 0%, 100% { transform: rotate(var(--armL-a, -1deg)); } 50% { transform: rotate(var(--armL-b, .8deg)); } }
   @keyframes mascotArmR { 0%, 100% { transform: rotate(1.8deg);  } 50% { transform: rotate(-1.5deg); } }
 
   /* Mismo orden de capas que produción (app.css): cuerpo (cadera, con
@@ -101,10 +125,6 @@
     transform-origin: 50% 89%;
     outline: 1px dashed rgba(0,0,0,.15);
   }
-  .mascot-arm-l {
-    position: absolute; z-index: -1;
-    outline: 2px dashed rgba(220,40,40,.55);
-  }
   .mascot-arm-r {
     position: absolute; left: 43.87%; top: 41.95%; width: 35.42%;
     transform-origin: 69% 47%; z-index: 3;
@@ -114,6 +134,62 @@
     position: absolute; z-index: 3;
     outline: 2px dashed rgba(20,150,60,.65);
   }
+  /* ---------- Brazo NUEVO (brazo1 + manos1) ----------
+     Mismo sitio que el brazo izquierdo viejo: hijo del torso, z-index -1
+     (DEBAJO del modal). La mano cuelga DEL BRAZO (no de .mascot como los
+     dedos viejos), así gira rígida con él por herencia — no hace falta
+     el truco de JS de syncHandRotation(). "isolation" hace que la mano
+     (z -1) quede detrás de la imagen del brazo pero sin escaparse detrás
+     del torso. .hand-front (checkbox) la sube delante del brazo. */
+  /* .mascot-rig-1 = marco FIJO (no se mueve con los sliders) que solo
+     lleva la animación; brazo1 y mano1 son HERMANOS dentro de él, cada
+     uno con su propio left/top/width/rotación, así mover uno NO mueve
+     al otro. Al animar giran juntos (mismo pivote del rig) sin JS. */
+  .mascot-rig-1 {
+    position: absolute; z-index: -1; isolation: isolate;
+    left: -6.4%; top: 1.3%; width: 89.5%; aspect-ratio: 793 / 586;
+  }
+  .mascot-arm-1 {
+    position: absolute;
+    outline: 2px dashed rgba(30,90,220,.6);
+  }
+  .mascot-hand-1 {
+    position: absolute; z-index: -1;
+    outline: 2px dashed rgba(200,30,160,.65);
+  }
+  .mascot-rig-1.hand-front .mascot-hand-1 { z-index: 1; }
+  /* ---------- Brazo FLEXIONADO (brazo1 + manos1) ----------
+     Segundo marco, idéntico al de brazo2/mano2 (mismo sitio, tamaño y
+     pivote = el hombro, mismo balanceo): así las dos poses comparten el
+     hombro y el cambio de una a otra no brinca. Cada pose gira por su
+     cuenta. Solo se muestra con "Pose sin reproducir: Flexionado" (no entra en el cierre).
+     Empieza oculto (pose extendida = reposo). */
+  .mascot-rig-b {
+    position: absolute; z-index: -1; isolation: isolate;
+    left: -6.4%; top: 1.3%; width: 89.5%; aspect-ratio: 793 / 586;
+    opacity: 0;
+  }
+  .mascot-arm-b  { position: absolute; outline: 2px dashed rgba(240,140,0,.7); }
+  .mascot-hand-b { position: absolute; z-index: -1; outline: 2px dashed rgba(0,160,170,.7); }
+  .mascot-rig-b.hand-front .mascot-hand-b { z-index: 1; }
+  /* Calca del video (cuadro del mp4 encima, semitransparente): JS la
+     escala y la alinea por las pupilas (ver placeVideoRef()). */
+  .video-ref {
+    position: absolute; left: 0; top: 0; transform-origin: 0 0;
+    pointer-events: none; z-index: 10; opacity: .45; display: none;
+    max-width: none;
+  }
+  /* Cuerpo oculto: solo las IMÁGENES del cuerpo; los contenedores (y los
+     brazos que cuelgan de ellos) siguen visibles. */
+  .mascot.body-hidden .mascot-hip > img,
+  .mascot.body-hidden .mascot-torso > img,
+  .mascot.body-hidden .mascot-head > img { visibility: hidden; }
+  /* Modal desactivado: visibility (no display) para que la tarjeta siga
+     ocupando su espacio y el personaje no se corra de lugar. */
+  #wrap.no-modal .auth__stage { visibility: hidden; }
+  /* Tamaño de los triángulos de esquina: en app.css es 32px fijo; aquí lo
+     maneja --tri (JS, ver applyPinch()) para poder agrandarlos al cerrar. */
+  #wrap .auth__corner::before { width: var(--tri, 32px); height: var(--tri, 32px); }
   .origin-dot {
     position: absolute; width: 10px; height: 10px; margin: -5px 0 0 -5px;
     border-radius: 50%; background: #16b6cc; border: 2px solid #05060b;
@@ -169,8 +245,21 @@
         <img src="assets/images/mascot/cadera.png" alt="">
         <div class="mascot-torso" id="p-torso">
           <img src="assets/images/mascot/torso.png" alt="">
-          <div class="mascot-arm-l" id="p-arm-l">
-            <img src="assets/images/mascot/brazo_izquierdo_arm.png" alt="">
+          <div class="mascot-rig-1" id="p-rig-1">
+            <div class="mascot-arm-1" id="p-arm-1">
+              <img src="assets/images/mascot/brazo2.png" alt="">
+            </div>
+            <div class="mascot-hand-1" id="p-hand-1">
+              <img src="assets/images/mascot/manos2.png" alt="">
+            </div>
+          </div>
+          <div class="mascot-rig-b" id="p-rig-b">
+            <div class="mascot-arm-b" id="p-arm-b">
+              <img src="assets/images/mascot/brazo1.png" alt="">
+            </div>
+            <div class="mascot-hand-b" id="p-hand-b">
+              <img src="assets/images/mascot/manos1.png" alt="">
+            </div>
           </div>
           <div class="mascot-head" id="p-head">
             <img src="assets/images/mascot/cabeza.png" alt="">
@@ -183,6 +272,7 @@
       <div class="mascot-hand-l" id="p-hand-l">
         <img src="assets/images/mascot/brazo_izquierdo_dedos.png" alt="">
       </div>
+      <img class="video-ref" id="video-ref" alt="">
       </div>
     </div>
   </div>
@@ -230,6 +320,78 @@
       </div>
       <div class="row" style="margin-top:.5rem"><label>Velocidad</label><input type="range" id="anim-speed-range" min="0.05" max="2" step="0.05" value="1"><input type="number" id="anim-speed-number" min="0.05" max="2" step="0.05" value="1"></div>
       <p class="hint" style="margin:.4rem 0 0">Baja la velocidad (ej. 0.1) para ver en cámara lenta si la mano y el brazo se separan durante el balanceo.</p>
+      <div class="row" style="margin-top:.5rem"><label>Balanceo mano izq °</label><input type="range" data-t="ik" data-p="swayAmp" min="0" max="6" step="0.1"><input type="number" data-t="ik" data-p="swayAmp" step="0.1"></div>
+      <div class="row"><label>Balanceo mano izq s</label><input type="range" data-t="ik" data-p="swayDur" min="2" max="12" step="0.1"><input type="number" data-t="ik" data-p="swayDur" step="0.1"></div>
+      <p class="hint" style="margin:.2rem 0 0">Cuánto gira el brazo izquierdo (brazo2 + mano2 + dedos) en total y cuánto tarda un ciclo. En la mano, 1° ≈ 8px. Antes era 4.5° en 4.4s (≈36px); ahora 1.8° en 6.6s (≈14px), igual que en el sitio.</p>
+      <div class="toggle"><input type="checkbox" id="arm-steady" checked><label for="arm-steady">Compensar el balanceo del cuerpo en el brazo (la mano no lo hereda)</label></div>
+    </fieldset>
+
+    <fieldset id="fs-pinch">
+      <legend>🤏 Cerrar / abrir el modal</legend>
+      <p class="hint" style="margin:0 0 .4rem">La mano <b>derecha</b> sostiene la esquina inferior-derecha y <b>no se mueve</b>. La mano <b>izquierda</b> lleva su esquina (la superior-izquierda) en línea recta hasta la inferior-derecha: el modal se cierra ahí, entre las dos manos. Al abrir, la regresa.</p>
+      <button id="btn-pinch" style="background:#ffd400;border-color:#c9a800;font-weight:700">▶ Reproducir</button>
+      <div class="row" style="margin-top:.5rem"><label>Velocidad</label><input type="range" id="pinch-speed-range" min="0.05" max="1" step="0.05" value="1"><input type="number" id="pinch-speed-number" min="0.05" max="1" step="0.05" value="1"></div>
+      <div class="row"><label>Progreso</label><input type="range" id="pinch-p-range" min="0" max="1" step="0.01" value="0"><input type="number" id="pinch-p-number" min="0" max="1" step="0.01" value="0"></div>
+      <p class="hint" style="margin:.2rem 0 .3rem">"Progreso" congela el cierre en ese punto (0 = abierto, 1 = cerrado); al reproducir se ignora. Velocidad 1 = real; bájala (ej. 0.1) para verlo en cámara lenta.</p>
+      <div class="row"><label>Cierre ms</label><input type="range" data-t="ik" data-p="closeMs" min="150" max="900" step="10"><input type="number" data-t="ik" data-p="closeMs" step="10"></div>
+      <div class="row"><label>Pausa ms</label><input type="range" data-t="ik" data-p="pauseMs" min="0" max="1000" step="10"><input type="number" data-t="ik" data-p="pauseMs" step="10"></div>
+      <div class="row"><label>Apertura ms</label><input type="range" data-t="ik" data-p="openMs" min="150" max="900" step="10"><input type="number" data-t="ik" data-p="openMs" step="10"></div>
+      <p class="hint" style="margin:.2rem 0 .3rem">Cierre con curva ease-in-out (arranca y frena suave, como un jalón de verdad); apertura con ease-out (sale rápido y aterriza suave). Pausa = tiempo cerrado (ahí el sitio cambia Login ⇄ Registro).</p>
+      <div class="row"><label>Triángulos reposo px</label><input type="range" data-t="ik" data-p="tri0" min="16" max="200" step="1"><input type="number" data-t="ik" data-p="tri0" step="1"></div>
+      <div class="row"><label>Triángulos cerrado px</label><input type="range" data-t="ik" data-p="tri1" min="16" max="300" step="1"><input type="number" data-t="ik" data-p="tri1" step="1"></div>
+      <p class="hint" style="margin:.2rem 0 .3rem">Los triángulos crecen de "reposo" a "cerrado" mientras el modal se cierra; cerrado queda del tamaño del cuadro que forman los dos (la tarjeta escondida debajo), así que la mano izquierda se detiene justo donde se juntan. En el sitio son 32. Más de ~50px en reposo tapa "← Volver a la tienda".</p>
+      <div class="row"><label>Brazo der. giro °</label><input type="range" data-t="ik" data-p="armRRot" min="-20" max="20" step="0.5"><input type="number" data-t="ik" data-p="armRRot" step="0.5"></div>
+      <div class="row"><label>Brazo der. X px</label><input type="range" data-t="ik" data-p="armRX" min="-60" max="60" step="1"><input type="number" data-t="ik" data-p="armRX" step="1"></div>
+      <div class="row"><label>Brazo der. subir px</label><input type="range" data-t="ik" data-p="armRUp" min="-60" max="60" step="1"><input type="number" data-t="ik" data-p="armRUp" step="1"></div>
+      <p class="hint" style="margin:.2rem 0 .3rem">Movimiento del brazo derecho mientras se cierra. En 0 (de fábrica): la mano derecha se queda quieta sosteniendo su esquina — solo su balanceo normal.</p>
+    </fieldset>
+
+    <fieldset id="fs-arm-anim">
+      <legend>💪 Brazo izquierdo (lleva su esquina)</legend>
+      <p class="hint" style="margin:0 0 .4rem">La mano izquierda (mano2 + dedos) viaja pegada a su esquina todo el camino y de regreso. Brazo2 se desvanece mientras la mano se aleja del hombro (para que no se vea un brazo estirado de más) y reaparece cuando la mano vuelve.</p>
+      <div class="row"><label>Brazo2 se va en</label><input type="range" data-t="ik" data-p="armFade" min="0.02" max="1" step="0.01"><input type="number" data-t="ik" data-p="armFade" step="0.01"></div>
+      <p class="hint" style="margin:.2rem 0 .3rem">Fracción del cierre en la que brazo2 termina de desvanecerse (0.15 = en el primer 15%). 1 = no se esconde.</p>
+      <div class="row"><label>Pose sin reproducir</label>
+        <select id="arm-pose" style="flex:1;padding:.25rem;">
+          <option value="ext" selected>Extendido (reposo)</option>
+          <option value="bent">Flexionado (brazo1 + mano1, solo para verlo)</option>
+        </select>
+      </div>
+      <p class="hint" style="margin:.2rem 0 0">El brazo flexionado (brazo1 + mano1, calcado del video) queda guardado aquí para verlo/acomodarlo, pero no entra en el cierre: su puño va junto a la cara y la mano izquierda tiene que llegar a la esquina inferior-derecha.</p>
+    </fieldset>
+
+    <fieldset id="fs-video-ref">
+      <legend>🎞️ Calca del video</legend>
+      <div class="row"><label>Cuadro</label>
+        <select id="video-ref-sel" style="flex:1;padding:.25rem;">
+          <option value="">Ninguno</option>
+          <option value="assets/debug/video-brazo-flexionado.jpg">Brazo flexionado (cuadro 0)</option>
+          <option value="assets/debug/video-brazo-extendido.jpg">Brazo extendido (cuadro 70)</option>
+        </select>
+      </div>
+      <div class="row"><label>Opacidad</label><input type="range" id="video-ref-op" min="0.1" max="1" step="0.05" value="0.45"><input type="number" id="video-ref-op-n" min="0.1" max="1" step="0.05" value="0.45"></div>
+      <p class="hint" style="margin:.2rem 0 0">Cuadro del mp4 encima, semitransparente, escalado y alineado por las pupilas — para calcar la pose del video. Se ve mejor sin el modal (Capas).</p>
+    </fieldset>
+
+    <fieldset id="fs-arm-b">
+      <legend><span class="swatch" style="background:#f08c00"></span>Brazo1 flexionado (arm-b, brazo1.png)</legend>
+      <div class="row"><label>left %</label><input type="range" data-t="arm-b" data-p="left" min="-150" max="150" step="0.1"><input type="number" data-t="arm-b" data-p="left" step="0.1"></div>
+      <div class="row"><label>top %</label><input type="range" data-t="arm-b" data-p="top" min="-250" max="150" step="0.1"><input type="number" data-t="arm-b" data-p="top" step="0.1"></div>
+      <div class="row"><label>width %</label><input type="range" data-t="arm-b" data-p="width" min="10" max="200" step="0.1"><input type="number" data-t="arm-b" data-p="width" step="0.1"></div>
+      <div class="row"><label>rotación °</label><input type="range" data-t="arm-b" data-p="rot" min="-180" max="180" step="0.1"><input type="number" data-t="arm-b" data-p="rot" step="0.1"></div>
+      <div class="row"><label>origin X %</label><input type="range" data-t="arm-b" data-p="ox" min="-100" max="200" step="1"><input type="number" data-t="arm-b" data-p="ox" step="1"></div>
+      <div class="row"><label>origin Y %</label><input type="range" data-t="arm-b" data-p="oy" min="-100" max="200" step="1"><input type="number" data-t="arm-b" data-p="oy" step="1"></div>
+    </fieldset>
+
+    <fieldset id="fs-hand-b">
+      <legend><span class="swatch" style="background:#00a0aa"></span>Mano1 flexionada (hand-b, manos1.png)</legend>
+      <div class="row"><label>left %</label><input type="range" data-t="hand-b" data-p="left" min="-200" max="200" step="0.1"><input type="number" data-t="hand-b" data-p="left" step="0.1"></div>
+      <div class="row"><label>top %</label><input type="range" data-t="hand-b" data-p="top" min="-300" max="150" step="0.1"><input type="number" data-t="hand-b" data-p="top" step="0.1"></div>
+      <div class="row"><label>width %</label><input type="range" data-t="hand-b" data-p="width" min="10" max="200" step="0.1"><input type="number" data-t="hand-b" data-p="width" step="0.1"></div>
+      <div class="row"><label>rotación °</label><input type="range" data-t="hand-b" data-p="rot" min="-180" max="180" step="0.1"><input type="number" data-t="hand-b" data-p="rot" step="0.1"></div>
+      <div class="row"><label>origin X %</label><input type="range" data-t="hand-b" data-p="ox" min="-100" max="200" step="1"><input type="number" data-t="hand-b" data-p="ox" step="1"></div>
+      <div class="row"><label>origin Y %</label><input type="range" data-t="hand-b" data-p="oy" min="-100" max="200" step="1"><input type="number" data-t="hand-b" data-p="oy" step="1"></div>
+      <p class="hint" style="margin:.2rem 0 0">Brazo1 y mano1 flexionados: % del mismo marco que brazo2/mano2 (comparten el hombro), independientes entre sí. Usa "Pose sin reproducir: Flexionado" y la calca del video para acomodarlos.</p>
     </fieldset>
 
     <div class="toggle">
@@ -241,8 +403,43 @@
       <label for="toggle-origins">Mostrar puntos de pivote (transform-origin)</label>
     </div>
 
+    <fieldset id="fs-layers">
+      <legend>👁️ Capas</legend>
+      <div class="toggle"><input type="checkbox" id="vis-modal" checked><label for="vis-modal">Modal (tarjeta)</label></div>
+      <div class="toggle"><input type="checkbox" id="vis-body" checked><label for="vis-body">Cuerpo (cadera, torso, cabeza)</label></div>
+      <div class="toggle"><input type="checkbox" id="vis-arm-r" checked><label for="vis-arm-r">Brazo derecho</label></div>
+      <div class="toggle"><input type="checkbox" id="vis-arm-1" checked><label for="vis-arm-1"><span class="swatch" style="background:#1e5adc"></span>Brazo2 (nuevo)</label></div>
+      <div class="toggle"><input type="checkbox" id="vis-hand-1" checked><label for="vis-hand-1"><span class="swatch" style="background:#c81ea0"></span>Mano2 (nueva)</label></div>
+      <div class="toggle"><input type="checkbox" id="hand1-front"><label for="hand1-front">Mano2 DELANTE del brazo2 (si no, detrás)</label></div>
+      <div class="toggle"><input type="checkbox" id="vis-hand-l" checked><label for="vis-hand-l"><span class="swatch" style="background:#149c3c"></span>Dedos (delante del modal)</label></div>
+      <div class="toggle"><input type="checkbox" id="vis-arm-b" checked><label for="vis-arm-b"><span class="swatch" style="background:#f08c00"></span>Brazo1 flexionado</label></div>
+      <div class="toggle"><input type="checkbox" id="vis-hand-b" checked><label for="vis-hand-b"><span class="swatch" style="background:#00a0aa"></span>Mano1 flexionada</label></div>
+      <div class="toggle"><input type="checkbox" id="handb-front"><label for="handb-front">Mano1 DELANTE del brazo1 (si no, detrás)</label></div>
+    </fieldset>
+
+    <fieldset id="fs-arm-1">
+      <legend><span class="swatch" style="background:#1e5adc"></span>Brazo2 (arm-1) — independiente</legend>
+      <div class="row"><label>left %</label><input type="range" data-t="arm-1" data-p="left" min="-150" max="100" step="0.1" value="-6.4"><input type="number" data-t="arm-1" data-p="left" step="0.1" value="-6.4"></div>
+      <div class="row"><label>top %</label><input type="range" data-t="arm-1" data-p="top" min="-150" max="100" step="0.1" value="1.3"><input type="number" data-t="arm-1" data-p="top" step="0.1" value="1.3"></div>
+      <div class="row"><label>width %</label><input type="range" data-t="arm-1" data-p="width" min="20" max="250" step="0.1" value="89.5"><input type="number" data-t="arm-1" data-p="width" step="0.1" value="89.5"></div>
+      <div class="row"><label>rotación °</label><input type="range" data-t="arm-1" data-p="rot" min="-180" max="180" step="0.1" value="0"><input type="number" data-t="arm-1" data-p="rot" step="0.1" value="0"></div>
+      <div class="row"><label>origin X %</label><input type="range" data-t="arm-1" data-p="ox" min="-100" max="200" step="1" value="36.6"><input type="number" data-t="arm-1" data-p="ox" step="1" value="36.6"></div>
+      <div class="row"><label>origin Y %</label><input type="range" data-t="arm-1" data-p="oy" min="-100" max="200" step="1" value="35.8"><input type="number" data-t="arm-1" data-p="oy" step="1" value="35.8"></div>
+    </fieldset>
+
+    <fieldset id="fs-hand-1">
+      <legend><span class="swatch" style="background:#c81ea0"></span>Mano2 (hand-1, manos2.png) — independiente</legend>
+      <div class="row"><label>left %</label><input type="range" data-t="hand-1" data-p="left" min="-200" max="200" step="0.1" value="-36.6"><input type="number" data-t="hand-1" data-p="left" step="0.1" value="-36.6"></div>
+      <div class="row"><label>top %</label><input type="range" data-t="hand-1" data-p="top" min="-250" max="150" step="0.1" value="-75.1"><input type="number" data-t="hand-1" data-p="top" step="0.1" value="-75.1"></div>
+      <div class="row"><label>width %</label><input type="range" data-t="hand-1" data-p="width" min="10" max="200" step="0.1" value="70.7"><input type="number" data-t="hand-1" data-p="width" step="0.1" value="70.7"></div>
+      <div class="row"><label>rotación °</label><input type="range" data-t="hand-1" data-p="rot" min="-180" max="180" step="0.1" value="0"><input type="number" data-t="hand-1" data-p="rot" step="0.1" value="0"></div>
+      <div class="row"><label>origin X %</label><input type="range" data-t="hand-1" data-p="ox" min="-100" max="200" step="1" value="96"><input type="number" data-t="hand-1" data-p="ox" step="1" value="96"></div>
+      <div class="row"><label>origin Y %</label><input type="range" data-t="hand-1" data-p="oy" min="-100" max="200" step="1" value="88"><input type="number" data-t="hand-1" data-p="oy" step="1" value="88"></div>
+      <p class="hint" style="margin:.3rem 0 0">Independiente del brazo2: moverla no mueve al brazo y viceversa. Al animar giran juntos. El origin de cada pieza es el pivote de su rotación °; el origin del brazo2 además fija el pivote de la animación de ambos.</p>
+    </fieldset>
+
     <fieldset id="fs-hand-l">
-      <legend><span class="swatch" style="background:#149c3c"></span>Dedos (hand-l)</legend>
+      <legend><span class="swatch" style="background:#149c3c"></span>Dedos (hand-l) — delante del modal</legend>
       <div class="row"><label>left %</label><input type="range" data-t="hand-l" data-p="left" min="-20" max="40" step="0.1" value="8.4"><input type="number" data-t="hand-l" data-p="left" step="0.1" value="8.4"></div>
       <div class="row"><label>top %</label><input type="range" data-t="hand-l" data-p="top" min="-20" max="40" step="0.1" value="17.3"><input type="number" data-t="hand-l" data-p="top" step="0.1" value="17.3"></div>
       <div class="row"><label>width %</label><input type="range" data-t="hand-l" data-p="width" min="1" max="30" step="0.1" value="8.2"><input type="number" data-t="hand-l" data-p="width" step="0.1" value="8.2"></div>
@@ -250,19 +447,9 @@
       <div class="row"><label>origin Y %</label><input type="range" data-t="hand-l" data-p="oy" min="-100" max="600" step="1" value="260.9"><input type="number" data-t="hand-l" data-p="oy" step="1" value="260.9"></div>
     </fieldset>
 
-    <fieldset id="fs-arm-l">
-      <legend><span class="swatch" style="background:#dc2828"></span>Brazo (arm-l)</legend>
-      <div class="row"><label>left %</label><input type="range" data-t="arm-l" data-p="left" min="-150" max="20" step="0.1" value="-99.89"><input type="number" data-t="arm-l" data-p="left" step="0.1" value="-99.89"></div>
-      <div class="row"><label>top %</label><input type="range" data-t="arm-l" data-p="top" min="-150" max="20" step="0.1" value="-45.12"><input type="number" data-t="arm-l" data-p="top" step="0.1" value="-45.12"></div>
-      <div class="row"><label>width %</label><input type="range" data-t="arm-l" data-p="width" min="50" max="250" step="0.1" value="159.25"><input type="number" data-t="arm-l" data-p="width" step="0.1" value="159.25"></div>
-      <div class="row"><label>origin X %</label><input type="range" data-t="arm-l" data-p="ox" min="-100" max="200" step="1" value="75.4"><input type="number" data-t="arm-l" data-p="ox" step="1" value="75.4"></div>
-      <div class="row"><label>origin Y %</label><input type="range" data-t="arm-l" data-p="oy" min="-100" max="200" step="1" value="71.35"><input type="number" data-t="arm-l" data-p="oy" step="1" value="71.35"></div>
-    </fieldset>
-
-    <button id="btn-rigid-pivot">🔗 Calcular pivote rígido de los dedos</button>
-    <p class="hint" style="margin:.3rem 0 1rem">Pone el origin de los dedos en el MISMO punto absoluto que usa el brazo (el hombro), para que ambas piezas giren como una sola pieza rígida sin que el puño gire sobre sí mismo. Vuelve a darle click si mueves left/top/width de cualquiera de las dos.</p>
-
-    <button id="btn-reset">Restaurar valores actuales</button>
+    <button id="btn-save" style="background:#ffd400;border-color:#c9a800;font-weight:700">💾 Guardar como valor actual</button>
+    <button id="btn-reset">Restaurar valores guardados</button>
+    <div id="save-msg" class="hint" style="margin:.4rem 0 0"></div>
     <div class="out" id="out"></div>
   </div>
 
@@ -271,9 +458,53 @@
   "use strict";
 
   var DEFAULTS = {
-    "hand-l": { left: 8.4, top: 17.3, width: 8.2, ox: 441.9, oy: 260.9 },
-    "arm-l":  { left: -99.89, top: -45.12, width: 159.25, ox: 75.4, oy: 71.35 }
+    /* hand-l = los dedos (delante del modal) — mismos valores que
+       .auth__mascot-hand-l en app.css. */
+    "hand-l": { left: 10, top: 13.1, width: 8.2, ox: 441.9, oy: 260.9 },
+    /* Brazo nuevo: punto de partida calculado para que manguera/puño
+       queden a la MISMA escala y sobre el mismo puño del brazo viejo;
+       se afina a mano con los sliders. rot = grados extra (propiedad CSS
+       "rotate", independiente de la animación). */
+    /* arm-1 y hand-1 son % del RIG (marco fijo -6.4%/1.3%/89.5% del
+       torso), no del torso ni entre sí: por eso son independientes. */
+    /* = tus valores guardados (los mismos que .auth__mascot-upper-l y
+       .auth__mascot-forearm-l en app.css). Escritos aquí para que no
+       dependan de lo guardado en el navegador. */
+    "arm-1":  { left: -8, top: -23.4, width: 88.8, rot: 43.8, ox: 52.1, oy: 55.3 },
+    "hand-1": { left: -101.5, top: -102.8, width: 122, rot: 0, ox: 98, oy: 88 },
+    /* Pose FLEXIONADA (brazo1 + manos1), % del marco p-rig-b (= mismo
+       marco y hombro que brazo2/mano2). Calcada del cuadro 0 del video con
+       un ajuste automático (ffmpeg: posición/tamaño/giro que menos
+       difieren del video): manos1 267px de ancho en (425,410) sin girar;
+       brazo1 367px girado −38° con la punta de piel en (685,720) — en px
+       del video, pasados al personaje con la escala de las pupilas. */
+    "arm-b":  { left: 3.7, top: 34.9, width: 99.1, rot: -38, ox: 50, oy: 50 },
+    "hand-b": { left: -65.4, top: -14.8, width: 72.1, rot: 0, ox: 94, oy: 88 },
+    /* PELLIZCO (ver applyPinch() y frame()): la mano izquierda lleva su
+       esquina a la inferior-derecha; la derecha no se mueve. */
+    "ik": {
+      swayAmp: 1.8, swayDur: 6.6,      // balanceo idle del brazo izquierdo: giro total (°) y duración del ciclo (s) — = app.css
+      closeMs: 360, pauseMs: 500, openMs: 300,   // cierre (ease-in-out), tiempo cerrado (ahí cambia Login ⇄ Registro) y apertura (ease-out)
+      tri0: 32, tri1: 110,             // tamaño de los triángulos de esquina: en reposo (= sitio) y ya cerrado (px)
+      armRRot: 0, armRX: 0, armRUp: 0, // brazo derecho al cerrar: giro (°), corrimiento X y subida (px) — en 0: la mano derecha se queda quieta
+      armFade: 0.15                    // fracción del cierre en la que brazo2 termina de desvanecerse (la mano sigue con la esquina)
+    }
   };
+  /* "Guardar como valor actual" (botón del panel) escribe los sliders en
+     localStorage; al abrir la página, lo guardado REEMPLAZA a los valores
+     de fábrica de arriba — así lo que dejes acomodado es el punto de
+     partida siempre (y "Restaurar" vuelve a ello). */
+  var SAVE_KEY = "mascot-debug-saved-v1";
+  var savedMascot = null;
+  try {
+    var saved = JSON.parse(localStorage.getItem(SAVE_KEY) || "null");
+    if (saved && saved.state) {
+      Object.keys(DEFAULTS).forEach(function (k) {
+        if (saved.state[k]) Object.assign(DEFAULTS[k], saved.state[k]);
+      });
+      savedMascot = saved.mascot || null;
+    }
+  } catch (e) { /* localStorage bloqueado: se usan los valores de fábrica */ }
   var state = JSON.parse(JSON.stringify(DEFAULTS));
 
   /* ---------- Tarjeta de referencia: mismo contenido que cada paso real
@@ -287,14 +518,7 @@
       '<div class="field"><label>Correo</label><input class="input" type="email" disabled /></div>' +
       '<div class="field"><label>Contraseña</label><input class="input" type="password" disabled /></div>' +
       '<button class="btn btn--neon btn--block btn--lg" type="button">Iniciar sesión</button>' +
-      '<p class="auth__switch">¿No tienes cuenta? <a href="#">Regístrate</a></p>' +
-      '<div class="auth__demo"><p>Cuentas de demostración (contraseña: password)</p>' +
-      '<div class="demo-row">' +
-        '<button type="button" class="demo-chip">Administrador</button>' +
-        '<button type="button" class="demo-chip">Gerente CDMX</button>' +
-        '<button type="button" class="demo-chip">Cajero CDMX</button>' +
-        '<button type="button" class="demo-chip">Cliente</button>' +
-      '</div></div>',
+      '<p class="auth__switch">¿No tienes cuenta? <a href="#">Regístrate</a></p>',
     register:
       '<a href="#" class="mono" style="font-size:.72rem;letter-spacing:.1em;color:var(--muted)">← Volver a la tienda</a>' +
       '<h1 style="margin-top:.6rem">Registrarse</h1>' +
@@ -328,11 +552,17 @@
 
   var els = {
     "hand-l": document.getElementById("p-hand-l"),
-    "arm-l": document.getElementById("p-arm-l")
+    "arm-1": document.getElementById("p-arm-1"),
+    "hand-1": document.getElementById("p-hand-1"),
+    "arm-b": document.getElementById("p-arm-b"),
+    "hand-b": document.getElementById("p-hand-b")
   };
   var origins = {
     "hand-l": null,
-    "arm-l": null
+    "arm-1": null,
+    "hand-1": null,
+    "arm-b": null,
+    "hand-b": null
   };
 
   function ensureOriginDot(target) {
@@ -345,7 +575,10 @@
     return dot;
   }
   ensureOriginDot("hand-l");
-  ensureOriginDot("arm-l");
+  ensureOriginDot("arm-1");
+  ensureOriginDot("hand-1");
+  ensureOriginDot("arm-b");
+  ensureOriginDot("hand-b");
 
   function apply(target) {
     var s = state[target];
@@ -354,6 +587,19 @@
     el.style.top = s.top + "%";
     el.style.width = s.width + "%";
     el.style.transformOrigin = s.ox + "% " + s.oy + "%";
+    if (s.rot !== undefined) el.style.rotate = s.rot + "deg";
+    if (target === "arm-1") {
+      /* Pivote de la animación del rig = el origin del brazo1 llevado a
+         coordenadas del rig (el rig mide lo mismo que el brazo1 en su
+         posición inicial, así que left/top/width ya están en su %). */
+      var h = s.width * (452 / 710); // alto del brazo (brazo2.png) en % del ancho del rig
+      var rigH = 100 * (586 / 793);
+      var pivot = (s.left + s.ox * s.width / 100) + "% " +
+        ((s.top / 100 * rigH + s.oy / 100 * h) / rigH * 100) + "%";
+      /* El marco del brazo flexionado usa el MISMO pivote (el hombro). */
+      document.getElementById("p-rig-1").style.transformOrigin = pivot;
+      document.getElementById("p-rig-b").style.transformOrigin = pivot;
+    }
     var dot = origins[target];
     dot.style.left = s.ox + "%";
     dot.style.top = s.oy + "%";
@@ -375,7 +621,7 @@
      en cada paso, ver [data-auth-mode] en app.css). Como esta página
      abre por defecto en "Registro — paso 1", el punto de partida usa
      ESE valor para que ya arranque fiel a como se ve ahí. */
-  var MASCOT_DEFAULTS = { left: -39.2, top: -35.42, width: 1215 };
+  var MASCOT_DEFAULTS = Object.assign({ left: -39.2, top: -35.42, width: 1215 }, savedMascot);
   var mascotPos = JSON.parse(JSON.stringify(MASCOT_DEFAULTS));
   var mascotEl = document.getElementById("mascot");
 
@@ -409,12 +655,39 @@
     function block(name, s) {
       return "." + name + " {\n" +
         "  left: " + s.left + "%; top: " + s.top + "%; width: " + s.width + "%;\n" +
+        (s.rot !== undefined ? "  rotate: " + s.rot + "deg;\n" : "") +
         "  transform-origin: " + s.ox + "% " + s.oy + "%;\n}";
     }
     out.textContent =
       ".auth__mascot { left: " + mascotPos.left + "%; top: " + mascotPos.top + "%; width: " + mascotPos.width + "px; }\n\n" +
-      block("auth__mascot-hand-l", state["hand-l"]) + "\n\n" +
-      block("auth__mascot-arm-l (solo left/top/width/transform-origin)", state["arm-l"]);
+      "/* rig: left -6.4%; top 1.3%; width 89.5% del torso (fijo, lleva la animación; pivote " + document.getElementById("p-rig-1").style.transformOrigin + ") */\n" +
+      block("auth__mascot-arm-1 (brazo2.png, % del rig, z -1)", state["arm-1"]) + "\n\n" +
+      block("auth__mascot-hand-1 (manos2.png, % del rig" + (document.getElementById("hand1-front").checked ? ", DELANTE" : ", detrás") + ")", state["hand-1"]) + "\n\n" +
+      "/* --- pose flexionada (mismo marco y hombro que brazo2/mano2) --- */\n" +
+      block("brazo1 flexionado (brazo1.png, % del marco)", state["arm-b"]) + "\n\n" +
+      block("mano1 flexionada (manos1.png, % del marco" + (document.getElementById("handb-front").checked ? ", DELANTE" : ", detrás") + ")", state["hand-b"]) + "\n\n" +
+      ikBlock() + "\n\n" +
+      block("auth__mascot-hand-l (dedos, delante del modal)", state["hand-l"]);
+  }
+
+  /* Balanceo idle del brazo izquierdo: sliders → variables de los keyframes
+     mascotArmL (ver CSS arriba). Mismo reparto ida/vuelta que el original
+     (−55% / +45% del giro total). */
+  function applySway() {
+    var k = state.ik;
+    mascotEl.style.setProperty("--armL-a", (-0.55 * k.swayAmp) + "deg");
+    mascotEl.style.setProperty("--armL-b", (0.45 * k.swayAmp) + "deg");
+    mascotEl.style.setProperty("--armL-dur", k.swayDur + "s");
+  }
+
+  function ikBlock() {
+    var k = state.ik;
+    return "/* --- balanceo idle del brazo izquierdo --- */\n" +
+      "@keyframes mascotArmL { rotate(" + (-0.55 * k.swayAmp).toFixed(2) + "deg) ↔ rotate(" + (0.45 * k.swayAmp).toFixed(2) + "deg) } · " + k.swayDur + "s\n\n" +
+      "/* --- modal: la mano izquierda lleva su esquina a la inferior-derecha; la derecha no se mueve --- */\n" +
+      "cierre " + k.closeMs + "ms (ease-in-out 0.77,0,0.175,1) · cerrado " + k.pauseMs + "ms · apertura " + k.openMs + "ms (ease-out 0.23,1,0.32,1)\n" +
+      "triángulos: " + k.tri0 + "px en reposo → " + k.tri1 + "px cerrado · brazo2 se desvanece en el primer " + Math.round(k.armFade * 100) + "% del cierre\n" +
+      "brazo derecho: giro " + k.armRRot + "° · X " + k.armRX + "px · subir " + k.armRUp + "px";
   }
 
   document.querySelectorAll("input[data-t]").forEach(function (input) {
@@ -424,7 +697,8 @@
       var v = parseFloat(input.value);
       if (isNaN(v)) return;
       state[t][p] = v;
-      apply(t);
+      if (els[t]) apply(t);   // "ik" no tiene elemento propio: lo aplican applyPinch()/frame() en cada frame
+      if (t === "ik") applySway();
       syncInputs(t);
       printOut();
       if (t === "hand-l") followZoomToHand();
@@ -450,7 +724,11 @@
 
   function setZoom(v) {
     v = Math.max(1, Math.min(8, v));
-    mascotEl.style.transform = "scale(" + v + ")";
+    /* El scale va en #wrap, NO en .mascot: un transform en .mascot crea un
+       stacking context que encierra brazo-derecho/dedos (z-index 3) y los
+       deja DETRÁS de la tarjeta. En #wrap (que ya es su propio contexto)
+       no afecta el orden interno de capas. */
+    wrapEl.style.transform = v === 1 ? "" : "scale(" + v + ")";
     zoomRange.value = v;
     zoomNumber.value = v;
     followZoomToHand();
@@ -459,7 +737,10 @@
   function followZoomToHand() {
     if (!zoomFollow.checked) return;
     var c = handCenter();
-    mascotEl.style.transformOrigin = c.x + "% " + c.y + "%";
+    /* Origen en px relativos a #wrap (offset* ignora transforms). */
+    wrapEl.style.transformOrigin =
+      (mascotEl.offsetLeft + c.x / 100 * mascotEl.offsetWidth) + "px " +
+      (mascotEl.offsetTop + c.y / 100 * mascotEl.offsetHeight) + "px";
   }
 
   zoomRange.addEventListener("input", function () { setZoom(parseFloat(zoomRange.value)); });
@@ -486,27 +767,36 @@
     animSpeedRange.value = v;
     animSpeedNumber.value = v;
   }
-  /* Dedos sincronizados por JS (igual que en producción, ver
-     syncHandRotation() en login.js): dos marcadores invisibles DENTRO
-     del brazo heredan gratis su transform final real (cadera+torso+
-     brazo juntos, venga de donde venga — rotación, translateY, scaleY,
-     lo que sea). En cada frame se compara su posición actual contra la
-     de reposo (medida una vez, con la animación apagada) y esa
-     comparación da la traslación+rotación exacta que hay que aplicarle
-     a los dedos. Un primer intento solo sumaba ÁNGULOS de rotación y
-     dejaba un despegue chiquito porque no capturaba el translateY/
-     scaleY del "respirar" del torso. */
+  /* Dedos sincronizados por JS — MISMO método que syncHandRotation() de
+     login.js: TRES marcadores de tamaño 0 dentro del marco de brazo2/mano2
+     (p-rig-1) heredan su transform real (cadera+torso+brazo). Comparando
+     su posición actual contra la de reposo sale la transformación
+     COMPLETA (giro + traslación + el estirón del "respirar" del torso),
+     que se aplica a los dedos como matrix(). El marcador A va en el
+     transform-origin de los dedos (se coloca en captureRest()). */
   var handLEl = document.getElementById("p-hand-l");
-  var armLEl = els["arm-l"];
-  var markerA = document.createElement("i");
-  var markerB = document.createElement("i");
-  markerA.style.cssText = "position:absolute;left:75.4%;top:71.35%;width:1px;height:1px;";
-  markerB.style.cssText = "position:absolute;left:20%;top:20%;width:1px;height:1px;";
-  armLEl.appendChild(markerA);
-  armLEl.appendChild(markerB);
+  var rigEl = document.getElementById("p-rig-1");
+  function zeroMarker(parent, css) {
+    var i = document.createElement("i");
+    i.style.cssText = "position:absolute;width:0;height:0;" + (css || "");
+    parent.appendChild(i);
+    return i;
+  }
+  var markerA = zeroMarker(rigEl);
+  var markerB = zeroMarker(rigEl, "left:20%;top:20%;");
+  var markerC = zeroMarker(rigEl, "left:30%;top:90%;");
 
   var handSyncRunning = false;
-  var restA = { x: 0, y: 0 }, restB = { x: 0, y: 0 }, restAngle = 0;
+  var rest = null;
+
+  function zoomK() {
+    return wrapEl.offsetWidth ? wrapEl.getBoundingClientRect().width / wrapEl.offsetWidth : 1;
+  }
+  /* Caja de un elemento en px del personaje, sin el zoom. */
+  function rectRel(el) {
+    var r = el.getBoundingClientRect(), m = mascotEl.getBoundingClientRect(), k = zoomK();
+    return { x: (r.left - m.left) / k, y: (r.top - m.top) / k, w: r.width / k, h: r.height / k };
+  }
 
   /* Medido RELATIVO a #mascot (no a la ventana): así, si mueves el
      fieldset "Personaje completo" (o cambias de modo de tarjeta, que
@@ -517,7 +807,12 @@
   function markerPoint(el) {
     var r = el.getBoundingClientRect();
     var m = mascotEl.getBoundingClientRect();
-    return { x: r.left - m.left, y: r.top - m.top };
+    /* getBoundingClientRect devuelve píxeles YA escalados por el zoom
+       (scale en #wrap), pero el translate de los dedos se aplica en
+       píxeles locales SIN escalar — sin esta división, con zoom ×4 los
+       dedos se desplazaban 4 veces de más y se despegaban del brazo. */
+    var k = zoomK();
+    return { x: (r.left - m.left) / k, y: (r.top - m.top) / k };
   }
 
   /* Mide la posición de "reposo" (animación apagada un instante) sin que
@@ -529,35 +824,279 @@
   function captureRest() {
     var wasAnimating = mascotEl.classList.contains("is-animating");
     mascotEl.classList.remove("is-animating");
-    void armLEl.offsetWidth; // fuerza a aplicar el cambio antes de medir
-    restA = markerPoint(markerA);
-    restB = markerPoint(markerB);
-    restAngle = Math.atan2(restB.y - restA.y, restB.x - restA.x);
+    /* El reposo es SIN giro de pose (propiedad "rotate" de los marcos): se quita un instante
+       para medir, igual que la animación. */
+    var prevRot = rigEl.style.rotate, prevRotB = rigBEl.style.rotate;
+    rigEl.style.rotate = ""; rigBEl.style.rotate = "";
+    void rigEl.offsetWidth; // fuerza a aplicar el cambio antes de medir
+    /* Origen de los dedos en px del personaje — offset* ignora el
+       transform que ya les ponen el balanceo/pellizco. */
+    var o = getComputedStyle(handLEl).transformOrigin.split(" ");
+    var ox = handLEl.offsetLeft + parseFloat(o[0]), oy = handLEl.offsetTop + parseFloat(o[1]);
+    var r = rectRel(rigEl);
+    if (r.w && r.h) {
+      markerA.style.left = ((ox - r.x) / r.w * 100) + "%";
+      markerA.style.top = ((oy - r.y) / r.h * 100) + "%";
+    }
+    var a = markerPoint(markerA), b = markerPoint(markerB), c = markerPoint(markerC);
+    rigEl.style.rotate = prevRot; rigBEl.style.rotate = prevRotB;
     if (wasAnimating) mascotEl.classList.add("is-animating");
+    var u0x = b.x - a.x, u0y = b.y - a.y, v0x = c.x - a.x, v0y = c.y - a.y;
+    var det = u0x * v0y - v0x * u0y;
+    rest = det ? { a: a, u0x: u0x, u0y: u0y, v0x: v0x, v0y: v0y, det: det } : null;
   }
+  /* Los dedos ahora siguen al brazo extendido SIEMPRE (también cuando
+     gira con la animación del pellizco, no solo con el balanceo), así
+     que el reposo se re-mide con cualquier cambio, no solo animando. */
+  var restReady = false;
   function recaptureRestIfAnimating() {
-    if (handSyncRunning) captureRest();
+    if (restReady) captureRest();
   }
 
-  function handSyncTick() {
-    if (!handSyncRunning) return;
-    var a = markerPoint(markerA), b = markerPoint(markerB);
-    var angleDeg = (Math.atan2(b.y - a.y, b.x - a.x) - restAngle) * (180 / Math.PI);
-    var dx = a.x - restA.x, dy = a.y - restA.y;
-    handLEl.style.transform =
-      "translate(" + dx.toFixed(2) + "px," + dy.toFixed(2) + "px) rotate(" + angleDeg.toFixed(3) + "deg)";
-    requestAnimationFrame(handSyncTick);
+  /* Matriz del brazo extendido respecto a su reposo (balanceo + giro de
+     pose): L = [u1 v1]·[u0 v0]⁻¹ + traslación del marcador A. Igual que
+     tick() de login.js. */
+  function swayMatrix() {
+    if (!rest) return null;
+    var a = markerPoint(markerA), b = markerPoint(markerB), c = markerPoint(markerC), R = rest;
+    var u1x = b.x - a.x, u1y = b.y - a.y, v1x = c.x - a.x, v1y = c.y - a.y;
+    return [
+      (u1x * R.v0y - v1x * R.u0y) / R.det, (u1y * R.v0y - v1y * R.u0y) / R.det,
+      (v1x * R.u0x - u1x * R.v0x) / R.det, (v1y * R.u0x - u1y * R.v0x) / R.det,
+      a.x - R.a.x, a.y - R.a.y
+    ];
   }
 
   animOn.addEventListener("change", function (e) {
     mascotEl.classList.toggle("is-animating", e.target.checked);
     handSyncRunning = e.target.checked;
-    if (handSyncRunning) {
-      captureRest();
-      handSyncTick();
-    } else {
-      handLEl.style.transform = "";
-    }
+    if (handSyncRunning) captureRest();
+    // el transform de los dedos lo pone frame() (abajo), junto con el pellizco
+  });
+
+  /* ---------- Pellizco del modal ----------
+     El sitio hoy: cierra .22s lineal (scale hacia la esquina inferior-
+     derecha, origen de app.css), pausa 500ms (SQUASH_PAUSE_MS de
+     login.js), abre .26s lineal. Aquí se prueba una versión más fluida
+     (tiempos y curvas en state.ik, ver pinchProgress()). Se maneja por JS
+     con un progreso p (0 = abierto, 1 = cerrado) para poder ponerlo en
+     cámara lenta o congelarlo con el slider, y porque dedos y mano tienen
+     que seguir a la esquina frame a frame. */
+  var cardEl = document.getElementById("debug-card");
+  var stageEl = wrapEl.querySelector(".auth__stage");
+  var cornerTL = wrapEl.querySelector(".auth__corner--tl");
+  var cornerBR = wrapEl.querySelector(".auth__corner--br");
+  var armREl = document.getElementById("p-arm-r");
+  var pinchSpeedRange = document.getElementById("pinch-speed-range");
+  var pinchSpeedNumber = document.getElementById("pinch-speed-number");
+  var pinchPRange = document.getElementById("pinch-p-range");
+  var pinchPNumber = document.getElementById("pinch-p-number");
+  var pinchSpeed = 1, pinchScrub = 0, pinchStart = null;
+
+  function setPinchSpeed(v) {
+    pinchSpeed = Math.max(0.05, Math.min(1, v));
+    pinchSpeedRange.value = pinchSpeed; pinchSpeedNumber.value = pinchSpeed;
+  }
+  function showPinchP(p) {
+    pinchPRange.value = p; pinchPNumber.value = (Math.round(p * 100) / 100);
+  }
+  pinchSpeedRange.addEventListener("input", function () { setPinchSpeed(parseFloat(pinchSpeedRange.value)); });
+  pinchSpeedNumber.addEventListener("input", function () {
+    var v = parseFloat(pinchSpeedNumber.value);
+    if (!isNaN(v)) setPinchSpeed(v);
+  });
+  function onScrub(input) {
+    var v = parseFloat(input.value);
+    if (isNaN(v)) return;
+    pinchStart = null;                       // congelar = deja de reproducir
+    pinchScrub = Math.max(0, Math.min(1, v));
+    showPinchP(pinchScrub);
+  }
+  pinchPRange.addEventListener("input", function () { onScrub(pinchPRange); });
+  pinchPNumber.addEventListener("input", function () { onScrub(pinchPNumber); });
+  document.getElementById("btn-pinch").addEventListener("click", function () {
+    pinchScrub = 0;
+    pinchStart = performance.now();
+  });
+
+  /* cubic-bezier() de CSS evaluada en JS (el pellizco se maneja por frame
+     para sincronizar dedos y mano, así que la curva no puede ir en CSS):
+     dado el avance del tiempo x (0–1) busca el t de la curva con Newton
+     (y bisección de respaldo) y devuelve su y. */
+  function cubicBezier(x1, y1, x2, y2) {
+    function bx(t) { return ((1 - 3 * x2 + 3 * x1) * t + (3 * x2 - 6 * x1)) * t * t + 3 * x1 * t; }
+    function by(t) { return ((1 - 3 * y2 + 3 * y1) * t + (3 * y2 - 6 * y1)) * t * t + 3 * y1 * t; }
+    function dbx(t) { return 3 * (1 - 3 * x2 + 3 * x1) * t * t + 2 * (3 * x2 - 6 * x1) * t + 3 * x1; }
+    return function (x) {
+      if (x <= 0) return 0;
+      if (x >= 1) return 1;
+      var t = x, i;
+      for (i = 0; i < 8; i++) {
+        var d = dbx(t);
+        if (Math.abs(d) < 1e-6) break;
+        t -= (bx(t) - x) / d;
+      }
+      if (!(t >= 0 && t <= 1) || Math.abs(bx(t) - x) > 1e-5) {
+        var lo = 0, hi = 1;
+        t = x;
+        for (i = 0; i < 40; i++) {
+          if (bx(t) < x) lo = t; else hi = t;
+          t = (lo + hi) / 2;
+        }
+      }
+      return by(t);
+    };
+  }
+  /* Cierre = movimiento en pantalla (la mano jala la esquina) → ease-in-out
+     fuerte: arranca y frena suave, sin el tirón seco del lineal.
+     Apertura = el modal vuelve a entrar → ease-out fuerte: sale rápido y
+     aterriza suave. Curvas tal cual de la guía de animación. */
+  var EASE_CLOSE = cubicBezier(0.77, 0, 0.175, 1);
+  var EASE_OPEN = cubicBezier(0.23, 1, 0.32, 1);
+  var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+  /* ---------- Línea de tiempo ----------
+       0 → C      cierre: la mano izquierda lleva su esquina (sup-izq) en
+                  línea recta hasta la inf-der, que NO se mueve — la mano
+                  derecha la sostiene quieta.
+       C → C+P    cerrado entre las dos manos (aquí el sitio cambia
+                  Login ⇄ Registro).
+       C+P → end  apertura: la mano izquierda regresa su esquina. */
+  function pinchTimes() {
+    var k = state.ik, rm = reduceMotion.matches;
+    /* Movimiento reducido: sin recorrido — se cierra y abre de golpe
+       (misma idea que UI.reduced en login.js), solo queda la pausa. */
+    var T = { C: rm ? 0 : k.closeMs, P: k.pauseMs, O: rm ? 0 : k.openMs };
+    T.end = T.C + T.P + T.O;
+    return T;
+  }
+
+  var pinchT = -1;   // ms de la secuencia mientras se reproduce; -1 = no se está reproduciendo
+  function pinchProgress(now) {
+    if (pinchStart === null) { pinchT = -1; return pinchScrub; }
+    var T = pinchTimes(), t = (now - pinchStart) * pinchSpeed, p;
+    if (t < T.C) p = EASE_CLOSE(t / T.C);
+    else if (t < T.C + T.P) p = 1;
+    else if (t < T.end) p = 1 - EASE_OPEN((t - T.C - T.P) / T.O);
+    else { pinchStart = null; p = 0; }
+    pinchT = pinchStart === null ? -1 : t;
+    showPinchP(p);
+    return p;
+  }
+
+  /* Aplica el modal (p: 0 abierto → 1 cerrado) y devuelve cuánto se movió
+     su esquina sup-izq, en px del personaje — la mano izquierda (dedos y
+     mano2) se lleva EXACTO eso. La esquina inf-der NO se mueve: la tarjeta
+     se encoge con origen ahí (transform-origin de app.css), porque la mano
+     derecha la sostiene. Triángulos que crecen de tri0 a tri1: el sup-izq
+     viaja hasta quedar EXACTO sobre el inf-der ya crecido (W − tri1,
+     H − tri1) y ahí forman el cuadro final; la tarjeta termina del ancho
+     de ese cuadro (escala pareja tri1/W), escondida debajo. */
+  function applyPinch(p) {
+    var k = state.ik, W = stageEl.offsetWidth, H = stageEl.offsetHeight;
+    var s = 1 - (1 - Math.min(1, k.tri1 / W)) * p;
+    cardEl.style.transformOrigin = "";
+    cardEl.style.transform = p > 0 ? "scale(" + s.toFixed(4) + ")" : "";
+    var dx = (W - k.tri1) * p, dy = (H - k.tri1) * p;
+    cornerTL.style.transform = p > 0 ? "translate(" + dx.toFixed(2) + "px," + dy.toFixed(2) + "px)" : "";
+    cornerBR.style.transform = "";
+    /* --tri en los DOS triángulos (no en #wrap): una variable en el padre
+       recalcularía estilos de todo el personaje en cada frame. */
+    var tri = (k.tri0 + (k.tri1 - k.tri0) * p) + "px";
+    cornerTL.style.setProperty("--tri", tri);
+    cornerBR.style.setProperty("--tri", tri);
+    return { x: dx, y: dy };
+  }
+
+  /* ---------- Brazo izquierdo ----------
+     Durante el cierre: mano2 (dentro del marco del brazo, detrás del
+     cuerpo como en reposo) y los dedos (delante del modal) viajan con la
+     esquina; brazo2 se desvanece mientras la mano se aleja del hombro
+     (armFade) y reaparece al volver. El brazo flexionado (brazo1 + mano1,
+     p-rig-b) solo se muestra con "Pose sin reproducir: Flexionado", para
+     verlo/acomodarlo — no entra en el cierre. */
+  var rigBEl = document.getElementById("p-rig-b");
+  var armPoseSel = document.getElementById("arm-pose");
+  function showBentPose() {
+    return pinchT < 0 && pinchScrub <= 0 && armPoseSel.value === "bent";
+  }
+
+  /* ---------- Calca del video ----------
+     Cuadro del mp4 (1920×1200) escalado para que la distancia entre
+     pupilas sea la misma que en cabeza.png (281.4px de 992 de ancho), y
+     corrido para que el punto medio de las pupilas caiga sobre el mismo
+     punto de la cabeza (41.03% / 61.91% de cabeza.png). Medido en el
+     cuadro 0 del video: pupilas en (870,378) y (1001,367). */
+  var videoRef = document.getElementById("video-ref");
+  var videoSel = document.getElementById("video-ref-sel");
+  var headEl = document.getElementById("p-head");
+  var eyeMarker = zeroMarker(headEl, "left:41.03%;top:61.91%;");
+  var VIDEO = { w: 1920, eyeX: 935.5, eyeY: 372.5, eyeDist: 131.5 };
+  var HEAD_EYE_DIST = 281.4 / 992;
+  videoRef.style.display = "none";
+  function placeVideoRef() {
+    if (!videoSel.value) { videoRef.style.display = "none"; return; }
+    if (videoRef.getAttribute("src") !== videoSel.value) videoRef.src = videoSel.value;
+    var s = HEAD_EYE_DIST * headEl.offsetWidth / VIDEO.eyeDist;
+    var M = markerPoint(eyeMarker);
+    videoRef.style.display = "block";
+    videoRef.style.width = (VIDEO.w * s) + "px";
+    videoRef.style.transform = "translate(" + (M.x - VIDEO.eyeX * s).toFixed(2) + "px," + (M.y - VIDEO.eyeY * s).toFixed(2) + "px)";
+  }
+  var videoOp = document.getElementById("video-ref-op"), videoOpN = document.getElementById("video-ref-op-n");
+  function setVideoOp(v) {
+    v = Math.max(0.1, Math.min(1, v));
+    videoRef.style.opacity = v; videoOp.value = v; videoOpN.value = v;
+  }
+  videoOp.addEventListener("input", function () { setVideoOp(parseFloat(videoOp.value)); });
+  videoOpN.addEventListener("input", function () { var v = parseFloat(videoOpN.value); if (!isNaN(v)) setVideoOp(v); });
+
+  document.getElementById("handb-front").addEventListener("change", function (e) {
+    rigBEl.classList.toggle("hand-front", e.target.checked);
+    printOut();
+  });
+
+  /* Un solo bucle por frame: modal → mano izquierda (dedos + mano2, con el
+     mismo arrastre que la esquina) → brazo2 que se desvanece. */
+  function frame(now) {
+    var p = pinchProgress(now);
+    var drag = applyPinch(p);
+    var bent = showBentPose();
+    rigEl.style.rotate = ""; rigBEl.style.rotate = "";
+    rigEl.style.opacity = bent ? "0" : "";
+    rigBEl.style.opacity = bent ? "1" : "0";
+
+    /* Balanceo del brazo (null si todavía no hay reposo medido). */
+    var m = swayMatrix(), mm = m || [1, 0, 0, 1, 0, 0];
+    /* Mano2 vive DENTRO del marco del brazo (que se mece): para que en
+       pantalla se mueva exactamente "drag", se le pasa ese vector llevado a
+       los ejes del marco (inversa de la parte lineal del balanceo). */
+    var det = mm[0] * mm[3] - mm[1] * mm[2] || 1;
+    var lx = (mm[3] * drag.x - mm[2] * drag.y) / det, ly = (mm[0] * drag.y - mm[1] * drag.x) / det;
+    els["hand-1"].style.translate = p > 0 ? lx.toFixed(2) + "px " + ly.toFixed(2) + "px" : "";
+    /* Brazo2 se desvanece en el primer armFade del cierre (y reaparece en
+       el último tramo de la apertura, porque p regresa a 0). */
+    var fade = Math.min(1, p / Math.max(0.01, state.ik.armFade));
+    els["arm-1"].style.opacity = p > 0 ? (1 - fade).toFixed(3) : "";
+    /* Dedos: el mismo arrastre (en pantalla) + el balanceo del brazo. */
+    handLEl.style.transform = (m || p > 0) ? "translate(" + drag.x.toFixed(2) + "px," + drag.y.toFixed(2) + "px) matrix(" +
+      mm.map(function (n) { return n.toFixed(5); }).join(",") + ")" : "";
+    handLEl.style.opacity = bent ? "0" : "";
+    if (videoSel.value) placeVideoRef(); else videoRef.style.display = "none";
+    /* Brazo derecho: giro + subida ligeros durante el cierre. Van en las
+       propiedades sueltas "rotate"/"translate" (no en "transform"): así se
+       SUMAN al balanceo CSS (mascotArmR, que usa transform) sin pisarlo,
+       con el mismo transform-origin (el hombro). Usa p tal cual (ya viene
+       con la curva del pellizco): se mueve al mismo ritmo que la otra
+       mano, como un solo gesto. */
+    var e = p;
+    armREl.style.rotate = p > 0 ? (state.ik.armRRot * e).toFixed(3) + "deg" : "";
+    armREl.style.translate = p > 0 ? (state.ik.armRX * e).toFixed(2) + "px " + (-state.ik.armRUp * e).toFixed(2) + "px" : "";
+    requestAnimationFrame(frame);
+  }
+  document.getElementById("arm-steady").addEventListener("change", function (e) {
+    mascotEl.classList.toggle("no-steady", !e.target.checked);
+    recaptureRestIfAnimating();
   });
   animSpeedRange.addEventListener("input", function () { setAnimSpeed(parseFloat(animSpeedRange.value)); });
   animSpeedNumber.addEventListener("input", function () {
@@ -566,68 +1105,71 @@
   });
 
   document.getElementById("toggle-outlines").addEventListener("change", function (e) {
-    document.getElementById("p-arm-l").style.outline = e.target.checked ? "" : "none";
-    document.getElementById("p-hand-l").style.outline = e.target.checked ? "" : "none";
+    Object.keys(els).forEach(function (k) {
+      els[k].style.outline = e.target.checked ? "" : "none";
+    });
   });
   document.getElementById("toggle-origins").addEventListener("change", function (e) {
-    origins["hand-l"].style.display = e.target.checked ? "block" : "none";
-    origins["arm-l"].style.display = e.target.checked ? "block" : "none";
+    Object.keys(origins).forEach(function (k) {
+      origins[k].style.display = e.target.checked ? "block" : "none";
+    });
+  });
+
+  /* ---------- Capas: modal / cuerpo / brazos / dedos ----------
+     visibility (no display): así el modal sigue ocupando su espacio y los
+     marcadores que viven dentro de las piezas (sincronizar dedos, hombro
+     del esqueleto) siguen midiendo bien aunque estén ocultas. */
+  function bindVis(id, fn) {
+    var cb = document.getElementById(id);
+    cb.addEventListener("change", function () { fn(cb.checked); });
+    fn(cb.checked);
+  }
+  function vis(el) { return function (on) { el.style.visibility = on ? "visible" : "hidden"; }; }
+  bindVis("vis-modal", function (on) { wrapEl.classList.toggle("no-modal", !on); });
+  bindVis("vis-body", function (on) { mascotEl.classList.toggle("body-hidden", !on); });
+  bindVis("vis-arm-r", vis(document.getElementById("p-arm-r")));
+  bindVis("vis-arm-1", vis(els["arm-1"]));
+  bindVis("vis-hand-1", vis(els["hand-1"]));
+  bindVis("vis-hand-l", vis(els["hand-l"]));
+  bindVis("vis-arm-b", vis(els["arm-b"]));
+  bindVis("vis-hand-b", vis(els["hand-b"]));
+  document.getElementById("hand1-front").addEventListener("change", function (e) {
+    document.getElementById("p-rig-1").classList.toggle("hand-front", e.target.checked);
+    printOut();
+  });
+
+  var saveMsg = document.getElementById("save-msg");
+  document.getElementById("btn-save").addEventListener("click", function () {
+    try {
+      localStorage.setItem(SAVE_KEY, JSON.stringify({ state: state, mascot: mascotPos }));
+      /* Lo guardado pasa a ser también el destino de "Restaurar". */
+      DEFAULTS = JSON.parse(JSON.stringify(state));
+      MASCOT_DEFAULTS = JSON.parse(JSON.stringify(mascotPos));
+      saveMsg.textContent = "✓ Guardado como valor actual (" + new Date().toLocaleTimeString() + ")";
+    } catch (e) {
+      saveMsg.textContent = "✗ No se pudo guardar (localStorage bloqueado). Copia los valores del cuadro de abajo.";
+    }
   });
 
   document.getElementById("btn-reset").addEventListener("click", function () {
     state = JSON.parse(JSON.stringify(DEFAULTS));
     mascotPos = JSON.parse(JSON.stringify(MASCOT_DEFAULTS));
-    apply("hand-l"); apply("arm-l"); applyMascotPos();
-    syncInputs("hand-l"); syncInputs("arm-l"); syncMascotInputs();
+    ["hand-l", "arm-1", "hand-1", "arm-b", "hand-b"].forEach(function (k) { apply(k); syncInputs(k); });
+    syncInputs("ik"); applySway();
+    applyMascotPos(); syncMascotInputs();
     printOut();
     recaptureRestIfAnimating();
   });
 
-  /* ---------- Pivote rígido: mismo centro de giro absoluto que el brazo ----------
-     Cadera/torso son FIJOS (no tienen sliders aquí), así que sus
-     posiciones en % de .mascot están constantes: se recalculan una sola
-     vez a partir de left/top/width de .mascot-hip y .mascot-torso (ver
-     arriba en el CSS) — mismo método/números que ya se usó a mano para
-     ".auth__mascot-arm-r" en producción. */
-  var TORSO = (function () {
-    var hipW = 0.5130, hipL = 0.4107, hipT = 0.6640;
-    var hipH = hipW * (840 / 1539);            // cadera.png
-    var mascotH = 2500 / 3000;
-    var torsoW = 0.5757 * hipW;
-    var torsoL = hipL + (-0.0468) * hipW;
-    var torsoT = (hipT * mascotH) + (-0.8964) * hipH;
-    var torsoH = torsoW * (1075 / 886);        // torso.png
-    return { w: torsoW, l: torsoL, t: torsoT, h: torsoH };
-  })();
-
-  document.getElementById("btn-rigid-pivot").addEventListener("click", function () {
-    var a = state["arm-l"], h = state["hand-l"];
-    var mascotH = 2500 / 3000;
-
-    var armW = (a.width / 100) * TORSO.w;
-    var armH = armW * (995 / 1411);            // brazo_izquierdo_arm.png
-    var armL = TORSO.l + (a.left / 100) * TORSO.w;
-    var armT = TORSO.t + (a.top / 100) * TORSO.h;
-
-    var pivotX = armL + (a.ox / 100) * armW;
-    var pivotY = armT + (a.oy / 100) * armH;
-
-    var handL = h.left / 100;
-    var handT = (h.top / 100) * mascotH;
-    var handW = h.width / 100;
-    var handH = handW * (268 / 246);           // brazo_izquierdo_dedos.png
-
-    h.ox = Math.round(((pivotX - handL) / handW) * 1000) / 10;
-    h.oy = Math.round(((pivotY - handT) / handH) * 1000) / 10;
-
-    apply("hand-l");
-    syncInputs("hand-l");
-    printOut();
-  });
-
-  apply("hand-l"); apply("arm-l");
-  syncInputs("hand-l"); syncInputs("arm-l");
+  ["hand-l", "arm-1", "hand-1", "arm-b", "hand-b"].forEach(function (k) { apply(k); syncInputs(k); });
+  syncInputs("ik"); applySway();
+  /* Reposo de los dedos: se mide cuando ya cargaron las imágenes (el alto
+     de los dedos sale de su <img>); desde ahí los dedos siguen siempre al
+     brazo extendido. */
+  function initRest() { captureRest(); restReady = true; }
+  if (document.readyState === "complete") initRest(); else window.addEventListener("load", initRest);
   printOut();
+  requestAnimationFrame(frame);
 })();
 </script>
 </body>

@@ -39,7 +39,7 @@ class StockAlerts
     public static function totalStock($sku)
     {
         return (int) Database::scalar(
-            'SELECT COALESCE(SUM(p.stock), 0) FROM products p
+            'SELECT COALESCE(SUM(p.stock), 0) FROM v_inventory p
                JOIN branches b ON b.id = p.branch_id AND b.status = "active"
               WHERE p.sku = ? AND p.status = "active"', [$sku]);
     }
@@ -135,7 +135,7 @@ class StockAlerts
             if (!$alerts) return 0;
 
             $branches = Database::all(
-                'SELECT b.name, p.stock FROM products p JOIN branches b ON b.id = p.branch_id AND b.status = "active"
+                'SELECT b.name, p.stock FROM v_inventory p JOIN branches b ON b.id = p.branch_id AND b.status = "active"
                   WHERE p.sku = ? AND p.status = "active" AND p.stock > 0 ORDER BY p.stock DESC', [$sku]);
             $sent = 0;
             foreach ($alerts as $a) {
@@ -159,7 +159,7 @@ class StockAlerts
     public static function notifyIfRestockedById($productId)
     {
         try {
-            $sku = Database::scalar('SELECT sku FROM products WHERE id = ?', [(int) $productId]);
+            $sku = Database::scalar('SELECT sku FROM v_inventory WHERE id = ?', [(int) $productId]);
             return $sku ? self::notifyIfRestocked($sku) : 0;
         } catch (\Throwable $e) {
             error_log('[StockAlerts] ' . $e->getMessage());

@@ -11,8 +11,8 @@ class BranchController extends Controller
                 'SELECT b.*,
                         (SELECT COUNT(*) FROM users u WHERE u.branch_id = b.id AND u.role = "manager") AS managers,
                         (SELECT COUNT(*) FROM users u WHERE u.branch_id = b.id AND u.role = "cashier") AS cashiers,
-                        (SELECT COUNT(*) FROM products p WHERE p.branch_id = b.id AND p.status = "active") AS products,
-                        (SELECT COUNT(*) FROM products p WHERE p.branch_id = b.id AND p.status = "active" AND p.stock <= p.min_stock) AS low_stock
+                        (SELECT COUNT(*) FROM v_inventory p WHERE p.branch_id = b.id AND p.status = "active") AS products,
+                        (SELECT COUNT(*) FROM v_inventory p WHERE p.branch_id = b.id AND p.status = "active" AND p.stock <= p.min_stock) AS low_stock
                  FROM branches b
                  ORDER BY b.name'
             );

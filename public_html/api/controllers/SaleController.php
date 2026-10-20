@@ -61,10 +61,12 @@ class SaleController extends Controller
 
             $ids = implode(',', array_map('intval', array_keys($wanted)));
             $rows = Database::all(
-                "SELECT id, name, sku, price, discount_percent, discount_starts_at, discount_ends_at,
-                        tax_rate, stock, status
-                 FROM products
-                 WHERE branch_id = " . (int) $branchId . " AND id IN ($ids)
+                "SELECT i.id, i.product_id, p.name, p.sku, p.price, p.discount_percent,
+                        p.discount_starts_at, p.discount_ends_at, p.tax_rate, i.stock,
+                        IF(p.status = 'active' AND i.status = 'active', 'active', 'inactive') AS status
+                 FROM inventory i
+                 JOIN products p ON p.id = i.product_id
+                 WHERE i.branch_id = " . (int) $branchId . " AND i.id IN ($ids)
                  FOR UPDATE"
             );
             $byId = [];
@@ -105,7 +107,8 @@ class SaleController extends Controller
                 $tax      += $lineTax;
 
                 $lines[] = [
-                    'product_id'    => $pid,
+                    'product_id'    => $pid,                       // fila de inventario (id que usa el POS)
+                    'catalog_id'    => (int) $p['product_id'],     // producto maestro
                     'product_name'  => $p['name'],
                     'sku'           => $p['sku'],
                     'list_unit_price' => $listUnit,
@@ -171,7 +174,7 @@ class SaleController extends Controller
                         unit_discount, unit_price, tax_rate, quantity, line_subtotal, line_tax, line_total)
                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                     [
-                        $saleId, $ln['product_id'], $ln['product_name'], $ln['sku'],
+                        $saleId, $ln['catalog_id'], $ln['product_name'], $ln['sku'],
                         $ln['list_unit_price'], $ln['discount_percent'], $ln['unit_discount'],
                         $ln['unit_price'], $ln['tax_rate'], $ln['quantity'],
                         $ln['line_subtotal'], $ln['line_tax'], $ln['line_total'],
@@ -179,7 +182,7 @@ class SaleController extends Controller
                 );
                 // Descuento de inventario
                 Database::run(
-                    'UPDATE products SET stock = stock - ? WHERE id = ?',
+                    'UPDATE inventory SET stock = stock - ? WHERE id = ?',
                     [$ln['quantity'], $ln['product_id']]
                 );
                 Database::run(
@@ -187,7 +190,7 @@ class SaleController extends Controller
                        (branch_id, product_id, user_id, type, quantity_delta, resulting_stock, reference, note)
                      VALUES (?, ?, ?, "sale", ?, ?, ?, ?)',
                     [
-                        $branchId, $ln['product_id'], $user['id'],
+                        $branchId, $ln['catalog_id'], $user['id'],
                         -$ln['quantity'], $ln['resulting_stock'], $folio, 'Venta POS',
                     ]
                 );

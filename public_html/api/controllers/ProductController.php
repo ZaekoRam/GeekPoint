@@ -43,7 +43,7 @@ class ProductController extends Controller
         $rows = Database::all(
             'SELECT p.*, c.slug AS category_slug, c.name_es AS category_es, c.name_en AS category_en,
                     b.name AS branch_name, b.code AS branch_code
-             FROM products p
+             FROM v_inventory p
              LEFT JOIN categories c ON c.id = p.category_id
              LEFT JOIN branches b   ON b.id = p.branch_id
              WHERE ' . implode(' AND ', $where) . '
@@ -80,7 +80,7 @@ class ProductController extends Controller
 
         $now  = Database::scalar('SELECT NOW()');
         $rows = Database::all(
-            'SELECT p.id, p.branch_id, p.sku, p.stock FROM products p WHERE ' . implode(' AND ', $where),
+            'SELECT p.id, p.branch_id, p.sku, p.stock FROM v_inventory p WHERE ' . implode(' AND ', $where),
             $params
         );
         Response::ok([
@@ -121,7 +121,7 @@ class ProductController extends Controller
         Auth::assertBranchAccess($user, $branchId);
 
         $sku = strtoupper(trim((string) $d['sku']));
-        if (Database::scalar('SELECT id FROM products WHERE branch_id = ? AND sku = ?', [$branchId, $sku])) {
+        if (Database::scalar('SELECT id FROM v_inventory WHERE branch_id = ? AND sku = ?', [$branchId, $sku])) {
             Response::error(409, 'duplicate', 'Ya existe un producto con ese SKU en la sucursal.');
         }
 
@@ -137,29 +137,40 @@ class ProductController extends Controller
 
         Database::begin();
         try {
+            // Si el SKU ya está en el catálogo (otra sucursal), solo se agrega
+            // su inventario aquí; si no, se da de alta el producto maestro.
+            $productId = (int) Database::scalar('SELECT id FROM products WHERE sku = ?', [$sku]);
+            if (!$productId) {
+                Database::run(
+                    'INSERT INTO products
+                      (sku, name, category_id, description, price,
+                       discount_percent, discount_starts_at, discount_ends_at,
+                       tax_rate, figure_png_url, status)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "active")',
+                    [
+                        $sku, mb_substr(trim((string) $d['name']), 0, 180), $catId,
+                        mb_substr((string) ($d['description'] ?? ''), 0, 500),
+                        round((float) $d['price'], 2),
+                        $discount['percent'], $discount['starts_at'], $discount['ends_at'],
+                        isset($d['tax_rate']) && is_numeric($d['tax_rate']) ? (float) $d['tax_rate'] : App::config('tax')['default_rate'],
+                        $figurePng,
+                    ]
+                );
+                $productId = Database::lastId();
+                $this->syncImages($productId, $img);
+                $this->syncTags($productId, $tags);
+            }
             Database::run(
-                'INSERT INTO products
-                  (branch_id, sku, name, category_id, description, tags, price,
-                   discount_percent, discount_starts_at, discount_ends_at,
-                   tax_rate, stock, min_stock, image_url, figure_png_url, status)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                'INSERT INTO inventory (branch_id, product_id, stock, min_stock, status) VALUES (?, ?, ?, ?, ?)',
                 [
-                    $branchId, $sku, mb_substr(trim((string) $d['name']), 0, 180), $catId,
-                    mb_substr((string) ($d['description'] ?? ''), 0, 500),
-                    $tags,
-                    round((float) $d['price'], 2),
-                    $discount['percent'], $discount['starts_at'], $discount['ends_at'],
-                    isset($d['tax_rate']) && is_numeric($d['tax_rate']) ? (float) $d['tax_rate'] : App::config('tax')['default_rate'],
-                    $stock,
+                    $branchId, $productId, $stock,
                     max(0, (int) ($d['min_stock'] ?? 3)),
-                    $img,
-                    $figurePng,
                     $this->pickEnum($d['status'] ?? 'active', ['active', 'inactive'], 'active'),
                 ]
             );
             $id = Database::lastId();
             if ($stock > 0) {
-                $this->logMovement($branchId, $id, $user['id'], 'restock', $stock, $stock, 'ALTA', 'Stock inicial');
+                $this->logMovement($branchId, $productId, $user['id'], 'restock', $stock, $stock, 'ALTA', 'Stock inicial');
             }
             Database::commit();
         } catch (Exception $e) {
@@ -239,48 +250,58 @@ class ProductController extends Controller
 
         Database::begin();
         try {
+            // 1) Producto maestro: se crea o se refresca una sola vez.
+            $master = Database::one(
+                'SELECT id, discount_percent, discount_starts_at, discount_ends_at FROM products WHERE sku = ?',
+                [$sku]
+            );
+            if ($master) {
+                $productId = (int) $master['id'];
+                $masterDiscount = $discount['supplied'] ? $discount : Pricing::validateInput([], $master);
+                Database::run(
+                    'UPDATE products SET name = ?, category_id = ?, description = ?, price = ?, figure_png_url = ?,
+                            discount_percent = ?, discount_starts_at = ?, discount_ends_at = ?, status = "active"
+                     WHERE id = ?',
+                    [$name, $catId, $desc, $price, $figurePng,
+                     $masterDiscount['percent'], $masterDiscount['starts_at'], $masterDiscount['ends_at'], $productId]
+                );
+            } else {
+                Database::run(
+                    'INSERT INTO products
+                       (sku, name, category_id, description, price,
+                        discount_percent, discount_starts_at, discount_ends_at, tax_rate, figure_png_url, status)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "active")',
+                    [$sku, $name, $catId, $desc, $price,
+                     $discount['percent'], $discount['starts_at'], $discount['ends_at'], $taxRate, $figurePng]
+                );
+                $productId = Database::lastId();
+            }
+            $this->syncImages($productId, $img);
+            // `tags` solo se pisa si el body lo trae (no borrar las que ya tenía).
+            if ($hasTags || !$master) $this->syncTags($productId, $tags);
+
+            // 2) Inventario de cada sucursal indicada.
             foreach ($entries as $bid => $qty) {
                 $existing = Database::one(
-                    'SELECT id, stock, discount_percent, discount_starts_at, discount_ends_at
-                       FROM products WHERE branch_id = ? AND sku = ?',
-                    [$bid, $sku]
+                    'SELECT id, stock FROM inventory WHERE branch_id = ? AND product_id = ?',
+                    [$bid, $productId]
                 );
                 if ($existing) {
                     $pid = (int) $existing['id'];
                     $newStock = (int) $existing['stock'] + $qty;
-                    // `tags` solo se pisa si el body lo trae (no borrar las que ya tenía).
-                    $existingDiscount = $discount['supplied']
-                        ? $discount
-                        : Pricing::validateInput([], $existing);
-                    Database::run(
-                        'UPDATE products SET name = ?, category_id = ?, description = ?, price = ?,
-                                image_url = ?, figure_png_url = ?' . ($hasTags ? ', tags = ?' : '') . ',
-                                discount_percent = ?, discount_starts_at = ?, discount_ends_at = ?,
-                                stock = ?, status = "active" WHERE id = ?',
-                        $hasTags
-                          ? [$name, $catId, $desc, $price, $img, $figurePng, $tags,
-                             $existingDiscount['percent'], $existingDiscount['starts_at'], $existingDiscount['ends_at'], $newStock, $pid]
-                          : [$name, $catId, $desc, $price, $img, $figurePng,
-                             $existingDiscount['percent'], $existingDiscount['starts_at'], $existingDiscount['ends_at'], $newStock, $pid]
-                    );
+                    Database::run('UPDATE inventory SET stock = ?, status = "active" WHERE id = ?', [$newStock, $pid]);
                     if ($qty > 0) {
-                        $this->logMovement($bid, $pid, $user['id'], 'restock', $qty, $newStock, 'IMPORT', $ref);
+                        $this->logMovement($bid, $productId, $user['id'], 'restock', $qty, $newStock, 'IMPORT', $ref);
                     }
                     $out['updated'][] = ['branch_id' => $bid, 'product_id' => $pid, 'stock' => $newStock];
                 } else {
                     Database::run(
-                        'INSERT INTO products
-                           (branch_id, sku, name, category_id, description, tags, price,
-                            discount_percent, discount_starts_at, discount_ends_at,
-                            tax_rate, stock, min_stock, image_url, figure_png_url, status)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "active")',
-                        [$bid, $sku, $name, $catId, $desc, $tags, $price,
-                         $discount['percent'], $discount['starts_at'], $discount['ends_at'],
-                         $taxRate, $qty, $minStock, $img, $figurePng]
+                        'INSERT INTO inventory (branch_id, product_id, stock, min_stock, status) VALUES (?, ?, ?, ?, "active")',
+                        [$bid, $productId, $qty, $minStock]
                     );
                     $pid = Database::lastId();
                     if ($qty > 0) {
-                        $this->logMovement($bid, $pid, $user['id'], 'restock', $qty, $qty, 'IMPORT', $ref);
+                        $this->logMovement($bid, $productId, $user['id'], 'restock', $qty, $qty, 'IMPORT', $ref);
                     }
                     $out['created'][] = ['branch_id' => $bid, 'product_id' => $pid, 'stock' => $qty];
                 }
@@ -311,11 +332,9 @@ class ProductController extends Controller
             ->validateOrFail();
 
         $sku = strtoupper(trim($d['sku']));
-        $dupe = Database::scalar(
-            'SELECT id FROM products WHERE branch_id = ? AND sku = ? AND id <> ?',
-            [$current['branch_id'], $sku, $id]
-        );
-        if ($dupe) Response::error(409, 'duplicate', 'Ese SKU ya existe en la sucursal.');
+        $productId = (int) $current['product_id'];
+        $dupe = Database::scalar('SELECT id FROM products WHERE sku = ? AND id <> ?', [$sku, $productId]);
+        if ($dupe) Response::error(409, 'duplicate', 'Ese SKU ya existe en el catálogo.');
 
         // Imágenes: si el form manda el campo se sanea (galería -> lista; figura
         // sin fondo -> string|NULL); si NO lo manda, se conserva lo que había.
@@ -336,23 +355,31 @@ class ProductController extends Controller
         $discountAffected = 1;
         Database::begin();
         try {
-            // El stock NO se cambia aquí: usa PATCH /products/{id}/stock.
+            // Datos del producto: compartidos por todas las sucursales.
             Database::run(
-                'UPDATE products SET sku = ?, name = ?, category_id = ?, description = ?, tags = ?,
+                'UPDATE products SET sku = ?, name = ?, category_id = ?, description = ?,
                         price = ?, discount_percent = ?, discount_starts_at = ?, discount_ends_at = ?,
-                        tax_rate = ?, min_stock = ?, image_url = ?, figure_png_url = ?, status = ?
+                        tax_rate = ?, figure_png_url = ?
                  WHERE id = ?',
                 [
                     $sku, $productName,
                     $categoryId,
                     mb_substr((string) ($d['description'] ?? $current['description']), 0, 500),
-                    $tags,
                     round((float) $d['price'], 2),
                     $discount['percent'], $discount['starts_at'], $discount['ends_at'],
                     isset($d['tax_rate']) && is_numeric($d['tax_rate']) ? (float) $d['tax_rate'] : $current['tax_rate'],
-                    max(0, (int) ($d['min_stock'] ?? $current['min_stock'])),
-                    $img,
                     $figurePng,
+                    $productId,
+                ]
+            );
+            $this->syncImages($productId, $img);
+            $this->syncTags($productId, $tags);
+
+            // Datos de esta sucursal. El stock NO se cambia aquí: usa PATCH /products/{id}/stock.
+            Database::run(
+                'UPDATE inventory SET min_stock = ?, status = ? WHERE id = ?',
+                [
+                    max(0, (int) ($d['min_stock'] ?? $current['min_stock'])),
                     $this->pickEnum($d['status'] ?? $current['status'], ['active', 'inactive'], $current['status']),
                     $id,
                 ]
@@ -360,9 +387,8 @@ class ProductController extends Controller
 
             // En mangas, el descuento pertenece al listado completo: se aplica
             // a la ficha de serie y a cada tomo, aunque sus precios sean distintos.
-            // En las demás categorías sigue compartiéndose únicamente por SKU.
             if ($user['role'] === 'admin' && $discount['supplied']) {
-                $targetIds = $this->discountTargetIds($id, $sku, $categorySlug, $productName);
+                $targetIds = $this->discountTargetIds($productId, $categorySlug, $productName);
                 if ($targetIds) {
                     $marks = implode(',', array_fill(0, count($targetIds), '?'));
                     Database::run(
@@ -405,9 +431,9 @@ class ProductController extends Controller
 
         Database::begin();
         try {
-            Database::run('UPDATE products SET stock = ? WHERE id = ?', [$newStock, $id]);
+            Database::run('UPDATE inventory SET stock = ? WHERE id = ?', [$newStock, $id]);
             $this->logMovement(
-                (int) $current['branch_id'], $id, $user['id'],
+                (int) $current['branch_id'], (int) $current['product_id'], $user['id'],
                 $delta >= 0 ? 'restock' : 'adjustment',
                 $delta, $newStock, 'AJUSTE',
                 (string) $this->body('note', '')
@@ -429,13 +455,21 @@ class ProductController extends Controller
         if (!$current) Response::notFound('Producto no encontrado.');
         Auth::assertBranchAccess($user, $current['branch_id']);
 
-        $sold = (int) Database::scalar('SELECT COUNT(*) FROM sale_items WHERE product_id = ?', [$id]);
-        if ($sold > 0) {
-            // Conserva historial: baja lógica
-            Database::run('UPDATE products SET status = "inactive" WHERE id = ?', [$id]);
+        $productId = (int) $current['product_id'];
+        if ($this->soldInBranch($productId, (int) $current['branch_id'])) {
+            // Conserva historial: baja lógica en esta sucursal
+            Database::run('UPDATE inventory SET status = "inactive" WHERE id = ?', [$id]);
             Response::ok(['soft_deleted' => $id, 'message' => 'El producto tiene ventas; se desactivó para conservar el historial.']);
         }
-        Database::run('DELETE FROM products WHERE id = ?', [$id]);
+        Database::begin();
+        try {
+            Database::run('DELETE FROM inventory WHERE id = ?', [$id]);
+            $this->deleteOrphanProduct($productId);
+            Database::commit();
+        } catch (Exception $e) {
+            Database::rollback();
+            throw $e;
+        }
         Response::ok(['deleted' => $id]);
     }
 
@@ -449,7 +483,7 @@ class ProductController extends Controller
         $user = $this->authRole(['admin', 'manager']);
         $sku = strtoupper(trim((string) $sku));
 
-        $rows = Database::all('SELECT id, branch_id FROM products WHERE sku = ?', [$sku]);
+        $rows = Database::all('SELECT id, branch_id, product_id FROM v_inventory WHERE sku = ?', [$sku]);
         if (!$rows) Response::notFound('No hay productos con ese SKU.');
 
         $deleted = [];
@@ -459,15 +493,15 @@ class ProductController extends Controller
             foreach ($rows as $r) {
                 $pid = (int) $r['id'];
                 Auth::assertBranchAccess($user, (int) $r['branch_id']);
-                $sold = (int) Database::scalar('SELECT COUNT(*) FROM sale_items WHERE product_id = ?', [$pid]);
-                if ($sold > 0) {
-                    Database::run('UPDATE products SET status = "inactive" WHERE id = ?', [$pid]);
+                if ($this->soldInBranch((int) $r['product_id'], (int) $r['branch_id'])) {
+                    Database::run('UPDATE inventory SET status = "inactive" WHERE id = ?', [$pid]);
                     $deactivated[] = $pid;
                 } else {
-                    Database::run('DELETE FROM products WHERE id = ?', [$pid]);
+                    Database::run('DELETE FROM inventory WHERE id = ?', [$pid]);
                     $deleted[] = $pid;
                 }
             }
+            $this->deleteOrphanProduct((int) $rows[0]['product_id']);
             Database::commit();
         } catch (Exception $e) {
             Database::rollback();
@@ -618,6 +652,53 @@ class ProductController extends Controller
         );
     }
 
+    /** Reemplaza la galería del producto con la lista "a,b,c" ya saneada. */
+    private function syncImages($productId, $csv)
+    {
+        Database::run('DELETE FROM product_images WHERE product_id = ?', [(int) $productId]);
+        $order = 0;
+        foreach (array_filter(explode(',', (string) $csv), 'strlen') as $url) {
+            Database::run(
+                'INSERT INTO product_images (product_id, url, sort_order) VALUES (?, ?, ?)',
+                [(int) $productId, $url, $order++]
+            );
+        }
+    }
+
+    /** Reemplaza las etiquetas del producto con la lista "a,b" ya saneada. */
+    private function syncTags($productId, $csv)
+    {
+        Database::run('DELETE FROM product_tags WHERE product_id = ?', [(int) $productId]);
+        foreach (array_filter(explode(',', (string) $csv), 'strlen') as $slug) {
+            Database::run('INSERT IGNORE INTO tags (slug) VALUES (?)', [$slug]);
+            Database::run(
+                'INSERT IGNORE INTO product_tags (product_id, tag_id) SELECT ?, id FROM tags WHERE slug = ?',
+                [(int) $productId, $slug]
+            );
+        }
+    }
+
+    private function soldInBranch($productId, $branchId)
+    {
+        return (bool) Database::scalar(
+            'SELECT 1 FROM sale_items si JOIN sales s ON s.id = si.sale_id
+              WHERE si.product_id = ? AND s.branch_id = ? LIMIT 1',
+            [(int) $productId, (int) $branchId]
+        );
+    }
+
+    /** Borra el producto maestro si ya no está en ninguna sucursal ni tiene ventas. */
+    private function deleteOrphanProduct($productId)
+    {
+        Database::run(
+            'DELETE FROM products
+              WHERE id = ?
+                AND NOT EXISTS (SELECT 1 FROM inventory  WHERE product_id = ?)
+                AND NOT EXISTS (SELECT 1 FROM sale_items WHERE product_id = ?)',
+            [(int) $productId, (int) $productId, (int) $productId]
+        );
+    }
+
     private function categoryIdBySlug($slug)
     {
         $id = Database::scalar('SELECT id FROM categories WHERE slug = ? LIMIT 1', [(string) $slug]);
@@ -657,16 +738,13 @@ class ProductController extends Controller
         return $aliases[$key] ?? $key;
     }
 
-    /** IDs que comparten el SKU; para manga incluye además todos los tomos de la serie. */
-    private function discountTargetIds($currentId, $sku, $categorySlug, $name)
+    /**
+     * Productos maestros que heredan el descuento. El SKU ya es una sola fila
+     * para todas las sucursales; en manga se suman los demás tomos de la serie.
+     */
+    private function discountTargetIds($productId, $categorySlug, $name)
     {
-        $ids = Database::all(
-            'SELECT id FROM products WHERE sku = ? AND id <> ? AND status <> "deleted"',
-            [$sku, (int) $currentId]
-        );
         $out = [];
-        foreach ($ids as $row) $out[(int) $row['id']] = true;
-
         $slug = mb_strtolower(trim((string) $categorySlug));
         $seriesKey = $this->mangaSeriesKey($name);
         if (($slug === 'manga' || $slug === 'mangas') && $seriesKey !== '') {
@@ -674,9 +752,8 @@ class ProductController extends Controller
                 'SELECT p.id, p.name
                    FROM products p
                    JOIN categories c ON c.id = p.category_id
-                  WHERE LOWER(c.slug) IN ("manga", "mangas")
-                    AND p.status <> "deleted" AND p.id <> ?',
-                [(int) $currentId]
+                  WHERE LOWER(c.slug) IN ("manga", "mangas") AND p.id <> ?',
+                [(int) $productId]
             );
             foreach ($rows as $row) {
                 if ($this->mangaSeriesKey($row['name']) === $seriesKey) {
@@ -694,7 +771,7 @@ class ProductController extends Controller
         if ($seriesKey === '') return null;
         $rows = Database::all(
             'SELECT p.sku, p.name, p.discount_percent, p.discount_starts_at, p.discount_ends_at
-               FROM products p
+               FROM v_inventory p
                JOIN categories c ON c.id = p.category_id
               WHERE LOWER(c.slug) IN ("manga", "mangas") AND p.status <> "deleted"
               ORDER BY CASE WHEN p.sku LIKE "MNG-S-%" THEN 0 ELSE 1 END, p.id',
@@ -713,7 +790,7 @@ class ProductController extends Controller
         return Database::one(
             'SELECT p.*, c.slug AS category_slug, c.name_es AS category_es, c.name_en AS category_en,
                     b.name AS branch_name, b.code AS branch_code
-             FROM products p
+             FROM v_inventory p
              LEFT JOIN categories c ON c.id = p.category_id
              LEFT JOIN branches b   ON b.id = p.branch_id
              WHERE p.id = ?',
@@ -726,6 +803,7 @@ class ProductController extends Controller
         if (!$r) return $r;
         $r['id']         = (int) $r['id'];
         $r['branch_id']  = (int) $r['branch_id'];
+        $r['product_id'] = (int) $r['product_id'];
         $r['category_id'] = $r['category_id'] !== null ? (int) $r['category_id'] : null;
         $r['price']      = (float) $r['price'];
         $r['tax_rate']   = (float) $r['tax_rate'];

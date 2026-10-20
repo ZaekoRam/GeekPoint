@@ -14,8 +14,8 @@ class ReportController extends Controller
             'branches_active'   => (int) Database::scalar('SELECT COUNT(*) FROM branches WHERE status = "active"'),
             'branches_total'    => (int) Database::scalar('SELECT COUNT(*) FROM branches'),
             'users_total'       => (int) Database::scalar('SELECT COUNT(*) FROM users WHERE status = "active"'),
-            'products_total'    => (int) Database::scalar('SELECT COUNT(*) FROM products WHERE status = "active"'),
-            'low_stock_total'   => (int) Database::scalar('SELECT COUNT(*) FROM products WHERE status = "active" AND stock <= min_stock'),
+            'products_total'    => (int) Database::scalar('SELECT COUNT(*) FROM v_inventory WHERE status = "active"'),
+            'low_stock_total'   => (int) Database::scalar('SELECT COUNT(*) FROM v_inventory WHERE status = "active" AND stock <= min_stock'),
             'sales_today_count'  => (int) Database::scalar('SELECT COUNT(*) FROM sales WHERE DATE(created_at) = ?', [$today]),
             'sales_today_total'  => (float) Database::scalar('SELECT COALESCE(SUM(total),0) FROM sales WHERE DATE(created_at) = ?', [$today]),
             'sales_month_count'  => (int) Database::scalar('SELECT COUNT(*) FROM sales WHERE created_at >= ?', [$monthStart . ' 00:00:00']),
@@ -27,7 +27,7 @@ class ReportController extends Controller
                     COALESCE(SUM(CASE WHEN DATE(s.created_at) = ? THEN s.total END), 0) AS today_total,
                     COALESCE(SUM(CASE WHEN s.created_at >= ? THEN s.total END), 0) AS month_total,
                     COUNT(CASE WHEN s.created_at >= ? THEN s.id END) AS month_count,
-                    (SELECT COUNT(*) FROM products p WHERE p.branch_id = b.id AND p.status = "active" AND p.stock <= p.min_stock) AS low_stock
+                    (SELECT COUNT(*) FROM v_inventory p WHERE p.branch_id = b.id AND p.status = "active" AND p.stock <= p.min_stock) AS low_stock
              FROM branches b
              LEFT JOIN sales s ON s.branch_id = b.id
              GROUP BY b.id, b.code, b.name, b.city, b.status
@@ -86,10 +86,10 @@ class ReportController extends Controller
             'sales_today_total' => (float) Database::scalar('SELECT COALESCE(SUM(total),0) FROM sales WHERE branch_id = ? AND DATE(created_at) = ?', [$id, $today]),
             'sales_month_count' => (int) Database::scalar('SELECT COUNT(*) FROM sales WHERE branch_id = ? AND created_at >= ?', [$id, $monthStart . ' 00:00:00']),
             'sales_month_total' => (float) Database::scalar('SELECT COALESCE(SUM(total),0) FROM sales WHERE branch_id = ? AND created_at >= ?', [$id, $monthStart . ' 00:00:00']),
-            'products_active'   => (int) Database::scalar('SELECT COUNT(*) FROM products WHERE branch_id = ? AND status = "active"', [$id]),
-            'low_stock'         => (int) Database::scalar('SELECT COUNT(*) FROM products WHERE branch_id = ? AND status = "active" AND stock <= min_stock', [$id]),
+            'products_active'   => (int) Database::scalar('SELECT COUNT(*) FROM v_inventory WHERE branch_id = ? AND status = "active"', [$id]),
+            'low_stock'         => (int) Database::scalar('SELECT COUNT(*) FROM v_inventory WHERE branch_id = ? AND status = "active" AND stock <= min_stock', [$id]),
             'registers_active'  => (int) Database::scalar('SELECT COUNT(*) FROM registers WHERE branch_id = ? AND status = "active"', [$id]),
-            'inventory_value'   => (float) Database::scalar('SELECT COALESCE(SUM(price * stock),0) FROM products WHERE branch_id = ? AND status = "active"', [$id]),
+            'inventory_value'   => (float) Database::scalar('SELECT COALESCE(SUM(price * stock),0) FROM v_inventory WHERE branch_id = ? AND status = "active"', [$id]),
         ];
 
         $byCashier = Database::all(

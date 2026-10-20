@@ -19,7 +19,7 @@ class InventoryController extends Controller
             'SELECT p.id, p.sku, p.name, p.stock, p.min_stock, p.price,
                     p.branch_id, b.name AS branch_name, b.code AS branch_code,
                     c.slug AS category_slug
-             FROM products p
+             FROM v_inventory p
              JOIN branches b ON b.id = p.branch_id
              LEFT JOIN categories c ON c.id = p.category_id
              WHERE ' . implode(' AND ', $where) . '
@@ -62,7 +62,7 @@ class InventoryController extends Controller
         $rows = Database::all(
             'SELECT m.*, p.name AS product_name, p.sku, u.name AS user_name, b.name AS branch_name
              FROM stock_movements m
-             LEFT JOIN products p ON p.id = m.product_id
+             LEFT JOIN products p    ON p.id = m.product_id
              LEFT JOIN users u    ON u.id = m.user_id
              LEFT JOIN branches b ON b.id = m.branch_id
              WHERE ' . implode(' AND ', $where) . '

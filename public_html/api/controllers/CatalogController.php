@@ -487,13 +487,13 @@ class CatalogController extends Controller
         if (!Database::ping()) {
             return [];
         }
-        // La columna `products.tags` puede no existir aún (migración
+        // La columna `tags` puede no existir aún (migración
         // 2026_09_08_000001 sin ejecutar): se detecta para no romper el catálogo.
         $hasTags = false;
         try {
             $hasTags = (bool) Database::scalar(
                 "SELECT 1 FROM information_schema.COLUMNS
-                  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'tags' LIMIT 1"
+                  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'v_inventory' AND COLUMN_NAME = 'tags' LIMIT 1"
             );
         } catch (\Throwable $e) {}
 
@@ -519,7 +519,7 @@ class CatalogController extends Controller
                           p.discount_percent, '|', COALESCE(DATE_FORMAT(p.discount_starts_at, '%Y-%m-%d %H:%i:%s'), ''), '|',
                           COALESCE(DATE_FORMAT(p.discount_ends_at, '%Y-%m-%d %H:%i:%s'), '')
                         ) SEPARATOR ';;') AS branchmap
-                 FROM products p
+                 FROM v_inventory p
                  JOIN categories c ON c.id = p.category_id
                  LEFT JOIN branches b ON b.id = p.branch_id
                  WHERE p.status = 'active'
