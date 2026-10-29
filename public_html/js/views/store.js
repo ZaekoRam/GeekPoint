@@ -42,6 +42,8 @@
   var gridRAF = 0;
 
   function currentCat(params) {
+    // #/p/<id> no trae categoría: se queda la que estaba activa.
+    if (params && params.product && !params.cat) return activeSlug;
     var c = params && params.cat ? params.cat : "all";
     return CATS.some(function (x) { return x.slug === c; }) ? c : "all";
   }
@@ -88,7 +90,106 @@
     });
   }
 
+  /* Orden del catálogo. "relevance" = el orden que manda la API (destacados). */
+  var sortKey = "relevance";
+  function stockOf(p) {
+    return (p.branches || []).reduce(function (n, b) { return n + (b.stock || 0); }, 0);
+  }
+  function priceOf(p) {
+    var v = p.effective_price != null ? p.effective_price : p.price;
+    return Number(v) || 0;
+  }
+  function applySort(list) {
+    if (sortKey === "relevance") {
+      // Con sucursal elegida: primero lo que SÍ hay ahí; lo agotado en esa
+      // sede se queda al final (con su aviso), no se esconde.
+      if (!filterBranch) return list;
+      var has = function (p) { var b = branchStock(p); return b && b.n > 0 ? 0 : 1; };
+      return list.map(function (p, i) { return { p: p, i: i, k: has(p) }; })
+        .sort(function (a, b) { return (a.k - b.k) || (a.i - b.i); })
+        .map(function (x) { return x.p; });
+    }
+    var out = list.slice();
+    var cmp = {
+      priceAsc:  function (a, b) { return priceOf(a) - priceOf(b); },
+      priceDesc: function (a, b) { return priceOf(b) - priceOf(a); },
+      name:      function (a, b) { return String(a.title || "").localeCompare(String(b.title || ""), I18N.lang); },
+      stock:     function (a, b) { return stockOf(b) - stockOf(a); }
+    }[sortKey];
+    return cmp ? out.sort(cmp) : out;
+  }
+  /* Filtros: sucursal (con existencias ahí) y rango de precio. */
+  var filterBranch = "", filterPrice = "";
+  var PRICE_RANGES = { "0-200": [0, 200], "200-500": [200, 500], "500-1500": [500, 1500], "1500-": [1500, Infinity] };
+  function applyFilters(list) {
+    var range = PRICE_RANGES[filterPrice];
+    if (!filterBranch && !range) return list;
+    return list.filter(function (p) {
+      if (range) { var v = priceOf(p); if (v < range[0] || v >= range[1]) return false; }
+      return true;
+    });
+  }
+  function priceRangeLabel(k) {
+    var r = PRICE_RANGES[k];
+    var m = function (v) { return "$" + v.toLocaleString(I18N.lang === "en" ? "en-US" : "es-MX"); };
+    if (!r[0]) return I18N.t("shop.filter.under", { max: m(r[1]) });
+    if (r[1] === Infinity) return I18N.t("shop.filter.over", { min: m(r[0]) });
+    return m(r[0]) + " – " + m(r[1]);
+  }
+  function drawFilters(root) {
+    var bSel = $("[data-fbranch]", root), pSel = $("[data-fprice]", root);
+    if (!bSel || !pSel) return;
+    var branches = activeBranches();
+    if (filterBranch && !branches.some(function (b) { return String(b.code) === filterBranch; })) filterBranch = "";
+    bSel.innerHTML = '<option value="">' + esc(I18N.t("shop.filter.allBranches")) + '</option>' +
+      branches.map(function (b) {
+        return '<option value="' + esc(b.code) + '"' + (String(b.code) === filterBranch ? " selected" : "") + '>' + esc(b.name) + '</option>';
+      }).join("");
+    pSel.innerHTML = '<option value="">' + esc(I18N.t("shop.filter.anyPrice")) + '</option>' +
+      Object.keys(PRICE_RANGES).map(function (k) {
+        return '<option value="' + k + '"' + (k === filterPrice ? " selected" : "") + '>' + esc(priceRangeLabel(k)) + '</option>';
+      }).join("");
+    $$("[data-filter-label]", root).forEach(function (el) { el.textContent = I18N.t(el.getAttribute("data-filter-label")); });
+    // Celular: los filtros van plegados tras un botón con el nº de filtros activos.
+    var tg = $("[data-filters-toggle]", root), nEl = $("[data-filters-n]", root);
+    var active = (filterBranch ? 1 : 0) + (filterPrice ? 1 : 0) + (sortKey !== "relevance" ? 1 : 0);
+    if (nEl) nEl.textContent = active ? " · " + active : "";
+    if (tg && !tg._bound) {
+      tg._bound = true;
+      tg.addEventListener("click", function () {
+        var open = tg.getAttribute("aria-expanded") !== "true";
+        tg.setAttribute("aria-expanded", open ? "true" : "false");
+        tg.parentNode.classList.toggle("is-open", open);
+      });
+    }
+    if (!bSel._bound) {
+      bSel._bound = pSel._bound = true;
+      bSel.addEventListener("change", function () { filterBranch = bSel.value; scheduleGrid(root, activeCat()); });
+      pSel.addEventListener("change", function () { filterPrice = pSel.value; scheduleGrid(root, activeCat()); });
+    }
+  }
+
+  function drawSortbar(root) {
+    drawFilters(root);
+    var sel = $("[data-sort]", root);
+    if (!sel) return;
+    sel.innerHTML = ["relevance", "priceAsc", "priceDesc", "name", "stock"].map(function (k) {
+      return '<option value="' + k + '"' + (k === sortKey ? " selected" : "") + '>' +
+        esc(I18N.t("shop.sort." + k)) + '</option>';
+    }).join("");
+    var label = $("[data-sort-label]", root);
+    if (label) label.textContent = I18N.t("shop.sort");
+    if (!sel._bound) {
+      sel._bound = true;
+      sel.addEventListener("change", function () {
+        sortKey = sel.value;
+        scheduleGrid(root, activeCat());
+      });
+    }
+  }
+
   function drawGrid(root, active) {
+    drawSortbar(root);
     var host = $("[data-pgrid]", root);
     if (!host) return;
     // Aún cargando el catálogo: deja el "cargando", nunca el "categoría vacía".
@@ -97,7 +198,10 @@
       return;
     }
     var base = Catalog.byCategory(active);
-    var list = applySearch(base);
+    var list = applySort(applyFilters(applySearch(base)));
+    var countEl = $("[data-pcount]", root);
+    if (countEl) countEl.textContent = list.length === 1
+      ? I18N.t("shop.count1") : I18N.t("shop.count", { n: list.length });
     if (!list.length) {
       var msg = (searchQ.trim() && base.length)
         ? esc(I18N.t("shop.noresults", { q: searchQ.trim() }))
@@ -269,6 +373,92 @@
     return '<span class="price-stack"><strong>' + prefix + UI.money(effective) + '</strong></span>';
   }
 
+  /* "12 disponibles en 3 sucursales" — la lista completa de sedes vive en la
+     vista previa (panel de stock); en la tarjeta solo cabe el resumen. */
+  /* Stock "visto desde" la sucursal elegida en el filtro. Sin sucursal: el
+     total de todas (un producto solo es "Agotado" si no hay en NINGUNA). */
+  function branchStock(p) {
+    if (!filterBranch) return null;
+    var b = (p.branches || []).filter(function (x) { return String(x.code) === filterBranch; })[0];
+    var name = b ? b.name : ((activeBranches().filter(function (x) { return String(x.code) === filterBranch; })[0] || {}).name || "");
+    return { n: b ? (Number(b.stock) || 0) : 0, name: String(name).replace(/^\s*GeekPoint\s+/i, "") };
+  }
+  /* Stock de UN tomo (volume_covers[i].branches), visto desde la sucursal
+     del filtro o en total. null = el tomo no trae inventario real. */
+  function volUnits(c) {
+    if (!c || !c.branches || !c.branches.length) return null;
+    return c.branches.reduce(function (n, b) {
+      return (!filterBranch || String(b.code) === filterBranch) ? n + (Number(b.stock) || 0) : n;
+    }, 0);
+  }
+  /* Serie de manga: qué tomos están en pocas piezas o agotados. */
+  function seriesLow(p) {
+    var low = [], out = 0, known = 0;
+    (p.volume_covers || []).forEach(function (c) {
+      var n = volUnits(c);
+      if (n === null) return;
+      known++;
+      if (n === 0) out++;
+      else if (n <= LOW_UNITS) low.push({ v: c.v, n: n });
+    });
+    return known ? { low: low, out: out, known: known } : null;
+  }
+
+  function stockTag(p, total) {
+    var sl = p.category === "manga" ? seriesLow(p) : null;
+    // Stock guardado en la ficha de la SERIE (no en tomos): si ningún tomo
+    // tiene piezas pero la serie sí, se usa el aviso normal de la serie.
+    var bsSeries = branchStock(p);
+    var seriesUnits = bsSeries ? bsSeries.n : total;
+    if (sl && sl.out === sl.known && seriesUnits > 0) sl = null;
+    if (sl) {
+      // Todos los tomos agotados = la serie está agotada (en la sede elegida).
+      if (sl.out === sl.known) {
+        var bsx = branchStock(p);
+        return '<span class="ptag ptag--soldout">' + esc(bsx ? I18N.t("tag.soldoutAt", { name: bsx.name }) : I18N.t("prod.soldout")) + '</span>';
+      }
+      if (sl.low.length === 1) {
+        var one = sl.low[0];
+        return '<span class="ptag ptag--low">' + esc(I18N.t(one.n === 1 ? "tag.volLast1" : "tag.volLast", { v: one.v, n: one.n })) + '</span>';
+      }
+      if (sl.low.length > 1) {
+        // "Tomos 3, 7, 12 +2: pocas piezas" — los primeros 3 y cuántos más.
+        var list = sl.low.slice(0, 3).map(function (x) { return x.v; }).join(", ") +
+          (sl.low.length > 3 ? " +" + (sl.low.length - 3) : "");
+        return '<span class="ptag ptag--low">' + esc(I18N.t("tag.volsLow", { list: list })) + '</span>';
+      }
+      return "";
+    }
+    var bs = branchStock(p);
+    var n = bs ? bs.n : total;
+    if (n === 0) {
+      return '<span class="ptag ptag--soldout">' + esc(bs ? I18N.t("tag.soldoutAt", { name: bs.name }) : I18N.t("prod.soldout")) + '</span>';
+    }
+    if (n <= LOW_UNITS) {
+      return '<span class="ptag ptag--low">' + esc(n === 1 ? I18N.t("prod.lastUnit") : I18N.t("prod.lastUnits", { n: n })) + '</span>';
+    }
+    return "";
+  }
+
+  function stockLine(p, total) {
+    var bs = branchStock(p);
+    if (bs) {
+      if (bs.n > 0) {
+        return '<b>' + bs.n + '</b> ' + esc(I18N.t(bs.n === 1 ? "prod.unit" : "prod.units")) + ' ' + esc(I18N.t("prod.inBranch", { name: bs.name }));
+      }
+      // No hay aquí, pero quizá en otra sede: decirlo para que no lo descarten.
+      var others = (p.branches || []).filter(function (b) { return b.stock > 0; }).length;
+      return esc(I18N.t("tag.soldoutAt", { name: bs.name })) +
+        (others ? ' · <b>' + esc(I18N.t(others === 1 ? "stock.elsewhere1" : "stock.elsewhere", { n: others })) + '</b>' : "");
+    }
+    var withStock = (p.branches || []).filter(function (b) { return b.stock > 0; });
+    var where = withStock.length === 1
+      ? I18N.t("prod.inBranch", { name: withStock[0].name })
+      : I18N.t("prod.inBranches", { n: withStock.length });
+    return '<b>' + total + '</b> ' + esc(I18N.t(total === 1 ? "prod.unit" : "prod.units")) +
+      (withStock.length ? ' ' + esc(where) : "");
+  }
+
   function cardHTML(p) {
     var tags = (p.tags || []).map(function (t) {
       return '<span class="ptag ptag--' + esc(t) + '">' + esc(tagLabel(t)) + '</span>';
@@ -280,6 +470,8 @@
       tags += '<span class="ptag promo-badge">−' + discountLabel(p) + '%</span>';
     }
     var totalStock = (p.branches || []).reduce(function (n, b) { return n + (b.stock || 0); }, 0);
+    tags = stockTag(p, totalStock) + tags;
+    var bsCard = branchStock(p);
     var isFigure = p.category === "figuras";
 
     // FIGURAS: la portada de la grilla es SIEMPRE el "expositor" — una CAJA 3D
@@ -321,12 +513,12 @@
           '<div class="pcard__foot">' +
             '<span class="pcard__price">' + priceHTML(p, p.price_varies) + '</span>' +
             // Manga = serie: el botón no agrega "One Piece" a secas, lleva a elegir tomo.
-            (p.category !== "manga" && totalStock === 0 && /^local-/.test(String(p.id))
+            (p.category !== "manga" && /^local-/.test(String(p.id)) && (totalStock === 0 || (bsCard && bsCard.n === 0))
               ? '<button class="pcard__add pcard__add--notify" data-notify>' + esc(I18N.t("notify.button")) + '</button>'
               : '<button class="pcard__add" data-add>' + esc(I18N.t(p.category === "manga" ? "prod.chooseVolume" : "prod.add")) + '</button>') +
           '</div>' +
-          '<span class="pcard__stock">' + (totalStock > 0
-            ? '<b>' + totalStock + '</b> ' + esc(I18N.t("prod.available")).toLowerCase() + ' ' + (p.branches || []).filter(function(b){return b.stock>0;}).map(function(b){return esc(b.name);}).join(", ")
+          '<span class="pcard__stock">' + (totalStock > 0 || filterBranch
+            ? stockLine(p, totalStock)
             : esc(I18N.t("prod.soldout"))) + '</span>' +
         '</div>' +
       '</article>'
@@ -357,25 +549,138 @@
       if (e.target.closest("[data-notify]")) {
         e.stopPropagation();
         var np = Catalog.get(id);
-        if (np) notifyMe(np.id, null, np.title);
+        // Con sucursal elegida, el aviso es de esa sucursal.
+        var nb = np && branchStock(np);
+        if (np) notifyMe(np.id, null, np.title, nb ? filterBranch : null, nb ? nb.name : null);
         return;
       }
       if (e.target.closest("[data-add]")) {
         e.stopPropagation();
         var p = Catalog.get(id);
-        if (p && p.category === "manga") { openPreview(id, { pickVolume: true }); return; }
+        if (p && p.category === "manga") { openProduct(id, { pickVolume: true }); return; }
         if (p) { STORE.shopAdd(p); UI.toast(I18N.t("prod.added") + " · " + p.title, "ok"); }
         return;
       }
-      openPreview(id);
+      openProduct(id);
     });
+  }
+
+  /* ---------------- Producto con dirección propia: #/p/<id> ----------------
+     La vista previa sigue siendo un modal, pero la URL cambia para poder
+     compartirla o recargar. pushState no dispara "hashchange", así que el
+     router no redibuja la tienda; al cerrar se regresa a la dirección previa. */
+  var productOpen = null;       // id del producto cuyo modal está abierto
+  var pushedProduct = false;    // la entrada #/p/ la agregamos nosotros -> history.back()
+  var switching = false;        // de un producto a otro (relacionados)
+
+  function productHash(id) { return "#/p/" + encodeURIComponent(id); }
+  function productURL(id) { return location.origin + location.pathname + productHash(id); }
+
+  function openProduct(id, opts) {
+    if (!Catalog.get(id)) return;
+    var h = productHash(id);
+    if (location.hash !== h) {
+      if (productOpen) history.replaceState(history.state, "", h);
+      else { history.pushState(history.state, "", h); pushedProduct = true; }
+    }
+    switching = !!productOpen;
+    showProduct(id, opts);
+    switching = false;
+  }
+
+  function showProduct(id, opts) {
+    opts = opts || {};
+    productOpen = id;
+    opts.onClose = function (replaced) {
+      if (replaced && switching) return;           // lo reemplaza otro producto
+      if (productOpen === id) productOpen = null;
+      if (location.hash.indexOf("#/p/") !== 0) return;  // ya se navegó (botón Atrás)
+      if (pushedProduct && !replaced) { pushedProduct = false; history.back(); }
+      else { pushedProduct = false; history.replaceState(history.state, "", "#/"); }
+    };
+    openPreview(id, opts);
+  }
+
+  /** Enlace directo / recarga: espera al catálogo y abre el producto. */
+  function showWhenReady(id) {
+    Catalog.load().then(function () {
+      if (productOpen === id) return;
+      if (Catalog.get(id)) { showProduct(id); return; }
+      UI.toast(I18N.t("prod.notFound"), "warn");
+      history.replaceState(history.state, "", "#/");
+    });
+  }
+
+  function shareProduct(p) {
+    var url = productURL(p.id);
+    if (navigator.share) {
+      navigator.share({ title: p.title + " · GeekPoint", url: url }).catch(function () {});
+      return;
+    }
+    var done = function () { UI.toast(I18N.t("prod.linkCopied"), "ok"); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(done, function () { window.prompt(I18N.t("prod.share"), url); });
+    } else {
+      window.prompt(I18N.t("prod.share"), url);
+    }
+  }
+
+  /* ---------------- "También te puede interesar" ----------------
+     Puntaje simple: misma categoría, mismo set/serie (lo que va después de
+     " · " en el título, p. ej. "Hidden Fates Shiny Vault"), misma marca o
+     autor, precio parecido y con existencias. Desempate estable por id. */
+  function seriesKey(p) {
+    var t = String(p.title || ""), i = t.indexOf(" · ");
+    return i > 0 ? t.slice(i + 3).toLowerCase().trim() : "";
+  }
+  // Franquicia: primer tramo de la sinopsis ("Pokémon · Fighting · …").
+  function franchiseKey(p) {
+    var s = String(p.synopsis || ""), i = s.indexOf(" · ");
+    return i > 0 && i < 30 ? s.slice(0, i).toLowerCase().trim() : "";
+  }
+  // Personaje / nombre base: "Lucario-GX · …" y "Lucario · …" -> "lucario".
+  function nameKey(p) {
+    return String(p.title || "").split(/[\s·\-—:]+/)[0].toLowerCase();
+  }
+  function relatedFor(p, n) {
+    var key = seriesKey(p), fr = franchiseKey(p), nk = nameKey(p);
+    var maker = String(p.manufacturer || p.author || "").toLowerCase().trim();
+    var price = priceOf(p) || 1;
+    return Catalog.all().filter(function (q) { return q.id !== p.id; }).map(function (q) {
+      var s = 0;
+      if (q.category === p.category) s += 3;
+      if (key && seriesKey(q) === key) s += 4;
+      if (fr && franchiseKey(q) === fr) s += 2;
+      if (nk.length > 3 && nameKey(q) === nk) s += 3;
+      if (maker && String(q.manufacturer || q.author || "").toLowerCase().trim() === maker) s += 2;
+      var r = priceOf(q) / price;
+      if (r > 0.5 && r < 2) s += 1;
+      s += stockOf(q) > 0 ? 1 : -3;
+      return { q: q, s: s };
+    }).filter(function (x) { return x.s >= 4; }).sort(function (a, b) {
+      return (b.s - a.s) || (hashInt(a.q.id + p.id) - hashInt(b.q.id + p.id));
+    }).slice(0, n).map(function (x) { return x.q; });
+  }
+  function relatedHTML(p) {
+    var list = relatedFor(p, 6);
+    if (!list.length) return "";
+    return '<section class="related">' +
+      '<h4 class="related__title">' + esc(I18N.t("prod.related")) + '</h4>' +
+      '<div class="related__row">' + list.map(function (q) {
+        return '<button type="button" class="related__item" data-related="' + esc(q.id) + '">' +
+          '<span class="related__media"><img src="' + esc(Catalog.coverURL(q)) + '" alt="" loading="lazy" ' +
+            'onerror="this.style.visibility=\'hidden\'"></span>' +
+          '<span class="related__name">' + esc(q.title) + '</span>' +
+          '<span class="related__price">' + priceHTML(q, q.price_varies) + '</span>' +
+        '</button>';
+      }).join("") + '</div></section>';
   }
 
   /* ---------------- "Notifícame" (sin stock) ----------------
      Con sesión: se usa el correo de la cuenta, sin preguntar nada.
      Sin sesión: un modal pide el correo y el servidor manda un enlace de
      confirmación (doble opt-in), para que nadie suscriba correos ajenos. */
-  function notifyMe(ref, vol, title) {
+  function notifyMe(ref, vol, title, branch, branchName) {
     function send(body, btn) {
       if (btn) btn.classList.add("is-loading");
       return API.post("stock-alerts", body, { noAuthRedirect: true }).then(function (r) {
@@ -383,7 +688,7 @@
         if (r.status === "in_stock") UI.toast(I18N.t("notify.inStock"), "ok");
         else if (r.status === "pending") UI.toast(I18N.t("notify.confirmSent", { email: r.email }), "ok", 6000);
         else if (r.verified === false) UI.toast(I18N.t("notify.verifyFirst"), "warn", 6000);
-        else UI.toast(I18N.t("notify.done"), "ok", 5000);
+        else UI.toast(branch ? I18N.t("notify.doneBranch", { name: branchName || "" }) : I18N.t("notify.done"), "ok", 5000);
       }).catch(function (err) {
         if (btn) btn.classList.remove("is-loading");
         UI.toast((err && err.data && err.data.fields && err.data.fields.email && err.data.fields.email[0]) ||
@@ -391,14 +696,16 @@
         throw err;
       });
     }
-    var body = { ref: ref, vol: vol || null, title: title };
+    var body = { ref: ref, vol: vol || null, title: title, branch: branch || null };
     if (STORE.isLogged()) { send(body).catch(function () {}); return; }
 
     var form = document.createElement("form");
     form.className = "notify-form";
     form.setAttribute("novalidate", "");
     form.innerHTML =
-      '<p class="muted" style="margin-bottom:1rem">' + esc(I18N.t("notify.intro", { title: title })) + '</p>' +
+      '<p class="muted" style="margin-bottom:1rem">' + esc(branch
+        ? I18N.t("notify.introBranch", { title: title, name: branchName || "" })
+        : I18N.t("notify.intro", { title: title })) + '</p>' +
       '<div class="field"><label for="notify-email">' + esc(I18N.t("notify.emailLabel")) + '</label>' +
         '<input class="input" type="email" id="notify-email" name="email" required maxlength="160" autocomplete="email"></div>' +
       '<p class="muted" style="font-size:.8rem;margin:.2rem 0 .6rem">' + esc(I18N.t("notify.guestNote")) + '</p>' +
@@ -457,6 +764,7 @@
     return real.reduce(function (n, b) { return n + (Number(b.stock) || 0); }, 0);
   }
 
+  var LOW_UNITS = 5;   // mismo umbral que inventory.min_stock
   function stockRowsHTML(p, vol, volObj) {
     // Stock REAL por sucursal si es un tomo/producto del inventario POS;
     // si no, disponibilidad sintética determinista por tomo.
@@ -472,14 +780,21 @@
       } else {
         n = volStock(p.id, vol, b.code);
       }
-      var cls = n === 0 ? "vs-out" : (n <= 3 ? "vs-low" : "vs-ok");
-      var label = n === 0 ? esc(I18N.t("prod.soldout")) : (n + " u");
+      // "¡Últimas N!" solo en la sucursal que tiene 5 o menos; las demás
+      // muestran su stock normal (el aviso nunca se mezcla entre sedes).
+      var cls = n === 0 ? "vs-out" : (n <= LOW_UNITS ? "vs-low" : "vs-ok");
+      var label = n === 0 ? esc(I18N.t("prod.soldout"))
+        : (n === 1 ? esc(I18N.t("prod.lastUnit")) : n <= LOW_UNITS ? esc(I18N.t("prod.lastUnits", { n: n })) : (n + " u"));
       // En el modal se muestra el nombre corto (sin el prefijo de marca), como
       // en la referencia: "GeekPoint Reforma" -> "Reforma".
       var shortName = String(b.name || "").replace(/^\s*GeekPoint\s+/i, "");
+      var canNotify = n === 0 && realBranches && /^local-/.test(String(p.id)) && p.category !== "preventa";
       return '<div class="vs-row" data-name="' + esc(shortName) + '">' +
         '<span>' + esc(shortName) + '</span>' +
-        '<span class="vs-n ' + cls + '">' + label + '</span></div>';
+        '<span class="vs-right">' +
+          (canNotify ? '<button type="button" class="vs-notify" data-notify-branch="' + esc(b.code) + '" data-branch-name="' + esc(shortName) + '">' +
+            esc(I18N.t("notify.short")) + '</button>' : '') +
+          '<span class="vs-n ' + cls + '">' + label + '</span></span></div>';
     }).join("");
   }
 
@@ -517,9 +832,14 @@
     // .preview3d__price[data-price]> vía refresh(); repetirlo en cada <option>
     // sobra y quedaba inconsistente cuando un tomo suelto traía otro precio.
     // Sin data-id/data-price aquí: colisionaban con ese mismo selector.
+    // Sufijo de stock por tomo (sucursal del filtro o total): así se ve CUÁL
+    // tomo está en pocas piezas sin abrirlos uno por uno.
     return covers.map(function (c, i) {
+      var n = volUnits(c), note = "";
+      if (n === 0) note = " · " + I18N.t("prod.soldout");
+      else if (n !== null && n <= LOW_UNITS) note = " · " + (n === 1 ? I18N.t("prod.lastUnit") : I18N.t("prod.lastUnits", { n: n }));
       return '<option value="' + i + '" data-v="' + esc(c.v) + '">' +
-        esc(I18N.t("prod.volume")) + ' ' + esc(c.v) + '</option>';
+        esc(I18N.t("prod.volume")) + ' ' + esc(c.v) + esc(note) + '</option>';
     }).join("");
   }
 
@@ -619,10 +939,18 @@
         '<div class="preview3d__buy">' +
           '<span class="preview3d__price" data-price>' + priceHTML(startProduct, false) + '</span>' +
           '<button class="btn btn--panini" data-buy>' + esc(I18N.t("prod.buy")) + '</button>' +
+          '<button type="button" class="btn btn--ghost btn--sm" data-share>' + esc(I18N.t("prod.share")) + '</button>' +
         '</div>' +
-      '</div>';
+      '</div>' +
+      relatedHTML(p);
 
-    UI.modal({ title: I18N.t("prod.view3d"), content: wrap, wide: true, onMount: function () {
+    wrap.addEventListener("click", function (e) {
+      if (e.target.closest("[data-share]")) { shareProduct(p); return; }
+      var rel = e.target.closest("[data-related]");
+      if (rel) openProduct(rel.getAttribute("data-related"));
+    });
+
+    UI.modal({ title: I18N.t("prod.view3d"), content: wrap, wide: true, onClose: opts.onClose, onMount: function () {
       var volSel = wrap.querySelector("[data-vol]");
       var stockBox = wrap.querySelector("[data-vol-stock]");
       var priceEl = wrap.querySelector(".preview3d__price[data-price]");
@@ -816,15 +1144,22 @@
         });
       }
 
+      // Tomo con ficha propia -> su id; tomo sin ficha -> serie + número.
+      // branch = código de sucursal (aviso solo de esa) o null (cualquiera).
+      function notifyCurrent(branch, branchName) {
+        var c = currentVol();
+        if (c.id) notifyMe(c.id, null, p.title + " " + I18N.t("prod.volume") + " " + c.v, branch, branchName);
+        else if (showVolumePicker) notifyMe(p.id, c.v, p.title + " " + I18N.t("prod.volume") + " " + c.v, branch, branchName);
+        else notifyMe(p.id, null, p.title, branch, branchName);
+      }
+      stockBox.addEventListener("click", function (e) {
+        var nb = e.target.closest("[data-notify-branch]");
+        if (nb) notifyCurrent(nb.getAttribute("data-notify-branch"), nb.getAttribute("data-branch-name"));
+      });
+
       wrap.querySelector("[data-buy]").addEventListener("click", function () {
         var c = currentVol();
-        if (buyBtn.getAttribute("data-mode") === "notify") {
-          // Tomo con ficha propia -> su id; tomo sin ficha -> serie + número.
-          if (c.id) notifyMe(c.id, null, p.title + " " + I18N.t("prod.volume") + " " + c.v);
-          else if (showVolumePicker) notifyMe(p.id, c.v, p.title + " " + I18N.t("prod.volume") + " " + c.v);
-          else notifyMe(p.id, null, p.title);
-          return;
-        }
+        if (buyBtn.getAttribute("data-mode") === "notify") { notifyCurrent(null, null); return; }
         var item;
         if (c.id) {
           // Tomo REAL del inventario POS (id, precio y stock propios).
@@ -1432,7 +1767,8 @@
 
     reveals(root);
 
-    heroPickHandler = function (e) { openPreview(e.detail.id); };
+    heroPickHandler = function (e) { openProduct(e.detail.id); };
+    if (params && params.product) showWhenReady(params.product);
     window.addEventListener("hero:pick", heroPickHandler);
 
     var langHandler = function () {
@@ -1491,6 +1827,10 @@
     var active = currentCat(params);
     var changed = active !== activeSlug;
     activeSlug = active;
+
+    // #/p/<id> abre el producto; volver a otra dirección (botón Atrás) lo cierra.
+    if (params && params.product) { showWhenReady(params.product); return; }
+    if (productOpen) { productOpen = null; pushedProduct = false; UI.closeModal(); }
 
     setCatbarActive(root, active);        // 1) UI instantánea
     scheduleGrid(root, active);           // 2) datos/render en segundo plano

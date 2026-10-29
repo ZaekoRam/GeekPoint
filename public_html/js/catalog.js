@@ -592,7 +592,14 @@
       if (!url) return "";
       if (/^(data:|blob:)/i.test(url)) return url;
       try { if (new URL(url, location.href).origin === location.origin) return url; } catch (e) {}
-      if (/^https?:\/\/([a-z0-9-]+\.)*(wikimedia\.org|wikipedia\.org|scryfall\.com|scryfall\.io|pokemontcg\.io)\//i.test(url)) {
+      // pokemontcg.io solo manda Access-Control-Allow-Origin si la petición
+      // trae Origin, y SIN `Vary`. El <img> de la grilla (sin CORS) deja en
+      // caché la respuesta sin ACAO y la textura falla -> placeholder. Un query
+      // propio separa la entrada de caché.
+      if (/^https?:\/\/([a-z0-9-]+\.)*pokemontcg\.io\//i.test(url)) {
+        return url + (url.indexOf("?") === -1 ? "?" : "&") + "gptex=1";
+      }
+      if (/^https?:\/\/([a-z0-9-]+\.)*(wikimedia\.org|wikipedia\.org|scryfall\.com|scryfall\.io)\//i.test(url)) {
         return url;                                   // CDN con CORS -> directo
       }
       if (url.indexOf("catalog/image?src=") !== -1) return url;   // ya proxied

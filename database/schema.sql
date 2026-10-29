@@ -138,7 +138,7 @@ CREATE TABLE `inventory` (
   `branch_id`   INT UNSIGNED NOT NULL,
   `product_id`  INT UNSIGNED NOT NULL,
   `stock`       INT NOT NULL DEFAULT 0,
-  `min_stock`   INT NOT NULL DEFAULT 3,
+  `min_stock`   INT NOT NULL DEFAULT 5,
   `status`      ENUM('active','inactive') NOT NULL DEFAULT 'active',
   `created_at`  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at`  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -224,10 +224,13 @@ CREATE TABLE `sales` (
   `subtotal`       DECIMAL(12,2) NOT NULL DEFAULT 0.00,
   `tax`            DECIMAL(12,2) NOT NULL DEFAULT 0.00,
   `total`          DECIMAL(12,2) NOT NULL DEFAULT 0.00,
-  `payment_method` ENUM('cash','card','transfer') NOT NULL DEFAULT 'cash',
+  `payment_method` ENUM('cash','card','transfer','mixed') NOT NULL DEFAULT 'cash',
   `amount_paid`    DECIMAL(12,2) NOT NULL DEFAULT 0.00,
   `change_due`     DECIMAL(12,2) NOT NULL DEFAULT 0.00,
   `status`         ENUM('completed','void') NOT NULL DEFAULT 'completed',
+  `void_reason`    VARCHAR(200) NOT NULL DEFAULT '',
+  `voided_by`      INT UNSIGNED NULL,
+  `voided_at`      DATETIME NULL,
   `created_at`     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_sales_folio` (`folio`),
@@ -243,6 +246,51 @@ CREATE TABLE `sales` (
     REFERENCES `users` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `ck_sales_amounts` CHECK (
     `subtotal` >= 0 AND `tax` >= 0 AND `total` >= 0 AND `amount_paid` >= 0 AND `change_due` >= 0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
+--  Cortes de caja
+-- ---------------------------------------------------------------------
+CREATE TABLE `cash_cuts` (
+  `id`             INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `branch_id`      INT UNSIGNED NOT NULL,
+  `register_id`    INT UNSIGNED NULL,
+  `user_id`        INT UNSIGNED NOT NULL,               -- quién hizo el corte
+  `from_at`        DATETIME NOT NULL,                   -- inicio del turno
+  `to_at`          DATETIME NOT NULL,                   -- momento del corte
+  `sales_count`    INT UNSIGNED NOT NULL DEFAULT 0,
+  `void_count`     INT UNSIGNED NOT NULL DEFAULT 0,
+  `total_sales`    DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  `cash_total`     DECIMAL(12,2) NOT NULL DEFAULT 0.00, -- efectivo cobrado (ya sin cambio)
+  `card_total`     DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  `transfer_total` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  `opening_cash`   DECIMAL(12,2) NOT NULL DEFAULT 0.00, -- fondo de caja
+  `cash_counted`   DECIMAL(12,2) NOT NULL DEFAULT 0.00, -- lo que se contó
+  `difference`     DECIMAL(12,2) NOT NULL DEFAULT 0.00, -- contado - (fondo + efectivo)
+  `notes`          VARCHAR(300) NOT NULL DEFAULT '',
+  `created_at`     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `ix_cash_cuts_branch` (`branch_id`, `to_at`),
+  KEY `ix_cash_cuts_register` (`register_id`, `to_at`),
+  CONSTRAINT `fk_cash_cuts_branch` FOREIGN KEY (`branch_id`) REFERENCES `branches` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_cash_cuts_register` FOREIGN KEY (`register_id`) REFERENCES `registers` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_cash_cuts_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
+--  Formas de pago de una venta (una o varias: pago mixto)
+-- ---------------------------------------------------------------------
+CREATE TABLE `sale_payments` (
+  `id`         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `sale_id`    BIGINT UNSIGNED NOT NULL,
+  `method`     ENUM('cash','card','transfer') NOT NULL,
+  `amount`     DECIMAL(12,2) NOT NULL,
+  `reference`  VARCHAR(80) NOT NULL DEFAULT '',      -- últimos 4 / autorización / ref. de transferencia
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `ix_sale_payments_sale` (`sale_id`),
+  CONSTRAINT `fk_sale_payments_sale` FOREIGN KEY (`sale_id`)
+    REFERENCES `sales` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------
@@ -382,6 +430,7 @@ DROP TABLE IF EXISTS `stock_alerts`;
 CREATE TABLE `stock_alerts` (
   `id`           INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `sku`          VARCHAR(40)  NOT NULL,
+  `branch_id`    INT UNSIGNED NOT NULL DEFAULT 0,   -- 0 = cualquier sucursal
   `title`        VARCHAR(200) NOT NULL DEFAULT '',
   `email`        VARCHAR(160) NOT NULL,
   `user_id`      INT UNSIGNED NULL,
@@ -392,7 +441,7 @@ CREATE TABLE `stock_alerts` (
   `confirmed_at` DATETIME     NULL,
   `notified_at`  DATETIME     NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uq_alert_sku_email` (`sku`, `email`),
+  UNIQUE KEY `uq_alert_sku_email_branch` (`sku`, `email`, `branch_id`),
   KEY `ix_alert_sku_status` (`sku`, `status`),
   KEY `ix_alert_token` (`token_hash`),
   CONSTRAINT `fk_alert_user` FOREIGN KEY (`user_id`)
@@ -445,7 +494,10 @@ SELECT
               FROM `product_images` im
              WHERE im.`product_id` = p.`id`), '') AS image_url,
   p.`figure_png_url`      AS figure_png_url,
-  IF(p.`status` = 'active' AND i.`status` = 'active', 'active', 'inactive') AS status,
+  -- De las columnas, no de textos fijos: así lleva el cotejo de la tabla y
+  -- no choca con el de la conexión (#1267 en MariaDB 11.8). Ver migración
+  -- 2026_10_21_000001_vistas_cotejo.sql.
+  IF(p.`status` = 'active', i.`status`, p.`status`) AS status,
   i.`created_at`          AS created_at,
   GREATEST(i.`updated_at`, p.`updated_at`) AS updated_at
 FROM `inventory` i

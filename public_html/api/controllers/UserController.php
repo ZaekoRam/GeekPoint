@@ -37,6 +37,43 @@ class UserController extends Controller
         Response::ok(['users' => $rows]);
     }
 
+    /**
+     * GET /customers?q=texto — clientes registrados desde la tienda (solo
+     * lectura + activar/desactivar vía users/{id}/status). Incluye cuántos
+     * apartados ha hecho cada uno y lo que ya pagó (apartados cobrados).
+     */
+    public function customers()
+    {
+        $this->authRole(['admin']);
+
+        $where  = ["u.role = 'customer'"];
+        $params = [];
+        if (($q = trim((string) $this->query('q', ''))) !== '') {
+            $where[] = '(u.name LIKE ? OR u.email LIKE ?)';
+            $like = '%' . $q . '%';
+            array_push($params, $like, $like);
+        }
+
+        $rows = Database::all(
+            "SELECT u.id, u.name, u.email, u.status, u.email_verified_at, u.last_login_at, u.created_at,
+                    COUNT(r.id) AS reservations,
+                    COALESCE(SUM(CASE WHEN r.status = 'cobrada' THEN r.total END), 0) AS spent
+             FROM users u
+             LEFT JOIN reservations r ON r.user_id = u.id
+             WHERE " . implode(' AND ', $where) . "
+             GROUP BY u.id
+             ORDER BY u.created_at DESC",
+            $params
+        );
+        foreach ($rows as &$r) {
+            $r['id'] = (int) $r['id'];
+            $r['reservations'] = (int) $r['reservations'];
+            $r['spent'] = (float) $r['spent'];
+            $r['verified'] = $r['email_verified_at'] !== null;
+        }
+        Response::ok(['customers' => $rows]);
+    }
+
     public function store()
     {
         $this->authRole(['admin']);

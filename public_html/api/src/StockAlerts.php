@@ -3,15 +3,16 @@
  * Avisos de "Notifícame" (producto sin stock → correo cuando vuelve).
  *
  * Tabla stock_alerts (migración 2026_10_08_000001). Una suscripción por
- * (SKU, correo):
+ * (SKU, correo, sucursal). branch_id = 0 -> cualquier sucursal; > 0 -> solo
+ * avisa cuando llega stock a ESA sucursal (migración 2026_10_28_000003):
  *   - cliente con sesión y correo verificado → 'active' al instante
  *   - cliente con sesión sin verificar       → 'active', pero el correo solo
  *                                              se manda si ya verificó
  *   - invitado                               → 'pending' hasta que confirme
  *                                              con el enlace (doble opt-in),
  *                                              así nadie suscribe correos ajenos
- * Cuando el stock total del SKU vuelve a ser > 0, se avisa a los activos y
- * pasan a 'notified'.
+ * Cuando hay stock (en la sucursal pedida, o en cualquiera si branch_id = 0)
+ * se avisa a los activos y pasan a 'notified'.
  */
 class StockAlerts
 {
@@ -44,19 +45,34 @@ class StockAlerts
               WHERE p.sku = ? AND p.status = "active"', [$sku]);
     }
 
+    public static function branchStock($sku, $branchId)
+    {
+        return (int) Database::scalar(
+            'SELECT COALESCE(SUM(p.stock), 0) FROM v_inventory p
+               JOIN branches b ON b.id = p.branch_id AND b.status = "active"
+              WHERE p.sku = ? AND p.branch_id = ? AND p.status = "active"', [$sku, (int) $branchId]);
+    }
+
+    /** Stock que le importa a un aviso: el de su sucursal, o el total. */
+    private static function stockFor($sku, $branchId)
+    {
+        return $branchId > 0 ? self::branchStock($sku, $branchId) : self::totalStock($sku);
+    }
+
     private static function hash($token) { return hash('sha256', $token); }
 
     /**
      * Crea o reactiva la suscripción. Devuelve ['status' => 'active'|'pending'|'in_stock'].
      * $user = usuario con sesión (o null); $email solo se usa para invitados.
      */
-    public static function subscribe($sku, $title, $email, $user, $ip)
+    public static function subscribe($sku, $title, $email, $user, $ip, $branchId = 0)
     {
-        if (self::totalStock($sku) > 0) return ['status' => 'in_stock'];
+        $branchId = (int) $branchId;
+        if (self::stockFor($sku, $branchId) > 0) return ['status' => 'in_stock'];
 
         $email = strtolower(trim($user ? $user['email'] : (string) $email));
         $title = mb_substr(trim((string) $title), 0, 200);
-        $existing = Database::one('SELECT * FROM stock_alerts WHERE sku = ? AND email = ?', [$sku, $email]);
+        $existing = Database::one('SELECT * FROM stock_alerts WHERE sku = ? AND email = ? AND branch_id = ?', [$sku, $email, $branchId]);
 
         if ($user) {
             $token = bin2hex(random_bytes(24));
@@ -65,9 +81,9 @@ class StockAlerts
                                       confirmed_at = NOW(), notified_at = NULL WHERE id = ?',
                     [(int) $user['id'], $title, self::hash($token), (int) $existing['id']]);
             } else {
-                Database::run('INSERT INTO stock_alerts (sku, title, email, user_id, status, token_hash, ip, confirmed_at)
-                               VALUES (?, ?, ?, ?, "active", ?, ?, NOW())',
-                    [$sku, $title, $email, (int) $user['id'], self::hash($token), mb_substr($ip, 0, 45)]);
+                Database::run('INSERT INTO stock_alerts (sku, branch_id, title, email, user_id, status, token_hash, ip, confirmed_at)
+                               VALUES (?, ?, ?, ?, ?, "active", ?, ?, NOW())',
+                    [$sku, $branchId, $title, $email, (int) $user['id'], self::hash($token), mb_substr($ip, 0, 45)]);
             }
             return ['status' => 'active', 'email' => $email,
                     'verified' => !empty($user['email_verified_at'])];
@@ -93,8 +109,8 @@ class StockAlerts
                                   created_at = NOW(), confirmed_at = NULL, notified_at = NULL WHERE id = ?',
                 [$title, self::hash($token), mb_substr($ip, 0, 45), (int) $existing['id']]);
         } else {
-            Database::run('INSERT INTO stock_alerts (sku, title, email, status, token_hash, ip) VALUES (?, ?, ?, "pending", ?, ?)',
-                [$sku, $title, $email, self::hash($token), mb_substr($ip, 0, 45)]);
+            Database::run('INSERT INTO stock_alerts (sku, branch_id, title, email, status, token_hash, ip) VALUES (?, ?, ?, ?, "pending", ?, ?)',
+                [$sku, $branchId, $title, $email, self::hash($token), mb_substr($ip, 0, 45)]);
         }
         Mailer::stockAlertConfirm($email, $title, Mailer::siteUrl() . '/api/stock-alerts/confirm?token=' . $token);
         return ['status' => 'pending', 'email' => $email];
@@ -135,16 +151,25 @@ class StockAlerts
             if (!$alerts) return 0;
 
             $branches = Database::all(
-                'SELECT b.name, p.stock FROM v_inventory p JOIN branches b ON b.id = p.branch_id AND b.status = "active"
+                'SELECT b.id, b.name, p.stock FROM v_inventory p JOIN branches b ON b.id = p.branch_id AND b.status = "active"
                   WHERE p.sku = ? AND p.status = "active" AND p.stock > 0 ORDER BY p.stock DESC', [$sku]);
             $sent = 0;
             foreach ($alerts as $a) {
                 // Cuentas: solo a correos verificados (evita usar cuentas con correos ajenos).
                 if ($a['user_id'] !== null && empty($a['email_verified_at'])) continue;
+                // Aviso de una sucursal: solo si llegó stock a ESA sucursal, y el
+                // correo menciona solo esa.
+                $list = $branches;
+                if ((int) $a['branch_id'] > 0) {
+                    $list = array_values(array_filter($branches, function ($b) use ($a) {
+                        return (int) $b['id'] === (int) $a['branch_id'];
+                    }));
+                    if (!$list) continue;
+                }
                 $token = bin2hex(random_bytes(24));
                 Database::run('UPDATE stock_alerts SET status = "notified", notified_at = NOW(), token_hash = ? WHERE id = ?',
                     [self::hash($token), (int) $a['id']]);
-                Mailer::stockAvailable($a['email'], $a['title'] ?: $sku, $branches,
+                Mailer::stockAvailable($a['email'], $a['title'] ?: $sku, $list,
                     Mailer::siteUrl() . '/#/', Mailer::siteUrl() . '/api/stock-alerts/unsubscribe?token=' . $token);
                 $sent++;
             }

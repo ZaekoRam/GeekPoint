@@ -77,9 +77,11 @@
           '<label for="rg-email" data-i18n="register.email">Correo</label>' +
           '<input class="input" type="email" id="rg-email" name="email" autocomplete="email" required maxlength="160" value="' + esc(pEmail) + '" />' +
         '</div>' +
+        Legal.acceptHTML(prefill && prefill.accepted) +
         '<p class="field__error" data-auth-error hidden></p>' +
-        Legal.consentHTML() +
-        '<button class="btn btn--neon btn--block btn--lg" type="submit" data-i18n="register.continue">Continuar</button>' +
+        // Apagado hasta marcar la casilla de Términos/Aviso (ver "change" en mount()).
+        '<button class="btn btn--neon btn--block btn--lg" type="submit" data-i18n="register.continue"' +
+          (prefill && prefill.accepted ? '' : ' disabled') + '>Continuar</button>' +
         '<p class="auth__switch"><span data-i18n="register.haveAccount"></span> ' +
           '<a href="#" data-auth-switch="login" data-i18n="register.toLogin"></a></p>';
     }
@@ -373,7 +375,7 @@
     /* Nombre/correo capturados en el paso 1 del registro — se conservan
        aquí para no pedírselos de nuevo en el paso 2 (esos campos ya no
        existen en el DOM del paso 2, ver cardInnerHTML). */
-    var regData = { name: "", email: "" };
+    var regData = { name: "", email: "", accepted: false };
     /* data-auth-mode en .auth__composition: SOLO lo usa CSS para el
        desplazamiento vertical del personaje (la tarjeta de Registro es
        más alta que la de Login, ver ".auth__mascot" en app.css) — no
@@ -452,6 +454,13 @@
       if (sw) { e.preventDefault(); switchTo(sw.getAttribute("data-auth-switch")); }
     });
 
+    // Registro: "Continuar" solo se habilita con la casilla marcada.
+    card.addEventListener("change", function (e) {
+      if (e.target.name !== "accept_legal") return;
+      card.querySelector('button[type="submit"]').disabled = !e.target.checked;
+      if (e.target.checked) $("[data-auth-error]", card).hidden = true;
+    });
+
     card.addEventListener("submit", function (e) {
       e.preventDefault();
       var errBox = $("[data-auth-error]", card);
@@ -464,8 +473,16 @@
          no se llama a la API todavía, no hay botón "is-loading" que
          mostrar aquí. */
       if (mode === "register") {
+        // Aceptar Términos y Aviso de privacidad es obligatorio para registrarse.
+        if (!card.accept_legal.checked) {
+          errBox.textContent = I18N.t("legal.acceptRequired");
+          errBox.hidden = false;
+          card.accept_legal.focus();
+          return;
+        }
         regData.name = card.name.value.trim();
         regData.email = card.email.value.trim();
+        regData.accepted = true;
         switchTo("register2");
         return;
       }

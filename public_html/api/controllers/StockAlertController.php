@@ -1,7 +1,8 @@
 <?php
 /**
  * "Notifícame" — avisos de stock.
- *   POST /stock-alerts                 { ref, vol?, title, email? }  (sesión opcional)
+ *   POST /stock-alerts                 { ref, vol?, title, email?, branch? }  (sesión opcional)
+ *                                      branch = código de sucursal: avisar solo de esa
  *   GET  /stock-alerts/confirm?token=   enlace del correo de confirmación (invitados)
  *   GET  /stock-alerts/unsubscribe?token=
  * Lógica en src/StockAlerts.php.
@@ -25,8 +26,14 @@ class StockAlertController extends Controller
             $user = Database::one('SELECT * FROM users WHERE id = ?', [(int) $user['id']]);
         }
 
+        $branchId = 0;
+        if (!empty($d['branch'])) {
+            $branchId = (int) Database::scalar('SELECT id FROM branches WHERE code = ? AND status = "active"', [(string) $d['branch']]);
+            if (!$branchId) Response::validation(['branch' => ['Esa sucursal no existe.']]);
+        }
+
         $title = trim((string) ($d['title'] ?? '')) ?: $sku;
-        Response::ok(StockAlerts::subscribe($sku, $title, $d['email'] ?? '', $user, $this->req->ip()), 201);
+        Response::ok(StockAlerts::subscribe($sku, $title, $d['email'] ?? '', $user, $this->req->ip(), $branchId), 201);
     }
 
     public function confirm()

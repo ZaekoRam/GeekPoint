@@ -1,0 +1,138 @@
+<title>Tarjetas CRC GeekPoint</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: tablero de fichas CRC en rejilla; cada ficha lleva franja de capa, responsabilidades a la izquierda y colaboradores a la derecha. */
+:root{
+  --bg:#0c0c0e; --card:#17171c; --line:#2c2c35; --fg:#f2f0ea; --muted:#9a98a3;
+  --yellow:#ffd400; --pink:#ff2d95; --cyan:#00e5ff; --purple:#8b5bff;
+  --on-accent:#0c0c0e;
+  --display:'Archivo Black','Arial Black',sans-serif;
+  --body:'IBM Plex Sans',system-ui,sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: light){:root:not([data-theme="dark"]){--bg:#f5f3ee;--card:#fffefb;--line:#d9d5ca;--fg:#17161a;--muted:#625f6b;--yellow:#e6b800;--pink:#d6157a;--cyan:#0090a8;--purple:#6a3de0;--on-accent:#fff;color-scheme:light}}
+:root[data-theme="light"]{--bg:#f5f3ee;--card:#fffefb;--line:#d9d5ca;--fg:#17161a;--muted:#625f6b;--yellow:#e6b800;--pink:#d6157a;--cyan:#0090a8;--purple:#6a3de0;--on-accent:#fff;color-scheme:light}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);line-height:1.55;
+  padding-block:40px 64px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:1180px;margin:0 auto}
+header{display:grid;gap:14px;margin-bottom:28px;max-width:760px}
+.eyebrow{font:500 12px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--yellow)}
+h1{font:400 clamp(2.2rem,6vw,3.8rem)/1 var(--display);margin:0;text-wrap:balance;letter-spacing:-.01em}
+h1 span{color:var(--yellow)}
+header p{margin:0;color:var(--muted);max-width:62ch}
+.meta{display:flex;flex-wrap:wrap;gap:6px 18px;font:400 12px var(--mono);color:var(--muted)}
+.controls{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:24px;align-items:center}
+.chip{font:500 12px var(--mono);letter-spacing:.04em;padding:8px 14px;border:1px solid var(--line);background:transparent;color:var(--fg);border-radius:999px;cursor:pointer}
+.chip:hover{border-color:var(--fg)}
+.chip[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.chip:focus-visible,.collab:focus-visible,.tgl:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+.count{margin-left:auto;font:400 12px var(--mono);color:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,340px),1fr));gap:18px}
+.crc{background:var(--card);border:1px solid var(--line);border-radius:4px;display:flex;flex-direction:column;min-width:0;position:relative;transition:box-shadow .2s,border-color .2s}
+.crc[data-layer="acceso"]{--c:var(--purple)}
+.crc[data-layer="negocio"]{--c:var(--yellow)}
+.crc[data-layer="inventario"]{--c:var(--cyan)}
+.crc[data-layer="servicios"]{--c:var(--pink)}
+.crc.hit{border-color:var(--c);box-shadow:0 0 0 2px var(--c)}
+.band{height:6px;background:var(--c)}
+.top{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:14px 16px 12px;border-bottom:1px solid var(--line)}
+.top h2{font:400 1.2rem/1.15 var(--display);margin:0;text-wrap:balance}
+.layer{font:500 10px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--c);white-space:nowrap}
+.cols{display:grid;grid-template-columns:1.5fr 1fr;flex:1;min-height:0}
+.cols>div{padding:12px 16px 16px;min-width:0}
+.cols>div+div{border-left:1px solid var(--line)}
+.lbl{font:500 10px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0 0 8px}
+ul{margin:0;padding-left:16px;display:grid;gap:5px;font-size:13.5px}
+li::marker{color:var(--c)}
+.collabs{display:flex;flex-wrap:wrap;gap:6px;padding:0;list-style:none}
+.collab{font:400 12px var(--mono);padding:4px 8px;border:1px solid var(--line);border-radius:3px;background:transparent;color:var(--fg);cursor:pointer;text-align:left}
+.collab:hover{border-color:var(--c);color:var(--c)}
+.collab.ext{cursor:default;color:var(--muted);border-style:dashed}
+.collab.ext:hover{border-color:var(--line);color:var(--muted)}
+.hint{font:400 12px var(--mono);color:var(--muted)}
+footer{margin-top:40px;padding-top:20px;border-top:1px solid var(--line);display:grid;gap:10px;font-size:13px;color:var(--muted)}
+footer b{color:var(--fg)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font:400 12px var(--mono)}
+.legend i{display:inline-block;width:10px;height:10px;margin-right:6px;vertical-align:-1px}
+@media (max-width:520px){.cols{grid-template-columns:1fr}.cols>div+div{border-left:0;border-top:1px solid var(--line)}.count{margin-left:0;width:100%}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Actividad 8 · Ingeniería de Software · Grupo E</div>
+    <h1>Tarjetas CRC de <span>GeekPoint</span></h1>
+    <p>Clase, responsabilidades y colaboradores de la tienda geek con inventario por sucursal, caja y reservaciones en línea. Toca un colaborador para saltar a su tarjeta.</p>
+    <div class="meta"><span>Universidad de Colima · Facultad de Ingeniería Electromecánica</span><span>API PHP · MySQL</span></div>
+  </header>
+
+  <div class="controls" id="filters" role="group" aria-label="Filtrar por capa"></div>
+  <div class="grid" id="grid"></div>
+
+  <footer>
+    <div class="legend">
+      <span><i style="background:var(--purple)"></i>Acceso</span>
+      <span><i style="background:var(--yellow)"></i>Negocio</span>
+      <span><i style="background:var(--cyan)"></i>Inventario y catálogo</span>
+      <span><i style="background:var(--pink)"></i>Servicios</span>
+    </div>
+    <div><b>Cómo leerlas:</b> las responsabilidades son lo que la clase sabe o hace; los colaboradores son las clases a las que pide ayuda. Los colaboradores con borde punteado son tablas o controladores que no tienen tarjeta propia.</div>
+  </footer>
+</div>
+
+<script>
+const LAYERS={acceso:'Acceso',negocio:'Negocio',inventario:'Inventario y catálogo',servicios:'Servicios'};
+const CARDS=[
+ {n:'Usuario',l:'acceso',r:['Representar a una persona con cuenta: nombre, correo, rol y estado','Distinguir cliente, empleado de caja y administrador','Conocer su sucursal asignada','Saber si su correo está verificado'],c:['Sesión','Sucursal','Reservación','Venta','UserController*']},
+ {n:'Sesión / Auth',l:'acceso',r:['Iniciar y cerrar sesión','Registrar usuarios nuevos','Crear y validar el token Bearer','Exigir login y rol en cada ruta','Limitar el acceso a la sucursal propia'],c:['Usuario','Mailer','Request*','Response*','Database*']},
+ {n:'Sucursal',l:'negocio',r:['Representar una tienda: nombre, dirección, horario, estado','Crear, editar, activar y desactivar sucursales','Ser el punto de recolección de reservaciones','Tener existencias propias por producto'],c:['Producto','Caja','Venta','Reservación','Usuario']},
+ {n:'Caja',l:'negocio',r:['Representar una caja registradora de una sucursal','Crearse, listarse y eliminarse','Asociar cada venta con la caja donde se cobró'],c:['Sucursal','Venta','RegisterController*']},
+ {n:'Venta (POS)',l:'negocio',r:['Registrar una venta con sus partidas, total y método de pago','Descontar inventario dentro de una transacción','Calcular cada precio con la promoción vigente','Consultar historial y detalle por sucursal'],c:['Caja','Producto','Precio','Usuario','Movimiento de inventario','Sucursal']},
+ {n:'Reservación',l:'negocio',r:['Permitir que un cliente aparte productos para recoger','Generar un folio único','Apartar stock en la sucursal elegida','Consultar por folio, listar las propias o todas','Resolver: entregada, cancelada o vencida, y devolver el stock si aplica'],c:['Usuario','Producto','Sucursal','Movimiento de inventario','Mailer']},
+ {n:'Producto',l:'inventario',r:['Representar un artículo: SKU, título, categoría, precio, imágenes','Mantener existencias por sucursal','Alta, edición, baja e importación masiva','Subir imágenes y ajustar stock','Entregar su precio vigente'],c:['Categoría','Sucursal','Precio','Movimiento de inventario','Alerta de stock','Validator*']},
+ {n:'Categoría',l:'inventario',r:['Clasificar el catálogo: Manga, Figuras, Cómics, TCG','Guardar el nombre en español e inglés','Listarse para los filtros de la tienda'],c:['Producto','Catálogo']},
+ {n:'Precio',l:'inventario',r:['Calcular el precio final con descuentos y promociones','Respetar fechas de inicio y fin de la promoción','Validar porcentajes y fechas capturadas'],c:['Producto','Venta','Reservación','Validator*']},
+ {n:'Movimiento de inventario',l:'inventario',r:['Registrar cada entrada, salida y ajuste de stock','Guardar producto, sucursal, cantidad, motivo, usuario y fecha','Permitir auditoría y detectar existencias bajas'],c:['Producto','Sucursal','Usuario','Venta','Reservación','InventoryController*']},
+ {n:'Catálogo',l:'inventario',r:['Armar el catálogo público con productos locales y fuentes externas','Manejar caché, portadas e imágenes','Traducir sinopsis al español','Usar un catálogo de respaldo cuando una fuente falla','Mostrar disponibilidad por sucursal'],c:['Producto','Categoría','Sucursal','AniList / Jikan*','AmiAmi*','Pokémon TCG*']},
+ {n:'Alerta de stock',l:'servicios',r:['Suscribir un correo a un producto agotado','Confirmar la suscripción con un token y permitir darse de baja','Avisar cuando el producto vuelve a existir'],c:['Producto','Mailer','Usuario']},
+ {n:'Mailer',l:'servicios',r:['Enviar correos HTML con la marca de GeekPoint','Confirmar reservaciones y avisar cambios de estado','Verificar correo y avisar cambios de contraseña o correo','Avisar que un producto ya está disponible'],c:['Reservación','Usuario','Alerta de stock','Sucursal']},
+ {n:'Reporte',l:'servicios',r:['Generar el resumen general para el panel de administración','Generar el resumen por sucursal','Totalizar ventas, reservaciones e inventario'],c:['Venta','Reservación','Producto','Sucursal']},
+ {n:'Núcleo de la API',l:'servicios',r:['Router: asociar método y ruta con su controlador','Request y Response: leer la petición y responder JSON con errores estándar','Controller: base con auth, body y query','Validator: validar campos','Database: conexión PDO y transacciones'],c:['Todos los controladores','Sesión / Auth']}
+];
+const names=new Set(CARDS.map(c=>c.n));
+const grid=document.getElementById('grid'), filters=document.getElementById('filters');
+let active='todas';
+const esc=s=>s.replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+const id=n=>'c-'+n.toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g,'-');
+function render(){
+  grid.innerHTML=CARDS.filter(c=>active==='todas'||c.l===active).map(c=>`
+  <article class="crc" id="${id(c.n)}" data-layer="${c.l}">
+    <div class="band"></div>
+    <div class="top"><h2>${esc(c.n)}</h2><span class="layer">${LAYERS[c.l]}</span></div>
+    <div class="cols">
+      <div><p class="lbl">Responsabilidades</p><ul>${c.r.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>
+      <div><p class="lbl">Colaboradores</p><ul class="collabs">${c.c.map(x=>{
+        const ext=x.endsWith('*'), t=ext?x.slice(0,-1):x, ok=names.has(t);
+        return ok?`<li><button class="collab" data-go="${esc(t)}">${esc(t)}</button></li>`:`<li><span class="collab ext">${esc(t)}</span></li>`}).join('')}</ul></div>
+    </div>
+  </article>`).join('');
+  document.getElementById('count').textContent=grid.children.length+' de '+CARDS.length+' tarjetas';
+}
+function chips(){
+  const all=[['todas','Todas'],...Object.entries(LAYERS)];
+  filters.innerHTML=all.map(([k,v])=>`<button class="chip" aria-pressed="${k===active}" data-f="${k}">${v}</button>`).join('')+'<span class="count" id="count"></span>';
+}
+filters.addEventListener('click',e=>{const b=e.target.closest('[data-f]');if(!b)return;active=b.dataset.f;chips();render()});
+grid.addEventListener('click',e=>{
+  const b=e.target.closest('[data-go]');if(!b)return;
+  const t=b.dataset.go, card=CARDS.find(c=>c.n===t);
+  if(active!=='todas'&&card.l!==active){active='todas';chips();render()}
+  const el=document.getElementById(id(t));if(!el)return;
+  el.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'auto':'smooth',block:'center'});
+  el.classList.add('hit');setTimeout(()=>el.classList.remove('hit'),1600);
+});
+chips();render();
+</script>

@@ -7,6 +7,9 @@
 
   var ROUTES = [
     { test: function (h) { return h === "" || h === "/"; }, view: "store", params: function () { return { cat: "all" }; } },
+    // Producto con dirección propia: la tienda abre su vista previa en modal.
+    { test: function (h) { return h.indexOf("/p/") === 0; }, view: "store",
+      params: function (h) { return { product: decodeURIComponent(h.slice(3)) }; } },
     { test: function (h) { return h.indexOf("/cat/") === 0; }, view: "store", params: function (h) { return { cat: h.split("/")[2] || "all" }; } },
     { test: function (h) { return h === "/acceso" || h === "/login"; }, view: "login", params: function () { return {}; } },
     { test: function (h) { return h === "/panel"; }, view: "_home", params: function () { return {}; } },

@@ -114,6 +114,7 @@
     document.addEventListener("keydown", escClose);
     document.body.appendChild(wrap);
     openModalEl = wrap;
+    wrap.__onClose = typeof opts.onClose === "function" ? opts.onClose : null;
     document.documentElement.classList.add("modal-open");   // bloquea el scroll de fondo
 
     // Animación de ENTRADA por clase (keyframes en components.css), no siempre-activa.
@@ -139,6 +140,8 @@
     if (!el) return;
     openModalEl = null;
     document.removeEventListener("keydown", escClose);
+    // onClose una sola vez; `instant` = lo reemplaza otro modal (no un cierre del usuario).
+    if (el.__onClose) { var cb = el.__onClose; el.__onClose = null; safe(function () { cb(instant === true); }); }
     document.documentElement.classList.remove("modal-open");
     if (instant === true || reduced) { el.remove(); return; }
     el.classList.remove("is-entering");

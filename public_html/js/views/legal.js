@@ -3,13 +3,14 @@
    Rutas #/privacidad y #/terminos. Usa el aspecto de la tienda (no el
    del panel). El texto vive aquí y no en i18n.js por su tamaño; el HTML
    de los párrafos es nuestro (nada viene del usuario).
-   También expone Legal.consentHTML() para los formularios que piden datos.
+   También expone Legal.consentHTML() (nota para formularios que piden datos)
+   y Legal.acceptHTML() (casilla obligatoria del registro).
    ============================================================= */
 (function () {
   "use strict";
   window.Views = window.Views || {};
 
-  var UPDATED = { es: "19 de octubre de 2026", en: "October 19, 2026" };
+  var UPDATED = { es: "20 de octubre de 2026", en: "October 20, 2026" };
 
   /* Correo para derechos ARCO. Mientras esté vacío, el aviso indica cómo
      corregir datos y cancelar avisos desde el propio sitio. */
@@ -21,129 +22,159 @@
     if (CONTACT_EMAIL) {
       var mail = '<a href="mailto:' + CONTACT_EMAIL + '">' + CONTACT_EMAIL + '</a>';
       return lang === "en"
-        ? "To exercise any of these rights, write to " + mail + " from the email linked to your data, saying what you need. We will reply within 20 business days."
-        : "Para ejercer cualquiera de estos derechos escribe a " + mail + " desde el correo asociado a tus datos e indica qué necesitas. Te responderemos en un plazo máximo de 20 días hábiles.";
+        ? "To exercise any of these rights, send a request to " + mail + " from the email address associated with your data, clearly stating what you require. We will respond within a maximum of 20 business days."
+        : "Para ejercer cualquiera de estos derechos, envíe una solicitud a " + mail + " desde el correo electrónico asociado a sus datos, indicando con claridad lo que requiere. Daremos respuesta en un plazo máximo de 20 días hábiles.";
     }
     return lang === "en"
-      ? "While we publish a contact address, you can correct your data from " + A_ACCT + "My account</a> and cancel stock alerts with the link included in each email."
-      : "Mientras publicamos un correo de contacto, puedes corregir tus datos desde " + A_ACCT + "«Mi cuenta»</a> y cancelar los avisos de stock con el enlace que viene en cada correo.";
+      ? "Until a contact email address is made available, you may update your data in " + A_ACCT + "My account</a> and cancel availability alerts through the link included in each email."
+      : "En tanto se habilita un correo electrónico de contacto, usted puede actualizar sus datos desde " + A_ACCT + "«Mi cuenta»</a> y cancelar los avisos de disponibilidad mediante el enlace incluido en cada correo.";
   }
 
+  /* Cada documento: intro + "Resumen" (summary) + secciones.
+     Registro formal (de "usted"), con oraciones claras y sin ambigüedades. */
   var DOCS = {
     privacy: {
       es: {
         kicker: "Legal", title: "Aviso de privacidad",
-        intro: "Este aviso explica qué datos personales recaba GeekPoint, para qué los usa y cómo puedes controlarlos, conforme a la Ley Federal de Protección de Datos Personales en Posesión de los Particulares.",
+        intro: "El presente Aviso de privacidad describe qué datos personales recaba GeekPoint, con qué finalidad los utiliza y de qué manera usted puede ejercer sus derechos sobre ellos, de conformidad con la Ley Federal de Protección de Datos Personales en Posesión de los Particulares.",
+        summary: [
+          "Únicamente solicitamos los datos necesarios: nombre, correo electrónico y, de manera opcional, número telefónico.",
+          "Sus datos se utilizan exclusivamente para administrar su cuenta, sus apartados y los avisos que usted solicite.",
+          "GeekPoint no vende sus datos ni los utiliza con fines publicitarios.",
+          "El sitio no procesa pagos en línea; por ello, nunca le solicitaremos datos bancarios o de tarjetas.",
+          "Usted puede actualizar sus datos en cualquier momento desde " + A_ACCT + "«Mi cuenta»</a>."
+        ],
         sections: [
-          { h: "Quién es responsable de tus datos", p: [
-            "GeekPoint es un proyecto académico (Proyecto Integrador) desarrollado por estudiantes de Ingeniería de Software de la Facultad de Ingeniería Electromecánica de la Universidad de Colima, en Manzanillo, Colima, México. El equipo de desarrollo es responsable del tratamiento de los datos que se capturan en geekpoint.com.mx."
+          { h: "Responsable de sus datos personales", p: [
+            "GeekPoint es un proyecto académico (Proyecto Integrador) desarrollado por estudiantes de la carrera de Ingeniería de Software de la Facultad de Ingeniería Electromecánica de la Universidad de Colima, con sede en Manzanillo, Colima, México. El equipo de desarrollo es el responsable del tratamiento (es decir, del uso, almacenamiento y protección) de los datos personales que usted proporciona en geekpoint.com.mx."
           ] },
-          { h: "Qué datos recabamos", p: [
+          { h: "Datos personales que recabamos", p: [
             { ul: [
-              "<b>Cuenta de cliente:</b> nombre, correo electrónico y contraseña. La contraseña se guarda cifrada con un algoritmo de un solo sentido; nadie del equipo puede verla.",
-              "<b>Apartados:</b> nombre, correo y teléfono (estos dos últimos son opcionales), productos, cantidades y sucursal de recogida.",
-              "<b>Avisos de stock («Notifícame»):</b> correo electrónico y producto que te interesa.",
-              "<b>Datos técnicos de seguridad:</b> dirección IP, navegador y fecha de inicio de sesión, y la IP desde la que se pide un aviso de stock sin cuenta.",
-              "<b>Ventas en sucursal:</b> el ticket puede incluir el nombre del cliente si lo das en caja."
+              "<b>Cuenta de cliente:</b> nombre, correo electrónico y contraseña. La contraseña se almacena cifrada de forma irreversible, por lo que ninguna persona, incluido el equipo de GeekPoint, puede consultarla.",
+              "<b>Apartados:</b> nombre, productos, cantidades y sucursal de recolección. El correo electrónico y el número telefónico son opcionales.",
+              "<b>Avisos de disponibilidad («Notifícame»):</b> correo electrónico y producto de su interés.",
+              "<b>Datos técnicos de seguridad:</b> dirección IP, tipo de navegador y fecha y hora de inicio de sesión, con el fin de detectar accesos no autorizados.",
+              "<b>Ventas en sucursal:</b> el ticket de compra puede incluir su nombre únicamente si usted lo proporciona en caja."
             ] },
-            "No pedimos datos sensibles (salud, religión, origen étnico, etc.) ni datos bancarios o de tarjetas: el sitio no procesa pagos en línea."
+            "GeekPoint no solicita datos personales sensibles (como información de salud, creencias religiosas u origen étnico) ni datos bancarios o de tarjetas, ya que el sitio no procesa pagos en línea."
           ] },
-          { h: "Para qué los usamos", p: [
-            "Usamos tus datos solo para:",
+          { h: "Finalidades del tratamiento", p: [
+            "Sus datos personales se utilizan exclusivamente para las siguientes finalidades:",
             { ul: [
-              "Crear y administrar tu cuenta, y verificar que el correo es tuyo.",
-              "Registrar tus apartados y avisarte por correo cuando cambian de estado (listo para recoger, cobrado o cancelado).",
-              "Avisarte cuando vuelva a haber stock de un producto que pediste.",
-              "Mandarte avisos de seguridad, como un cambio de contraseña o de correo.",
-              "Proteger el sitio contra abusos (por ejemplo, limitar solicitudes repetidas)."
+              "Crear y administrar su cuenta, así como verificar la titularidad de su correo electrónico.",
+              "Registrar sus apartados y notificarle por correo electrónico cualquier cambio en su estado (listo para recoger, cobrado o cancelado).",
+              "Informarle cuando un producto que solicitó vuelva a estar disponible.",
+              "Enviarle avisos de seguridad, como el cambio de su contraseña o de su correo electrónico.",
+              "Proteger el sitio contra usos indebidos, por ejemplo, limitando solicitudes repetidas."
             ] },
-            "No usamos tus datos para publicidad, no hacemos perfiles comerciales y no te mandaremos boletines."
+            "Sus datos no se utilizan con fines publicitarios ni de mercadotecnia, y no se elaboran perfiles comerciales."
           ] },
-          { h: "Con quién se comparten", p: [
-            "No vendemos ni rentamos tus datos. Solo intervienen los proveedores que el sitio necesita para funcionar, y únicamente para prestar ese servicio:",
+          { h: "Transferencia de datos", p: [
+            "GeekPoint no vende, renta ni cede sus datos personales. Únicamente intervienen los siguientes proveedores, indispensables para el funcionamiento del sitio y exclusivamente para prestar dicho servicio:",
             { ul: [
-              "<b>Hostinger:</b> alojamiento del sitio y de la base de datos.",
-              "<b>Resend:</b> envío de los correos del sitio (verificación, apartados y avisos de stock)."
+              "<b>Hostinger:</b> alojamiento del sitio web y de la base de datos.",
+              "<b>Resend:</b> envío de los correos electrónicos del sitio (verificación de cuenta, apartados y avisos de disponibilidad)."
             ] },
-            "Además, al cargar la página tu navegador se conecta a Google Fonts (tipografías) y a servidores de imágenes de terceros, como MangaDex y Pokémon TCG, que pueden registrar tu dirección IP según sus propias políticas.",
-            "Solo entregaríamos datos a una autoridad si una ley o una orden judicial lo exige."
+            "Asimismo, al cargar el sitio, su navegador se conecta a Google Fonts (tipografías) y a servidores de imágenes de terceros, como MangaDex y Pokémon TCG, los cuales pueden registrar su dirección IP conforme a sus propias políticas de privacidad.",
+            "Sus datos solo se entregarán a una autoridad cuando así lo exija una ley o una orden judicial."
           ] },
-          { h: "Lo que se guarda en tu navegador", p: [
-            "No usamos cookies de rastreo ni herramientas de analítica. El sitio guarda en el almacenamiento local de tu navegador tu sesión, tu carrito, el idioma y el tema (claro u oscuro). Si instalas la aplicación, también se guardan los archivos de la página para que cargue más rápido; nunca se guardan tus pedidos ni tus datos personales. Puedes borrar todo esto desde la configuración de tu navegador."
+          { h: "Información almacenada en su navegador", p: [
+            "GeekPoint no utiliza cookies de rastreo ni herramientas de analítica. El sitio guarda en el almacenamiento local de su navegador la sesión, el carrito, el idioma y el tema visual (claro u oscuro). Si instala la aplicación, también se guardan los archivos del sitio para agilizar su carga; en ningún caso se almacenan sus pedidos ni sus datos personales. Usted puede eliminar esta información desde la configuración de su navegador."
           ] },
-          { h: "Cuánto tiempo los conservamos", p: [
+          { h: "Plazo de conservación", p: [
             { ul: [
-              "Los datos de tu cuenta, mientras la cuenta exista.",
-              "Los apartados y ventas, como parte del historial de la tienda.",
-              "Los avisos de stock, hasta que se envían o los cancelas.",
-              "Los enlaces de verificación vencen a las 48 horas y las sesiones caducan solas."
+              "<b>Datos de la cuenta:</b> mientras la cuenta permanezca activa.",
+              "<b>Apartados y ventas:</b> se conservan como parte del historial de la tienda.",
+              "<b>Avisos de disponibilidad:</b> hasta que se envía el aviso o usted lo cancela.",
+              "<b>Enlaces de verificación:</b> vencen a las 48 horas; las sesiones caducan automáticamente."
             ] }
           ] },
-          { h: "Tus derechos (ARCO)", p: [
-            "Tienes derecho a <b>A</b>cceder a tus datos, <b>R</b>ectificarlos si son incorrectos, <b>C</b>ancelarlos cuando ya no sean necesarios y <b>O</b>ponerte a su uso para fines específicos. También puedes revocar tu consentimiento en cualquier momento.",
-            "Puedes cambiar tu nombre, correo y contraseña en " + A_ACCT + "«Mi cuenta»</a>, y cada correo de aviso de stock trae un enlace para cancelarlo.",
+          { h: "Derechos ARCO y revocación del consentimiento", p: [
+            "Conforme a la ley, usted tiene derecho a:",
+            { ul: [
+              "<b>Acceso:</b> conocer qué datos personales suyos conservamos.",
+              "<b>Rectificación:</b> solicitar la corrección de sus datos cuando sean inexactos o estén incompletos.",
+              "<b>Cancelación:</b> solicitar la eliminación de sus datos cuando ya no sean necesarios.",
+              "<b>Oposición:</b> oponerse al uso de sus datos para fines específicos."
+            ] },
+            "Asimismo, puede revocar en cualquier momento el consentimiento otorgado para el tratamiento de sus datos.",
+            "Puede modificar su nombre, correo electrónico y contraseña directamente en " + A_ACCT + "«Mi cuenta»</a>. Cada correo de aviso de disponibilidad incluye un enlace para cancelarlo.",
             { contact: true }
           ] },
-          { h: "Cambios a este aviso", p: [
-            "Si cambiamos este aviso publicaremos la nueva versión en esta misma página con su fecha de actualización. Consulta también los " + A_TERMS + "Términos y condiciones</a>."
+          { h: "Modificaciones al aviso de privacidad", p: [
+            "Cualquier modificación a este aviso se publicará en esta misma página, indicando la fecha de su última actualización. Le recomendamos consultar también los " + A_TERMS + "Términos y condiciones</a>."
           ] }
         ]
       },
       en: {
         kicker: "Legal", title: "Privacy notice",
-        intro: "This notice explains what personal data GeekPoint collects, why it uses it and how you can control it, under Mexico's Federal Law on the Protection of Personal Data Held by Private Parties.",
+        intro: "This Privacy notice describes the personal data GeekPoint collects, the purposes for which it is used and how you may exercise your rights over it, in accordance with Mexico's Federal Law on the Protection of Personal Data Held by Private Parties.",
+        summary: [
+          "We only request the necessary data: name, email address and, optionally, a phone number.",
+          "Your data is used exclusively to manage your account, your reservations and the alerts you request.",
+          "GeekPoint does not sell your data or use it for advertising purposes.",
+          "The site does not process online payments; therefore, we will never request bank or card details.",
+          "You may update your data at any time in " + A_ACCT + "My account</a>."
+        ],
         sections: [
-          { h: "Who is responsible for your data", p: [
-            "GeekPoint is an academic project (Proyecto Integrador) built by Software Engineering students at the Facultad de Ingeniería Electromecánica, Universidad de Colima, in Manzanillo, Colima, Mexico. The development team is responsible for the data captured on geekpoint.com.mx."
+          { h: "Data controller", p: [
+            "GeekPoint is an academic project (Proyecto Integrador) developed by Software Engineering students at the Facultad de Ingeniería Electromecánica, Universidad de Colima, based in Manzanillo, Colima, Mexico. The development team is responsible for the processing (that is, the use, storage and protection) of the personal data you provide on geekpoint.com.mx."
           ] },
-          { h: "What data we collect", p: [
+          { h: "Personal data we collect", p: [
             { ul: [
-              "<b>Customer account:</b> name, email and password. The password is stored with one-way encryption; nobody on the team can see it.",
-              "<b>Reservations:</b> name, email and phone (the last two are optional), products, quantities and pickup branch.",
-              "<b>Stock alerts (“Notify me”):</b> email and the product you want.",
-              "<b>Technical security data:</b> IP address, browser and sign-in date, and the IP that requests a stock alert without an account.",
-              "<b>In-store sales:</b> the receipt may include the customer's name if you give it at the register."
+              "<b>Customer account:</b> name, email address and password. The password is stored with irreversible encryption, so no one, including the GeekPoint team, can view it.",
+              "<b>Reservations:</b> name, products, quantities and pickup branch. Email address and phone number are optional.",
+              "<b>Availability alerts (“Notify me”):</b> email address and the product of interest.",
+              "<b>Technical security data:</b> IP address, browser type and sign-in date and time, in order to detect unauthorized access.",
+              "<b>In-store sales:</b> the receipt may include your name only if you provide it at the register."
             ] },
-            "We don't ask for sensitive data (health, religion, ethnic origin, etc.) or bank or card details: the site does not process online payments."
+            "GeekPoint does not request sensitive personal data (such as health information, religious beliefs or ethnic origin) or bank or card details, as the site does not process online payments."
           ] },
-          { h: "What we use it for", p: [
-            "We use your data only to:",
+          { h: "Purposes of processing", p: [
+            "Your personal data is used exclusively for the following purposes:",
             { ul: [
-              "Create and manage your account, and confirm the email is yours.",
-              "Record your reservations and email you when their status changes (ready for pickup, paid or cancelled).",
-              "Let you know when a product you asked about is back in stock.",
-              "Send security notices, such as a password or email change.",
-              "Protect the site from abuse (for example, limiting repeated requests)."
+              "Creating and managing your account, and verifying ownership of your email address.",
+              "Recording your reservations and notifying you by email of any change in their status (ready for pickup, paid or cancelled).",
+              "Informing you when a product you requested is available again.",
+              "Sending you security notices, such as a change to your password or email address.",
+              "Protecting the site against misuse, for example by limiting repeated requests."
             ] },
-            "We don't use your data for advertising, we don't build marketing profiles and we won't send you newsletters."
+            "Your data is not used for advertising or marketing purposes, and no commercial profiles are created."
           ] },
-          { h: "Who we share it with", p: [
-            "We don't sell or rent your data. Only the providers the site needs to work are involved, and only to provide that service:",
+          { h: "Data transfers", p: [
+            "GeekPoint does not sell, rent or transfer your personal data. Only the following providers, which are essential for the site to operate, are involved, and solely to provide that service:",
             { ul: [
-              "<b>Hostinger:</b> hosting for the site and its database.",
-              "<b>Resend:</b> delivery of the site's emails (verification, reservations and stock alerts)."
+              "<b>Hostinger:</b> hosting of the website and its database.",
+              "<b>Resend:</b> delivery of the site's emails (account verification, reservations and availability alerts)."
             ] },
-            "When the page loads, your browser also connects to Google Fonts (typefaces) and third-party image servers such as MangaDex and Pokémon TCG, which may log your IP address under their own policies.",
-            "We would only hand data to an authority if a law or court order requires it."
+            "In addition, when the site loads, your browser connects to Google Fonts (typefaces) and to third-party image servers such as MangaDex and Pokémon TCG, which may log your IP address under their own privacy policies.",
+            "Your data will only be disclosed to an authority when required by law or court order."
           ] },
-          { h: "What is stored in your browser", p: [
-            "We don't use tracking cookies or analytics. The site keeps your session, cart, language and theme (light or dark) in your browser's local storage. If you install the app, the page files are also stored so it loads faster; your orders and personal data are never stored there. You can clear all of this from your browser settings."
+          { h: "Information stored in your browser", p: [
+            "GeekPoint does not use tracking cookies or analytics tools. The site stores your session, cart, language and visual theme (light or dark) in your browser's local storage. If you install the app, the site's files are also stored to speed up loading; your orders and personal data are never stored there. You may delete this information from your browser settings."
           ] },
-          { h: "How long we keep it", p: [
+          { h: "Retention period", p: [
             { ul: [
-              "Account data, for as long as the account exists.",
-              "Reservations and sales, as part of the store's history.",
-              "Stock alerts, until they are sent or you cancel them.",
-              "Verification links expire after 48 hours and sessions expire on their own."
+              "<b>Account data:</b> for as long as the account remains active.",
+              "<b>Reservations and sales:</b> kept as part of the store's history.",
+              "<b>Availability alerts:</b> until the alert is sent or you cancel it.",
+              "<b>Verification links:</b> expire after 48 hours; sessions expire automatically."
             ] }
           ] },
-          { h: "Your rights (ARCO)", p: [
-            "You have the right to <b>A</b>ccess your data, <b>R</b>ectify it if it's wrong, <b>C</b>ancel it when it's no longer needed and <b>O</b>bject to its use for specific purposes. You can also withdraw your consent at any time.",
-            "You can change your name, email and password in " + A_ACCT + "My account</a>, and every stock alert email includes a link to cancel it.",
+          { h: "ARCO rights and withdrawal of consent", p: [
+            "Under the law, you have the right to:",
+            { ul: [
+              "<b>Access:</b> know what personal data of yours we hold.",
+              "<b>Rectification:</b> request the correction of your data when it is inaccurate or incomplete.",
+              "<b>Cancellation:</b> request the deletion of your data when it is no longer necessary.",
+              "<b>Objection:</b> object to the use of your data for specific purposes."
+            ] },
+            "You may also withdraw, at any time, the consent you granted for the processing of your data.",
+            "You may change your name, email address and password directly in " + A_ACCT + "My account</a>. Every availability alert email includes a link to cancel it.",
             { contact: true }
           ] },
-          { h: "Changes to this notice", p: [
-            "If we change this notice we will publish the new version on this page with its update date. See also the " + A_TERMS + "Terms and conditions</a>."
+          { h: "Changes to this privacy notice", p: [
+            "Any changes to this notice will be published on this page, stating the date of its last update. We also recommend reviewing the " + A_TERMS + "Terms and conditions</a>."
           ] }
         ]
       }
@@ -152,99 +183,121 @@
     terms: {
       es: {
         kicker: "Legal", title: "Términos y condiciones",
-        intro: "Estos términos regulan el uso de geekpoint.com.mx. Al navegar, crear una cuenta, apartar productos o pedir avisos de stock aceptas lo que dice aquí.",
+        intro: "Los presentes Términos y condiciones regulan el uso del sitio geekpoint.com.mx. Al navegar en el sitio, crear una cuenta, apartar productos o solicitar avisos de disponibilidad, usted manifiesta su conformidad con ellos.",
+        summary: [
+          "El sitio permite consultar y apartar productos; todos los pagos se realizan en sucursal.",
+          "Un apartado no constituye una compra: el precio final se confirma al momento del pago.",
+          "El usuario debe proporcionar información verídica y resguardar su contraseña.",
+          "Queda prohibido cualquier uso que dañe el sitio o afecte a otros usuarios."
+        ],
         sections: [
-          { h: "Qué es GeekPoint", p: [
-            "GeekPoint es un proyecto académico desarrollado por estudiantes de Ingeniería de Software de la Facultad de Ingeniería Electromecánica de la Universidad de Colima. Representa una cadena de tiendas de manga, figuras, cartas TCG y cómics con tienda en línea y punto de venta para sus sucursales."
+          { h: "Descripción del servicio", p: [
+            "GeekPoint es un proyecto académico desarrollado por estudiantes de la carrera de Ingeniería de Software de la Facultad de Ingeniería Electromecánica de la Universidad de Colima. Representa una cadena de tiendas de manga, figuras coleccionables, cartas TCG y cómics, que cuenta con tienda en línea y punto de venta para sus sucursales."
           ] },
           { h: "Catálogo, precios y disponibilidad", p: [
             { ul: [
-              "Los precios están en pesos mexicanos (MXN) y se confirman al pagar en la sucursal.",
-              "La disponibilidad se muestra por sucursal y puede cambiar en cualquier momento.",
-              "Las imágenes son ilustrativas. Las preventas dependen de la fecha de lanzamiento de cada producto."
+              "Los precios se expresan en pesos mexicanos (MXN) y se confirman al momento de pagar en sucursal.",
+              "La disponibilidad se muestra por sucursal y puede cambiar sin previo aviso.",
+              "Las imágenes son ilustrativas. Las preventas están sujetas a la fecha de lanzamiento de cada producto."
             ] }
           ] },
-          { h: "Sin pagos en línea", p: [
-            "El sitio no cobra ni pide datos bancarios o de tarjetas. Todo pago se hace en la sucursal. Si alguien te pide pagar en línea a nombre de GeekPoint, no somos nosotros."
+          { h: "Pagos", p: [
+            "El sitio no realiza cobros ni solicita datos bancarios o de tarjetas. Todos los pagos se efectúan en sucursal. Si alguna persona le solicita un pago en línea a nombre de GeekPoint, le recomendamos no proporcionar sus datos, ya que dicha solicitud no proviene de nosotros."
           ] },
-          { h: "Tu cuenta", p: [
+          { h: "Cuenta de usuario", p: [
             { ul: [
-              "Da datos verdaderos y usa un correo que sea tuyo; debes verificarlo para recibir confirmaciones y avisos.",
-              "Cuida tu contraseña: lo que se haga con tu sesión se considera hecho por ti.",
-              "Si eres menor de edad, usa el sitio con permiso de tu madre, padre o tutor.",
-              "Podemos suspender una cuenta que se use para abusar del sitio o de otras personas."
+              "El usuario debe proporcionar información verídica y un correo electrónico propio, el cual deberá verificar para recibir confirmaciones y avisos.",
+              "El usuario es responsable de resguardar su contraseña. Toda actividad realizada con su sesión se considerará efectuada por el titular de la cuenta.",
+              "Las personas menores de edad deberán utilizar el sitio con autorización de su madre, padre o tutor.",
+              "GeekPoint podrá suspender cualquier cuenta que se utilice para hacer un uso indebido del sitio o para perjudicar a terceros."
             ] }
           ] },
           { h: "Apartados", p: [
             { ul: [
-              "Un apartado genera un folio para pagar y recoger en la sucursal que elegiste, siempre que haya stock suficiente.",
-              "La sucursal puede marcarlo como listo, cobrarlo o cancelarlo; si diste un correo verificado te avisaremos de cada cambio.",
-              "Apartar no es una compra: el precio y la entrega se confirman en caja."
+              "Cada apartado genera un folio con el que el usuario podrá pagar y recoger sus productos en la sucursal seleccionada, siempre que exista inventario suficiente.",
+              "La sucursal podrá marcar el apartado como listo, cobrado o cancelado. Si el usuario proporcionó un correo electrónico verificado, se le notificará cada cambio.",
+              "Un apartado no constituye una compra; el precio y la entrega se confirman en caja."
             ] }
           ] },
-          { h: "Avisos de stock", p: [
-            "Al pedir «Notifícame» te escribiremos cuando el producto vuelva a estar disponible. El aviso no aparta el producto. Puedes cancelarlo con el enlace que viene en el correo."
+          { h: "Avisos de disponibilidad («Notifícame»)", p: [
+            "Al solicitar un aviso, GeekPoint enviará un correo electrónico cuando el producto vuelva a estar disponible. El aviso no implica el apartado del producto y puede cancelarse mediante el enlace incluido en el correo."
           ] },
-          { h: "Uso aceptable", p: [
-            "No está permitido intentar entrar a paneles o cuentas sin autorización, automatizar solicitudes para saturar el sitio, extraer el catálogo de forma masiva, ni registrar correos de otras personas."
+          { h: "Usos no permitidos", p: [
+            "Queda prohibido:",
+            { ul: [
+              "Intentar acceder sin autorización a cuentas de otros usuarios o a los paneles del personal.",
+              "Automatizar solicitudes con el fin de saturar el sitio o de extraer el catálogo de forma masiva.",
+              "Registrar correos electrónicos de terceros."
+            ] }
           ] },
           { h: "Propiedad intelectual", p: [
-            "Los nombres, personajes, portadas y marcas de los productos pertenecen a sus respectivos titulares y se muestran solo para identificar los artículos, con fines académicos. GeekPoint no está afiliado a esas marcas. Algunas imágenes provienen de servicios de terceros como MangaDex y Pokémon TCG."
+            "Los nombres, personajes, portadas y marcas de los productos pertenecen a sus respectivos titulares y se muestran únicamente para identificar los artículos, con fines académicos. GeekPoint no está afiliado a dichas marcas. Algunas imágenes provienen de servicios de terceros, como MangaDex y Pokémon TCG."
           ] },
-          { h: "Responsabilidad", p: [
-            "El sitio se ofrece tal como está. Puede tener interrupciones, errores o información desactualizada, y no garantizamos que un producto siga disponible al llegar a la sucursal."
+          { h: "Limitación de responsabilidad", p: [
+            "El sitio se ofrece en el estado en que se encuentra. Puede presentar interrupciones, errores o información desactualizada, y GeekPoint no garantiza que un producto continúe disponible al momento de acudir a la sucursal."
           ] },
-          { h: "Cambios y ley aplicable", p: [
-            "Podemos actualizar estos términos; la versión vigente es la publicada en esta página. Se rigen por las leyes de los Estados Unidos Mexicanos. El tratamiento de tus datos se explica en el " + A_PRIV + "Aviso de privacidad</a>."
+          { h: "Modificaciones y legislación aplicable", p: [
+            "GeekPoint podrá actualizar estos términos en cualquier momento; la versión vigente será la publicada en esta página. Los presentes términos se rigen por las leyes de los Estados Unidos Mexicanos. El tratamiento de sus datos personales se describe en el " + A_PRIV + "Aviso de privacidad</a>."
           ] }
         ]
       },
       en: {
         kicker: "Legal", title: "Terms and conditions",
-        intro: "These terms govern the use of geekpoint.com.mx. By browsing, creating an account, reserving products or requesting stock alerts you accept what they say.",
+        intro: "These Terms and conditions govern the use of geekpoint.com.mx. By browsing the site, creating an account, reserving products or requesting availability alerts, you agree to them.",
+        summary: [
+          "The site allows you to browse and reserve products; all payments are made at the branch.",
+          "A reservation does not constitute a purchase: the final price is confirmed at the time of payment.",
+          "Users must provide truthful information and keep their password secure.",
+          "Any use that harms the site or affects other users is prohibited."
+        ],
         sections: [
-          { h: "What GeekPoint is", p: [
-            "GeekPoint is an academic project built by Software Engineering students at the Facultad de Ingeniería Electromecánica, Universidad de Colima. It represents a chain of manga, figure, TCG card and comic stores with an online store and a point of sale for its branches."
+          { h: "Description of the service", p: [
+            "GeekPoint is an academic project developed by Software Engineering students at the Facultad de Ingeniería Electromecánica, Universidad de Colima. It represents a chain of manga, collectible figure, TCG card and comic stores, with an online store and a point of sale for its branches."
           ] },
           { h: "Catalog, prices and availability", p: [
             { ul: [
-              "Prices are in Mexican pesos (MXN) and are confirmed when you pay at the branch.",
-              "Availability is shown per branch and may change at any time.",
-              "Images are illustrative. Pre-orders depend on each product's release date."
+              "Prices are expressed in Mexican pesos (MXN) and are confirmed at the time of payment at the branch.",
+              "Availability is shown per branch and may change without prior notice.",
+              "Images are for illustration purposes only. Pre-orders are subject to each product's release date."
             ] }
           ] },
-          { h: "No online payments", p: [
-            "The site doesn't charge you or ask for bank or card details. All payments are made at the branch. If someone asks you to pay online on GeekPoint's behalf, it isn't us."
+          { h: "Payments", p: [
+            "The site does not charge payments or request bank or card details. All payments are made at the branch. If anyone asks you to make an online payment on behalf of GeekPoint, we recommend that you do not provide your details, as such a request does not come from us."
           ] },
-          { h: "Your account", p: [
+          { h: "User account", p: [
             { ul: [
-              "Give true details and use an email that is yours; you must verify it to receive confirmations and alerts.",
-              "Keep your password safe: anything done with your session is considered done by you.",
-              "If you are a minor, use the site with permission from a parent or guardian.",
-              "We may suspend an account used to abuse the site or other people."
+              "Users must provide truthful information and their own email address, which must be verified in order to receive confirmations and alerts.",
+              "Users are responsible for keeping their password secure. Any activity carried out with their session will be deemed to have been performed by the account holder.",
+              "Minors must use the site with the authorization of a parent or guardian.",
+              "GeekPoint may suspend any account used to misuse the site or to harm third parties."
             ] }
           ] },
           { h: "Reservations", p: [
             { ul: [
-              "A reservation creates a folio to pay and pick up at the branch you chose, as long as there is enough stock.",
-              "The branch may mark it ready, charge it or cancel it; if you gave a verified email we will tell you about each change.",
-              "Reserving is not a purchase: price and delivery are confirmed at the register."
+              "Each reservation generates a folio number with which the user may pay for and pick up their products at the selected branch, provided there is sufficient stock.",
+              "The branch may mark the reservation as ready, paid or cancelled. If the user provided a verified email address, they will be notified of each change.",
+              "A reservation does not constitute a purchase; price and delivery are confirmed at the register."
             ] }
           ] },
-          { h: "Stock alerts", p: [
-            "When you ask to be notified we will email you once the product is back in stock. The alert does not reserve the product. You can cancel it with the link in the email."
+          { h: "Availability alerts (“Notify me”)", p: [
+            "When an alert is requested, GeekPoint will send an email once the product is available again. The alert does not reserve the product and may be cancelled through the link included in the email."
           ] },
-          { h: "Acceptable use", p: [
-            "You may not try to access panels or accounts without authorization, automate requests to overload the site, scrape the catalog in bulk, or register other people's emails."
+          { h: "Prohibited uses", p: [
+            "The following is prohibited:",
+            { ul: [
+              "Attempting to access other users' accounts or staff panels without authorization.",
+              "Automating requests in order to overload the site or to extract the catalog in bulk.",
+              "Registering third parties' email addresses."
+            ] }
           ] },
           { h: "Intellectual property", p: [
-            "Product names, characters, covers and brands belong to their respective owners and are shown only to identify the items, for academic purposes. GeekPoint is not affiliated with those brands. Some images come from third-party services such as MangaDex and Pokémon TCG."
+            "Product names, characters, covers and brands belong to their respective owners and are displayed solely to identify the items, for academic purposes. GeekPoint is not affiliated with those brands. Some images come from third-party services such as MangaDex and Pokémon TCG."
           ] },
-          { h: "Liability", p: [
-            "The site is provided as is. It may have outages, errors or outdated information, and we don't guarantee that a product will still be available when you reach the branch."
+          { h: "Limitation of liability", p: [
+            "The site is provided as is. It may experience interruptions, errors or outdated information, and GeekPoint does not guarantee that a product will remain available when you visit the branch."
           ] },
-          { h: "Changes and governing law", p: [
-            "We may update these terms; the current version is the one published on this page. They are governed by the laws of Mexico. How we handle your data is explained in the " + A_PRIV + "Privacy notice</a>."
+          { h: "Amendments and governing law", p: [
+            "GeekPoint may update these terms at any time; the current version will be the one published on this page. These terms are governed by the laws of the United Mexican States. The processing of your personal data is described in the " + A_PRIV + "Privacy notice</a>."
           ] }
         ]
       }
@@ -263,6 +316,7 @@
   function docHTML(key) {
     var l = lang(), d = DOCS[key][l];
     var tabs = [["privacy", "#/privacidad", DOCS.privacy[l].title], ["terms", "#/terminos", DOCS.terms[l].title]];
+    if (tabs[1][0] === key) tabs.reverse();   // la pestaña activa siempre va a la izquierda
     return '<article class="legal container">' +
       '<nav class="legal__tabs" aria-label="Legal">' +
         tabs.map(function (t) {
@@ -275,6 +329,10 @@
         '<p class="legal__updated mono">' + (l === "en" ? "Last updated: " : "Última actualización: ") + UPDATED[l] + '</p>' +
         '<p class="legal__intro">' + d.intro + '</p>' +
       '</header>' +
+      '<aside class="legal__summary">' +
+        '<h2>' + UI.escHTML(I18N.t("legal.summary")) + '</h2>' +
+        '<ul>' + d.summary.map(function (li) { return "<li>" + li + "</li>"; }).join("") + '</ul>' +
+      '</aside>' +
       '<div class="legal__body">' +
         d.sections.map(function (s, i) {
           return '<section><h2><span class="legal__num">' + (i + 1) + '</span>' + s.h + '</h2>' +
@@ -294,9 +352,9 @@
     }
   };
 
-  /* Nota de consentimiento para formularios que piden datos personales.
-     Lleva data-i18n para que se traduzca sola si cambia el idioma. */
   window.Legal = {
+    /* Nota de consentimiento para formularios que piden datos personales.
+       Lleva data-i18n para que se traduzca sola si cambia el idioma. */
     consentHTML: function () {
       var t = I18N.t, e = UI.escHTML;
       return '<p class="legal-consent">' +
@@ -305,6 +363,20 @@
         '<span data-i18n="legal.and">' + e(t("legal.and")) + '</span> ' +
         '<a href="#/privacidad" data-i18n="foot.privacy">' + e(t("foot.privacy")) + '</a>.' +
       '</p>';
+    },
+    /* Casilla obligatoria del registro. Los enlaces abren en otra pestaña
+       para no perder lo que ya se escribió en el formulario. */
+    acceptHTML: function (checked) {
+      var t = I18N.t, e = UI.escHTML;
+      return '<label class="legal-accept">' +
+        '<input type="checkbox" name="accept_legal"' + (checked ? ' checked' : '') + '>' +
+        '<span>' +
+          '<span data-i18n="legal.accept">' + e(t("legal.accept")) + '</span> ' +
+          '<a href="#/terminos" target="_blank" rel="noopener" data-i18n="foot.terms">' + e(t("foot.terms")) + '</a> ' +
+          '<span data-i18n="legal.and">' + e(t("legal.and")) + '</span> ' +
+          '<a href="#/privacidad" target="_blank" rel="noopener" data-i18n="foot.privacy">' + e(t("foot.privacy")) + '</a>.' +
+        '</span>' +
+      '</label>';
     }
   };
 })();

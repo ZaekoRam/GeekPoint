@@ -29,3 +29,6 @@ u498388917_*.sql
 docs/Cuentas-demo-GeekPoint.docx
 public_html/assets/debug/
 public_html/mascot-debug-respaldo.html
+
+# Respaldos locales de la BD (contienen datos reales)
+database/backups/

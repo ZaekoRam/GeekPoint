@@ -7,10 +7,13 @@ class SaleController extends Controller
      * Body: {
      *   register_id?: int,
      *   customer_name?: string,
-     *   payment_method: 'cash'|'card'|'transfer',
+     *   payments?: [ { method: 'cash'|'card'|'transfer', amount: number, reference?: string }, ... ],
+     *   payment_method?: 'cash'|'card'|'transfer',   (formato anterior, un solo pago)
      *   amount_paid?: number,
      *   items: [ { product_id: int, quantity: int } , ... ]
      * }
+     * Con `payments` se admite pago mixto: tarjeta/transferencia no pueden
+     * exceder el total (no dan cambio); el cambio sale solo del efectivo.
      * Transacción: valida stock, crea venta, descuenta inventario, registra movimientos.
      */
     public function store()
@@ -23,9 +26,34 @@ class SaleController extends Controller
         }
         Auth::assertBranchAccess($user, $branchId);
 
-        $method = $this->body('payment_method', 'cash');
-        if (!in_array($method, ['cash', 'card', 'transfer'], true)) {
-            Response::validation(['payment_method' => ['Método de pago no válido.']]);
+        $payments = $this->body('payments');
+        if ($payments !== null) {
+            if (!is_array($payments) || count($payments) === 0 || count($payments) > 3) {
+                Response::validation(['payments' => ['Indica de una a tres formas de pago.']]);
+            }
+            $seen = [];
+            foreach ($payments as $i => $pay) {
+                $m = is_array($pay) ? ($pay['method'] ?? '') : '';
+                $amt = is_array($pay) ? ($pay['amount'] ?? null) : null;
+                if (!in_array($m, ['cash', 'card', 'transfer'], true) || isset($seen[$m])) {
+                    Response::validation(['payments' => ['Método de pago no válido o repetido.']]);
+                }
+                if (!is_numeric($amt) || (float) $amt <= 0) {
+                    Response::validation(['payments' => ['Cada pago necesita un monto mayor a cero.']]);
+                }
+                $seen[$m] = true;
+                $payments[$i] = [
+                    'method'    => $m,
+                    'amount'    => round((float) $amt, 2),
+                    'reference' => mb_substr(trim((string) ($pay['reference'] ?? '')), 0, 80),
+                ];
+            }
+            $payments = array_values($payments);
+        } else {
+            $legacy = $this->body('payment_method', 'cash');
+            if (!in_array($legacy, ['cash', 'card', 'transfer'], true)) {
+                Response::validation(['payment_method' => ['Método de pago no válido.']]);
+            }
         }
 
         $items = $this->body('items', []);
@@ -137,14 +165,32 @@ class SaleController extends Controller
                 );
             }
 
-            $amountPaid = $this->body('amount_paid');
-            $amountPaid = is_numeric($amountPaid) ? round((float) $amountPaid, 2) : $total;
-            if ($method === 'cash' && $amountPaid < $total) {
+            if ($payments === null) {
+                // Formato anterior: un solo pago; tarjeta/transferencia = exacto.
+                $amt = $this->body('amount_paid');
+                $amt = ($legacy === 'cash' && is_numeric($amt)) ? round((float) $amt, 2) : $total;
+                $payments = [['method' => $legacy, 'amount' => $amt, 'reference' => '']];
+            }
+            $nonCash = 0.0;
+            $amountPaid = 0.0;
+            foreach ($payments as $pay) {
+                $amountPaid += $pay['amount'];
+                if ($pay['method'] !== 'cash') $nonCash += $pay['amount'];
+            }
+            $amountPaid = round($amountPaid, 2);
+            if (round($nonCash, 2) > $total) {
+                Database::rollback();
+                Response::error(409, 'overpayment',
+                    'Tarjeta y transferencia no pueden pasar del total: el cambio solo se da en efectivo.',
+                    ['total' => $total]);
+            }
+            if ($amountPaid < $total) {
                 Database::rollback();
                 Response::error(409, 'insufficient_payment',
-                    'El efectivo recibido es menor que el total.', ['total' => $total]);
+                    'El pago recibido es menor que el total.', ['total' => $total]);
             }
-            $change = $method === 'cash' ? round($amountPaid - $total, 2) : 0.0;
+            $change = round($amountPaid - $total, 2);
+            $method = count($payments) === 1 ? $payments[0]['method'] : 'mixed';
 
             // Folio consecutivo por sucursal
             $branch = Database::one('SELECT code FROM branches WHERE id = ?', [$branchId]);
@@ -166,6 +212,13 @@ class SaleController extends Controller
                 ]
             );
             $saleId = Database::lastId();
+
+            foreach ($payments as $pay) {
+                Database::run(
+                    'INSERT INTO sale_payments (sale_id, method, amount, reference) VALUES (?, ?, ?, ?)',
+                    [$saleId, $pay['method'], $pay['amount'], $pay['reference']]
+                );
+            }
 
             foreach ($lines as $ln) {
                 Database::run(
@@ -228,7 +281,7 @@ class SaleController extends Controller
 
         if (($from = $this->query('from'))) { $where[] = 's.created_at >= ?'; $params[] = $from . ' 00:00:00'; }
         if (($to = $this->query('to')))     { $where[] = 's.created_at <= ?'; $params[] = $to . ' 23:59:59'; }
-        if (($m = $this->query('payment_method')) && in_array($m, ['cash', 'card', 'transfer'], true)) {
+        if (($m = $this->query('payment_method')) && in_array($m, ['cash', 'card', 'transfer', 'mixed'], true)) {
             $where[] = 's.payment_method = ?';
             $params[] = $m;
         }
@@ -269,6 +322,75 @@ class SaleController extends Controller
         Response::ok(['sale' => $sale]);
     }
 
+    /**
+     * POST /sales/{id}/void — cancela una venta (gerente o admin).
+     * Body: { reason: string }
+     * Regresa el stock a la sucursal, deja movimiento "void" y la venta deja
+     * de contar en reportes y cortes. No se puede cancelar una venta que ya
+     * entró en un corte de caja cerrado.
+     */
+    public function void($id)
+    {
+        $user = $this->authRole(['manager', 'admin']);
+        $reason = trim((string) $this->body('reason', ''));
+        if (mb_strlen($reason) < 3) {
+            Response::validation(['reason' => ['Escribe el motivo de la cancelación.']]);
+        }
+
+        Database::begin();
+        try {
+            $sale = Database::one('SELECT * FROM sales WHERE id = ? FOR UPDATE', [(int) $id]);
+            if (!$sale) { Database::rollback(); Response::notFound('Venta no encontrada.'); }
+            Auth::assertBranchAccess($user, (int) $sale['branch_id']);
+            if ($sale['status'] === 'void') {
+                Database::rollback();
+                Response::error(409, 'already_void', 'Esa venta ya estaba cancelada.');
+            }
+            $lastCut = Database::scalar(
+                'SELECT MAX(to_at) FROM cash_cuts WHERE branch_id = ? AND ' .
+                ($sale['register_id'] !== null ? 'register_id = ?' : 'register_id IS NULL'),
+                $sale['register_id'] !== null ? [$sale['branch_id'], $sale['register_id']] : [$sale['branch_id']]
+            );
+            if ($lastCut && $sale['created_at'] <= $lastCut) {
+                Database::rollback();
+                Response::error(409, 'in_cut', 'Esa venta ya entró en un corte de caja cerrado; no se puede cancelar.');
+            }
+
+            Database::run(
+                'UPDATE sales SET status = "void", void_reason = ?, voided_by = ?, voided_at = NOW() WHERE id = ?',
+                [mb_substr($reason, 0, 200), $user['id'], (int) $id]
+            );
+
+            $items = Database::all('SELECT product_id, quantity FROM sale_items WHERE sale_id = ?', [(int) $id]);
+            foreach ($items as $it) {
+                if ($it['product_id'] === null) continue;   // producto borrado: no hay a dónde regresar stock
+                $inv = Database::one(
+                    'SELECT id, stock FROM inventory WHERE branch_id = ? AND product_id = ? FOR UPDATE',
+                    [$sale['branch_id'], $it['product_id']]
+                );
+                if (!$inv) continue;
+                $newStock = (int) $inv['stock'] + (int) $it['quantity'];
+                Database::run('UPDATE inventory SET stock = ? WHERE id = ?', [$newStock, $inv['id']]);
+                Database::run(
+                    'INSERT INTO stock_movements
+                       (branch_id, product_id, user_id, type, quantity_delta, resulting_stock, reference, note)
+                     VALUES (?, ?, ?, "void", ?, ?, ?, ?)',
+                    [$sale['branch_id'], $it['product_id'], $user['id'], (int) $it['quantity'], $newStock,
+                     $sale['folio'], mb_substr('Cancelación: ' . $reason, 0, 255)]
+                );
+            }
+            Database::commit();
+        } catch (Exception $e) {
+            Database::rollback();
+            throw $e;
+        }
+        // Las piezas regresaron: avisos "Notifícame" de esa sucursal o generales.
+        foreach (Database::all('SELECT DISTINCT p.sku FROM sale_items si JOIN products p ON p.id = si.product_id WHERE si.sale_id = ?', [(int) $id]) as $r) {
+            StockAlerts::notifyIfRestocked($r['sku']);
+        }
+        Response::ok(['sale' => $this->fullSale((int) $id)]);
+    }
+
     // ---------------------------------------------------------------
 
     private function folioPrefix($code)
@@ -301,6 +423,14 @@ class SaleController extends Controller
             }
             return $r;
         }, Database::all('SELECT * FROM sale_items WHERE sale_id = ? ORDER BY id', [(int) $id]));
+
+        $sale['payments'] = array_map(function ($r) {
+            return ['method' => $r['method'], 'amount' => (float) $r['amount'], 'reference' => $r['reference']];
+        }, Database::all('SELECT method, amount, reference FROM sale_payments WHERE sale_id = ? ORDER BY id', [(int) $id]));
+        if (!$sale['payments']) {
+            // Ventas anteriores a sale_payments: un solo pago.
+            $sale['payments'] = [['method' => $sale['payment_method'], 'amount' => $sale['amount_paid'], 'reference' => '']];
+        }
 
         $sale['discount_total'] = round(array_reduce($sale['items'], function ($sum, $it) {
             return $sum + $it['unit_discount'] * $it['quantity'];

@@ -79,6 +79,9 @@ body.in-app [data-static-store] { display: none !important; }
 .auth__sub { color: var(--muted); font-size: .86rem; margin-bottom: 1rem; line-height: 1.4; }
 .auth__switch { font-size: .82rem; color: var(--muted); text-align: center; margin-top: .6rem; }
 .auth__switch a { color: var(--accent-2-text); font-weight: 700; margin-left: .25rem; }
+/* Casilla de Términos/Aviso: con el personaje visible, sus dedos tapan la
+   orilla derecha a esa altura; el texto se corta antes para que se lea. */
+@media (min-width: 901px) { .auth__card .legal-accept { padding-right: 5.5rem; } }
 .auth__card .field { margin-bottom: .55rem; gap: .22rem; }
 .auth__card .field > label { font-size: .74rem; }
 .auth__card .input { padding: .55rem .75rem; font-size: .9rem; }
@@ -660,8 +663,21 @@ a.kpi--link:hover .kpi__go { opacity: 1; transform: translateX(0); }
 .cart__totals .row { display: flex; justify-content: space-between; color: var(--muted); }
 .cart__totals .row--total { color: var(--text); font-size: 1.15rem; font-weight: 700; margin-top: .2rem; }
 
-.pay-methods { display: grid; grid-template-columns: repeat(3, 1fr); gap: .4rem; }
+.pay-methods { display: grid; grid-template-columns: repeat(4, 1fr); gap: .4rem; }
 .pay-methods .chip { justify-content: center; cursor: pointer; }
+@media (max-width: 380px) { .pay-methods { grid-template-columns: repeat(2, 1fr); } }
+
+/* Cobro: billetes rápidos, pago mixto y estado (pagado / falta / cambio) */
+.pay-quick { display: flex; flex-wrap: wrap; gap: .35rem; margin: -.2rem 0 .3rem; }
+.pay-quick .chip, .pay-split__fill { cursor: pointer; min-height: 36px; }
+.pay-split { display: flex; flex-direction: column; gap: .5rem; }
+.pay-split__row { border-top: 1px dashed var(--line); padding-top: .5rem; }
+.pay-split__amt { display: flex; align-items: flex-end; gap: .4rem; }
+.pay-split__amt .field { flex: 1; margin-bottom: 0; }
+.pay-split__row > .field { margin: .4rem 0 0; }
+.pay-status .row.is-bad { color: var(--danger); font-weight: 700; }
+.pay-status .row.is-good { color: var(--text); font-weight: 700; }
+.pay-status .cart__totals { margin-top: .2rem; }
 
 /* ---------- Ticket ---------- */
 .ticket-wrap { display: grid; place-items: center; padding: 2rem var(--gutter); }
@@ -1079,4 +1095,50 @@ a.kpi--link:hover .kpi__go { opacity: 1; transform: translateX(0); }
    topbar con sesión de cliente ("Mi cuenta" + salir) se pasaba 2px. */
 @media (pointer: coarse) and (max-width: 360px) {
   .lang-toggle button { min-width: 0; }
+}
+
+/* Stock bajo de ESTA sucursal (POS) */
+.pos__lowstock { margin: 0 0 .7rem; padding: .5rem .8rem; border-radius: 10px; font-family: var(--mono); font-size: .76rem;
+  color: var(--warning); background: color-mix(in srgb, var(--warning) 12%, transparent); }
+.prod.is-low .prod__badge { font-weight: 700; }
+
+/* Corte de caja */
+.cut__rows .row span:last-child { color: var(--text); }
+.cut__diff.is-bad { color: var(--danger); font-weight: 700; }
+.cut__diff.is-good { color: var(--text); font-weight: 700; }
+
+/* Ticket cancelado */
+.ticket__void { text-align: center; margin: .3rem 0 .6rem; padding: .35rem; border: 2px solid #c0392b; color: #c0392b;
+  font-weight: 700; letter-spacing: .3em; transform: rotate(-2deg); }
+.ticket__void small { display: block; letter-spacing: 0; font-weight: 400; font-size: .72rem; margin-top: .15rem; }
+
+/* ---------- Celular: POS ---------- */
+.pos-cartbar { display: none; }
+@media (max-width: 979px) {
+  /* El carrito queda abajo de la grilla: barra fija para saltar a él. */
+  .pos-cartbar:not([hidden]) {
+    display: flex; justify-content: space-between; align-items: center; gap: .6rem;
+    position: fixed; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 40;
+    min-height: 52px; padding: 0 1rem; border: 0; border-radius: 14px; cursor: pointer;
+    background: var(--accent); color: #05060b; font-family: var(--mono); font-size: .9rem; font-weight: 700;
+    box-shadow: 0 8px 24px rgba(0,0,0,.35);
+  }
+  .pos { padding-bottom: 76px; }
+  .pos-cartbar.is-away { display: none !important; }
+  .pay-quick .chip { flex: 1 1 calc(25% - .35rem); justify-content: center; min-height: 40px; }
+  .cart [data-charge] { min-height: 48px; }
+}
+
+/* ---------- Celular: tablas como tarjetas (Ventas, Cortes) ---------- */
+@media (max-width: 640px) {
+  .table-wrap--stack { overflow: visible; }
+  .table-wrap--stack table, .table-wrap--stack tbody, .table-wrap--stack tr, .table-wrap--stack td { display: block; width: 100%; min-width: 0; }
+  .table-wrap--stack thead { display: none; }
+  .table-wrap--stack tr { margin-bottom: .7rem; padding: .6rem .8rem; border-radius: 12px; background: var(--surface); box-shadow: var(--nm-out-sm); }
+  .table-wrap--stack td { display: flex; justify-content: space-between; align-items: center; gap: .8rem; padding: .3rem 0; border: 0; text-align: right; }
+  .table-wrap--stack td::before { content: attr(data-label); font-family: var(--mono); font-size: .68rem; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); text-align: left; }
+  .table-wrap--stack td[data-label=""]::before { content: none; }
+  .table-wrap--stack td:first-child { font-size: 1rem; font-weight: 700; }
+  .table-wrap--stack td .btn { min-height: 40px; }
+  .table-wrap--stack td:empty { display: none; }
 }

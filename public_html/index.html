@@ -33,8 +33,8 @@
   <link rel="stylesheet" href="assets/css/tokens.css?v=20260914_v76" />
   <link rel="stylesheet" href="assets/css/base.css?v=20260922_v77" />
   <link rel="stylesheet" href="assets/css/components.css?v=20261008_v102" />
-  <link rel="stylesheet" href="assets/css/store.css?v=20261019_v81" />
-  <link rel="stylesheet" href="assets/css/app.css?v=20261008_v174" />
+  <link rel="stylesheet" href="assets/css/store.css?v=20261028_v10" />
+  <link rel="stylesheet" href="assets/css/app.css?v=20261028_v10" />
 </head>
 <body>
   <a class="skip-link" href="#main">Saltar al contenido</a>
@@ -201,6 +201,27 @@
                    aria-label="Buscar productos" autocomplete="off" />
           </div>
         </div>
+        <div class="pgrid-tools">
+          <span class="pgrid-tools__count" data-pcount aria-live="polite"></span>
+          <button type="button" class="pgrid-tools__toggle" data-filters-toggle aria-expanded="false" aria-controls="pgrid-filters">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+            <span data-filter-label="shop.filter.toggle">Filtros</span><b data-filters-n></b>
+          </button>
+          <div class="pgrid-tools__group" id="pgrid-filters">
+            <label class="pgrid-tools__sort">
+              <span data-filter-label="shop.filter.branch">Sucursal</span>
+              <select data-fbranch></select>
+            </label>
+            <label class="pgrid-tools__sort">
+              <span data-filter-label="shop.filter.price">Precio</span>
+              <select data-fprice></select>
+            </label>
+            <label class="pgrid-tools__sort">
+              <span data-sort-label>Ordenar</span>
+              <select data-sort></select>
+            </label>
+          </div>
+        </div>
         <div class="pgrid" data-pgrid></div>
       </section>
 
@@ -249,25 +270,25 @@
   <script defer src="lib/barcode.js?v=20260908_v74"></script>
   <script defer src="lib/manifest.js?v=20260908_v74"></script>
   <script defer src="js/config.js?v=20260910_v75"></script>
-  <script defer src="js/i18n.js?v=20261019_v107"></script>
-  <script defer src="js/ui.js?v=20260922_v89"></script>
+  <script defer src="js/i18n.js?v=20261028_v10"></script>
+  <script defer src="js/ui.js?v=20261028_v10"></script>
   <script defer src="js/pwa.js?v=20261008_v2"></script>
   <script defer src="js/theme.js?v=20261008_v77"></script>
   <script defer src="js/api.js?v=20260910_v75"></script>
   <script defer src="js/services/pokemonApi.js?v=20260910_v75"></script>
   <script defer src="js/services/figureApi.js?v=20260910_v75"></script>
   <script defer src="js/store.js?v=20261002_v77"></script>
-  <script defer src="js/catalog.js?v=20260914_v76"></script>
+  <script defer src="js/catalog.js?v=20261028_v10"></script>
   <script defer src="js/three-hero.js?v=20260910_v75"></script>
-  <script defer src="js/views/shell.js?v=20261002_v77"></script>
-  <script defer src="js/views/store.js?v=20261019_v81"></script>
-  <script defer src="js/views/login.js?v=20261019_v121"></script>
+  <script defer src="js/views/shell.js?v=20261028_v10"></script>
+  <script defer src="js/views/store.js?v=20261028_v10"></script>
+  <script defer src="js/views/login.js?v=20261020_v123"></script>
   <script defer src="js/views/account.js?v=20261008_v3"></script>
-  <script defer src="js/views/admin.js?v=20261002_v93"></script>
-  <script defer src="js/views/manager.js?v=20261001_v76"></script>
-  <script defer src="js/views/pos.js?v=20261002_v94"></script>
-  <script defer src="js/views/legal.js?v=20261019_v1"></script>
-  <script defer src="js/router.js?v=20261019_v77"></script>
-  <script defer src="js/main.js?v=20261019_v95"></script>
+  <script defer src="js/views/admin.js?v=20261028_v10"></script>
+  <script defer src="js/views/manager.js?v=20261028_v10"></script>
+  <script defer src="js/views/pos.js?v=20261028_v10"></script>
+  <script defer src="js/views/legal.js?v=20261020_v5"></script>
+  <script defer src="js/router.js?v=20261028_v10"></script>
+  <script defer src="js/main.js?v=20261020_v96"></script>
 </body>
 </html>

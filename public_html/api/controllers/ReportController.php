@@ -16,10 +16,10 @@ class ReportController extends Controller
             'users_total'       => (int) Database::scalar('SELECT COUNT(*) FROM users WHERE status = "active"'),
             'products_total'    => (int) Database::scalar('SELECT COUNT(*) FROM v_inventory WHERE status = "active"'),
             'low_stock_total'   => (int) Database::scalar('SELECT COUNT(*) FROM v_inventory WHERE status = "active" AND stock <= min_stock'),
-            'sales_today_count'  => (int) Database::scalar('SELECT COUNT(*) FROM sales WHERE DATE(created_at) = ?', [$today]),
-            'sales_today_total'  => (float) Database::scalar('SELECT COALESCE(SUM(total),0) FROM sales WHERE DATE(created_at) = ?', [$today]),
-            'sales_month_count'  => (int) Database::scalar('SELECT COUNT(*) FROM sales WHERE created_at >= ?', [$monthStart . ' 00:00:00']),
-            'sales_month_total'  => (float) Database::scalar('SELECT COALESCE(SUM(total),0) FROM sales WHERE created_at >= ?', [$monthStart . ' 00:00:00']),
+            'sales_today_count'  => (int) Database::scalar('SELECT COUNT(*) FROM sales WHERE status = "completed" AND DATE(created_at) = ?', [$today]),
+            'sales_today_total'  => (float) Database::scalar('SELECT COALESCE(SUM(total),0) FROM sales WHERE status = "completed" AND DATE(created_at) = ?', [$today]),
+            'sales_month_count'  => (int) Database::scalar('SELECT COUNT(*) FROM sales WHERE status = "completed" AND created_at >= ?', [$monthStart . ' 00:00:00']),
+            'sales_month_total'  => (float) Database::scalar('SELECT COALESCE(SUM(total),0) FROM sales WHERE status = "completed" AND created_at >= ?', [$monthStart . ' 00:00:00']),
         ];
 
         $byBranch = Database::all(
@@ -29,7 +29,7 @@ class ReportController extends Controller
                     COUNT(CASE WHEN s.created_at >= ? THEN s.id END) AS month_count,
                     (SELECT COUNT(*) FROM v_inventory p WHERE p.branch_id = b.id AND p.status = "active" AND p.stock <= p.min_stock) AS low_stock
              FROM branches b
-             LEFT JOIN sales s ON s.branch_id = b.id
+             LEFT JOIN sales s ON s.branch_id = b.id AND s.status = "completed"
              GROUP BY b.id, b.code, b.name, b.city, b.status
              ORDER BY month_total DESC, b.name',
             [$today, $monthStart . ' 00:00:00', $monthStart . ' 00:00:00']
@@ -45,7 +45,7 @@ class ReportController extends Controller
         $sales14 = Database::all(
             'SELECT DATE(created_at) AS day, COUNT(*) AS n, COALESCE(SUM(total),0) AS total
              FROM sales
-             WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 13 DAY)
+             WHERE status = "completed" AND created_at >= DATE_SUB(CURDATE(), INTERVAL 13 DAY)
              GROUP BY DATE(created_at) ORDER BY day'
         );
         foreach ($sales14 as &$r) { $r['n'] = (int) $r['n']; $r['total'] = (float) $r['total']; }
@@ -53,7 +53,7 @@ class ReportController extends Controller
         $topProducts = Database::all(
             'SELECT si.product_name, SUM(si.quantity) AS qty, SUM(si.line_total) AS revenue
              FROM sale_items si JOIN sales s ON s.id = si.sale_id
-             WHERE s.created_at >= ?
+             WHERE s.status = "completed" AND s.created_at >= ?
              GROUP BY si.product_name ORDER BY qty DESC LIMIT 8',
             [$monthStart . ' 00:00:00']
         );
@@ -82,10 +82,10 @@ class ReportController extends Controller
         $monthStart = date('Y-m-01');
 
         $kpis = [
-            'sales_today_count' => (int) Database::scalar('SELECT COUNT(*) FROM sales WHERE branch_id = ? AND DATE(created_at) = ?', [$id, $today]),
-            'sales_today_total' => (float) Database::scalar('SELECT COALESCE(SUM(total),0) FROM sales WHERE branch_id = ? AND DATE(created_at) = ?', [$id, $today]),
-            'sales_month_count' => (int) Database::scalar('SELECT COUNT(*) FROM sales WHERE branch_id = ? AND created_at >= ?', [$id, $monthStart . ' 00:00:00']),
-            'sales_month_total' => (float) Database::scalar('SELECT COALESCE(SUM(total),0) FROM sales WHERE branch_id = ? AND created_at >= ?', [$id, $monthStart . ' 00:00:00']),
+            'sales_today_count' => (int) Database::scalar('SELECT COUNT(*) FROM sales WHERE status = "completed" AND branch_id = ? AND DATE(created_at) = ?', [$id, $today]),
+            'sales_today_total' => (float) Database::scalar('SELECT COALESCE(SUM(total),0) FROM sales WHERE status = "completed" AND branch_id = ? AND DATE(created_at) = ?', [$id, $today]),
+            'sales_month_count' => (int) Database::scalar('SELECT COUNT(*) FROM sales WHERE status = "completed" AND branch_id = ? AND created_at >= ?', [$id, $monthStart . ' 00:00:00']),
+            'sales_month_total' => (float) Database::scalar('SELECT COALESCE(SUM(total),0) FROM sales WHERE status = "completed" AND branch_id = ? AND created_at >= ?', [$id, $monthStart . ' 00:00:00']),
             'products_active'   => (int) Database::scalar('SELECT COUNT(*) FROM v_inventory WHERE branch_id = ? AND status = "active"', [$id]),
             'low_stock'         => (int) Database::scalar('SELECT COUNT(*) FROM v_inventory WHERE branch_id = ? AND status = "active" AND stock <= min_stock', [$id]),
             'registers_active'  => (int) Database::scalar('SELECT COUNT(*) FROM registers WHERE branch_id = ? AND status = "active"', [$id]),
@@ -97,7 +97,7 @@ class ReportController extends Controller
                     COUNT(s.id) AS month_count,
                     COALESCE(SUM(s.total),0) AS month_total
              FROM users u
-             LEFT JOIN sales s ON s.user_id = u.id AND s.created_at >= ?
+             LEFT JOIN sales s ON s.user_id = u.id AND s.status = "completed" AND s.created_at >= ?
              WHERE u.branch_id = ? AND u.role = "cashier"
              GROUP BY u.id, u.name ORDER BY month_total DESC',
             [$monthStart . ' 00:00:00', $id]
@@ -109,7 +109,7 @@ class ReportController extends Controller
         }
 
         $recentSales = Database::all(
-            'SELECT s.id, s.folio, s.total, s.payment_method, s.created_at, u.name AS cashier_name
+            'SELECT s.id, s.folio, s.total, s.payment_method, s.status, s.created_at, u.name AS cashier_name
              FROM sales s JOIN users u ON u.id = s.user_id
              WHERE s.branch_id = ?
              ORDER BY s.created_at DESC LIMIT 10',
@@ -119,7 +119,7 @@ class ReportController extends Controller
 
         $sales14 = Database::all(
             'SELECT DATE(created_at) AS day, COUNT(*) AS n, COALESCE(SUM(total),0) AS total
-             FROM sales WHERE branch_id = ? AND created_at >= DATE_SUB(CURDATE(), INTERVAL 13 DAY)
+             FROM sales WHERE status = "completed" AND branch_id = ? AND created_at >= DATE_SUB(CURDATE(), INTERVAL 13 DAY)
              GROUP BY DATE(created_at) ORDER BY day',
             [$id]
         );

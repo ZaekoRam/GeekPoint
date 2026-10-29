@@ -257,7 +257,6 @@
           }).join("") +
           '</select></div>' +
         '<p class="field__error" data-resv-error hidden></p>' +
-        Legal.consentHTML() +
         '<button class="btn btn--panini btn--block btn--lg" type="submit">' + UI.escHTML(I18N.t("resv.submit")) + '</button>';
 
       UI.modal({ title: I18N.t("resv.title"), content: form });

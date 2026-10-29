@@ -29,7 +29,7 @@
    ============================================================= */
 "use strict";
 
-var SW_VERSION = "2026-10-08.1";
+var SW_VERSION = "2026-10-28.9";
 var PRECACHE = "gp-precache-" + SW_VERSION;
 var RUNTIME = "gp-static-" + SW_VERSION;
 var RUNTIME_MAX_ENTRIES = 120;

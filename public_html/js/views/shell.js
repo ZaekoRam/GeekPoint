@@ -335,11 +335,12 @@
     var body = rows.map(function (row) {
       var tds = cols.map(function (c) {
         var val = c.render ? c.render(row) : esc(row[c.key] == null ? "" : row[c.key]);
-        return '<td class="' + (c.cls || "") + '">' + val + '</td>';
+        // data-label: en celular, las tablas con opts.stack se ven como tarjetas.
+        return '<td class="' + (c.cls || "") + '" data-label="' + esc(c.label || "") + '">' + val + '</td>';
       }).join("");
       return '<tr data-row-id="' + esc(row.id != null ? row.id : "") + '">' + tds + '</tr>';
     }).join("");
-    return '<div class="table-wrap"><table class="data"><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table></div>';
+    return '<div class="table-wrap' + (opts.stack ? ' table-wrap--stack' : '') + '"><table class="data"><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table></div>';
   }
 
   function statusBadge(status) {

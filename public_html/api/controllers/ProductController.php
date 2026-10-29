@@ -164,7 +164,7 @@ class ProductController extends Controller
                 'INSERT INTO inventory (branch_id, product_id, stock, min_stock, status) VALUES (?, ?, ?, ?, ?)',
                 [
                     $branchId, $productId, $stock,
-                    max(0, (int) ($d['min_stock'] ?? 3)),
+                    max(0, (int) ($d['min_stock'] ?? 5)),
                     $this->pickEnum($d['status'] ?? 'active', ['active', 'inactive'], 'active'),
                 ]
             );
@@ -232,7 +232,7 @@ class ProductController extends Controller
         $sku      = strtoupper(trim($str($d['sku'] ?? '')));
         $catId    = $this->categoryIdBySlug($str($d['category_slug'] ?? 'tcg') ?: 'tcg');
         $taxRate  = isset($d['tax_rate']) && is_numeric($d['tax_rate']) ? (float) $d['tax_rate'] : App::config('tax')['default_rate'];
-        $minStock = max(0, (int) ($d['min_stock'] ?? 3));
+        $minStock = max(0, (int) ($d['min_stock'] ?? 5));
         $price    = round((float) ($d['price'] ?? 0), 2);
         $name     = mb_substr(trim($str($d['name'] ?? '')), 0, 180);
         $desc     = mb_substr($str($d['description'] ?? ''), 0, 500);

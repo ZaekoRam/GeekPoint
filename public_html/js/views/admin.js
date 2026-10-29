@@ -1,6 +1,6 @@
 /* =============================================================
    Vista: Panel del Administrador General.  window.Views.admin
-   Subrutas:  #/admin  #/admin/branches  #/admin/users  #/admin/inventory
+   Subrutas:  #/admin  #/admin/branches  #/admin/users  #/admin/customers  #/admin/inventory
    ============================================================= */
 (function () {
   "use strict";
@@ -11,6 +11,7 @@
     { href: "#/admin", i18n: "nav.overview", ico: "▦" },
     { href: "#/admin/branches", i18n: "nav.branches", ico: "🏬" },
     { href: "#/admin/users", i18n: "nav.users", ico: "👥" },
+    { href: "#/admin/customers", i18n: "nav.customers", ico: "🛍️" },
     { href: "#/admin/registers", i18n: "nav.registers", ico: "🖥️" },
     { href: "#/admin/inventory", i18n: "nav.inventory", ico: "📦" }
   ];
@@ -18,6 +19,7 @@
   function activeHref(sub) {
     if (sub === "branches") return "#/admin/branches";
     if (sub === "users") return "#/admin/users";
+    if (sub === "customers") return "#/admin/customers";
     if (sub === "registers") return "#/admin/registers";
     if (sub === "inventory") return "#/admin/inventory";
     return "#/admin";
@@ -46,7 +48,7 @@
     var sub = (params && params.sub) || "";
     var panel = $("[data-panel]", root);
 
-    var loaders = { "": overview, "branches": branches, "users": users, "registers": registers, "inventory": inventory };
+    var loaders = { "": overview, "branches": branches, "users": users, "customers": customers, "registers": registers, "inventory": inventory };
     var fn = loaders[sub] || overview;
     fn(panel, root);
 
@@ -195,6 +197,72 @@
       root.querySelector("[data-new-user]") && (root.querySelector("[data-new-user]").onclick = function () {
         userForm(null, brs, function () { users(panel, root); });
       });
+    }).catch(function (err) { panel.innerHTML = V._error(err); });
+  }
+
+  /* ---------------- Clientes de la tienda (solo lectura + activar/desactivar) ---------------- */
+  function customers(panel, root) {
+    panel.innerHTML = V._loading();
+    API.get("customers").then(function (d) {
+      var list = d.customers;
+      panel.innerHTML =
+        '<div class="toolbar">' +
+          '<input class="input" type="search" data-search placeholder="' + esc(I18N.t("cust.searchPh")) + '" style="max-width:18rem">' +
+          '<span class="spacer"></span>' +
+          '<span class="mono muted" style="font-size:.72rem" data-count></span>' +
+        '</div>' +
+        '<div data-cust-table></div>';
+
+      var box = $("[data-cust-table]", panel), search = $("[data-search]", panel);
+      function draw() {
+        var q = _fold(search.value || "");
+        var rows = q ? list.filter(function (c) { return _fold(c.name + " " + c.email).indexOf(q) !== -1; }) : list;
+        box.innerHTML = V._table([
+          { key: "name", label: I18N.t("col.name"), render: function (r) { return '<b>' + esc(r.name) + '</b>'; } },
+          { key: "email", label: I18N.t("col.email"), render: function (r) {
+            return '<span class="mono" style="font-size:.78rem">' + esc(r.email) + '</span> ' +
+              '<span class="badge ' + (r.verified ? "badge--ok" : "badge--warn") + '">' + esc(I18N.t(r.verified ? "cust.verified" : "cust.unverified")) + '</span>';
+          } },
+          { key: "reservations", label: I18N.t("col.reservations"), render: function (r) { return '<span class="mono">' + r.reservations + '</span>'; } },
+          { key: "spent", label: I18N.t("col.spent"), render: function (r) { return '<span class="mono">' + esc(UI.money(r.spent)) + '</span>'; } },
+          { key: "status", label: I18N.t("col.status"), render: function (r) { return V._statusBadge(r.status); } },
+          { key: "created_at", label: I18N.t("col.registered"), render: function (r) { return '<span class="muted" style="font-size:.78rem">' + UI.fmtDate(r.created_at) + '</span>'; } },
+          { key: "last_login_at", label: I18N.t("col.lastlogin"), render: function (r) { return '<span class="muted" style="font-size:.78rem">' + UI.fmtDate(r.last_login_at, true) + '</span>'; } },
+          { key: "id", label: I18N.t("col.actions"), render: function (r) {
+            return '<div class="rowacts"><button class="iconbtn" data-toggle="' + r.id + '" data-status="' + r.status + '" title="' +
+              esc(I18N.t(r.status === "active" ? "status.inactive" : "status.active")) + '">' + (r.status === "active" ? "⏸" : "▶") + '</button>' +
+              V._delButton({ attr: "data-del", value: r.id, name: r.name }) + '</div>';
+          } }
+        ], rows, { empty: I18N.t(q ? "empty.none" : "cust.empty") });
+        $("[data-count]", panel).textContent = rows.length + " " + I18N.t("cust.count");
+      }
+      draw();
+      search.oninput = draw;
+
+      panel.onclick = function (e) {
+        var dl = e.target.closest("[data-del]");
+        if (dl) {
+          var c = list.find(function (x) { return x.id == dl.getAttribute("data-del"); });
+          if (!c) return;
+          UI.confirm(I18N.t(c.reservations ? "cust.confirmDeleteResv" : "confirm.delete", { name: c.name, n: c.reservations }), function () {
+            API.del("users/" + c.id).then(function () {
+              list = list.filter(function (x) { return x.id !== c.id; });
+              UI.toast(I18N.t("toast.deleted"), "ok");
+              draw();
+            }).catch(apiToast);
+          }, { danger: true });
+          return;
+        }
+        var tg = e.target.closest("[data-toggle]");
+        if (!tg) return;
+        var ns = tg.getAttribute("data-status") === "active" ? "inactive" : "active";
+        API.patch("users/" + tg.getAttribute("data-toggle") + "/status", { status: ns }).then(function () {
+          var c = list.find(function (x) { return x.id == tg.getAttribute("data-toggle"); });
+          if (c) c.status = ns;
+          UI.toast(I18N.t("toast.saved"), "ok");
+          draw();
+        }).catch(apiToast);
+      };
     }).catch(function (err) { panel.innerHTML = V._error(err); });
   }
 
@@ -1234,7 +1302,7 @@
       tagField(s.tags || "") +
       discountField(s, canDiscount) +
       '<div class="grid-2">' +
-        row("form.minStock", '<input class="input" type="number" name="min_stock" min="0" value="' + (s.min_stock != null ? s.min_stock : 3) + '">', "form.minStock") +
+        row("form.minStock", '<input class="input" type="number" name="min_stock" min="0" value="' + (s.min_stock != null ? s.min_stock : 5) + '">', "form.minStock") +
         row("col.status",
           '<select class="select" name="status">' +
             '<option value="active"' + (group.status === "active" ? " selected" : "") + '>' + esc(I18N.t("status.active")) + '</option>' +

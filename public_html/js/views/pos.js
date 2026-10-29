@@ -8,8 +8,16 @@
 
   var ctx = {
     branchId: null, branches: [], registers: [], registerId: null, categories: [],
-    products: [], filter: { q: "", cat: "" }, method: "cash", loaded: false
+    products: [], filter: { q: "", cat: "" }, method: "cash", loaded: false,
+    // Lo capturado en el cobro vive aquí: el carrito se redibuja con cada
+    // cambio (cantidades, método) y no debe borrar lo que ya se tecleó.
+    pay: null, customer: ""
   };
+
+  function resetPay() {
+    ctx.pay = { cash: "", card: "", cardRef: "", transfer: "", transferRef: "" };
+  }
+  resetPay();
 
   /** id de la 1ª caja ACTIVA de la sucursal (para que el POS arranque en "Caja 1"). */
   function firstRegisterId() {
@@ -63,6 +71,7 @@
             V._drawerClose() +
             '<span data-branch-slot></span>' +
             '<button class="btn btn--ghost btn--sm" data-resv-open>🎫 ' + esc(I18N.t("resv.pos")) + '</button>' +
+            '<button class="btn btn--ghost btn--sm" data-cut-open>🧮 ' + esc(I18N.t("cut.btn")) + '</button>' +
             '<a class="btn btn--ghost btn--sm" href="#/" data-link>← ' + esc(I18N.t("nav.home")) + '</a>' +
             '<button class="btn btn--ghost btn--sm" data-logout>' + esc(I18N.t("cta.logout")) + '</button>' +
           '</div>' +
@@ -71,10 +80,13 @@
         '<div class="content"><div class="pos">' +
           '<div>' +
             '<div class="pos__search"><input class="input" data-q placeholder="' + esc(I18N.t("pos.search")) + '" autocomplete="off"></div>' +
+            '<p class="pos__lowstock" data-lowstock hidden></p>' +
             '<div class="pos__cats" data-cats></div>' +
             '<div class="pos__grid" data-grid>' + V._loading() + '</div>' +
           '</div>' +
           '<aside class="cart" data-cart></aside>' +
+          // Celular: el carrito queda abajo de la grilla; esta barra lleva a él.
+          '<button type="button" class="pos-cartbar" data-cart-jump hidden></button>' +
         '</div></div>' +
       '</div>'
     );
@@ -108,6 +120,7 @@
 
     root.addEventListener("click", function (e) {
       if (e.target.closest("[data-resv-open]")) { resvModal(root); return; }
+      if (e.target.closest("[data-cut-open]")) { cutModal(root); return; }
       var pickBtn = e.target.closest("[data-pick-series]");
       if (pickBtn) { volumePickerModal(pickBtn.getAttribute("data-pick-series")); return; }
       var addBtn = e.target.closest("[data-add]");
@@ -139,6 +152,22 @@
       }
       var clr = e.target.closest("[data-clear]"); if (clr) return STORE.cartClear();
       var pm = e.target.closest("[data-method]"); if (pm) { ctx.method = pm.getAttribute("data-method"); renderCart(root); return; }
+      var qk = e.target.closest("[data-quick]");
+      if (qk) {
+        var tq = STORE.cartTotals().total;
+        ctx.pay.cash = qk.getAttribute("data-quick") === "exact" ? tq.toFixed(2) : qk.getAttribute("data-quick");
+        renderCart(root);
+        return;
+      }
+      var fill = e.target.closest("[data-fill]");
+      if (fill) {
+        var key = fill.getAttribute("data-fill");
+        ctx.pay[key] = "";
+        var rest = Math.max(0, STORE.cartTotals().total - payState(STORE.cartTotals()).paid);
+        ctx.pay[key] = rest > 0 ? rest.toFixed(2) : "";
+        renderCart(root);
+        return;
+      }
       var charge = e.target.closest("[data-charge]"); if (charge) return checkout(root);
     });
 
@@ -215,6 +244,14 @@
       // Stock por id (de ESTA sucursal): para el aviso "antes → después" al cobrar.
       ctx.stockById = {};
       d.products.forEach(function (p) { ctx.stockById[p.id] = Number(p.stock) || 0; });
+      // Aviso de stock bajo SOLO de esta sucursal (min_stock es por sucursal;
+      // lo que pase en otra sede no se muestra aqui). Sin filtros activos.
+      var low = $("[data-lowstock]", root);
+      if (low && !ctx.filter.q && !ctx.filter.cat) {
+        var nLow = d.products.filter(function (p) { return p.low_stock && Number(p.stock) > 0; }).length;
+        low.hidden = !nLow;
+        low.textContent = nLow ? "⚠ " + I18N.t("stock.lowBanner", { n: nLow }) : "";
+      }
       grid.innerHTML = ctx.products.length ? ctx.products.map(cardHTML).join("")
         : '<div class="state"><div class="state__icon">🔍</div><p>' + esc(I18N.t("empty.none")) + '</p></div>';
       // Productos sueltos cuyo stock cambió desde la última vez: zoom al número.
@@ -263,7 +300,7 @@
             : '<span class="prod__art">' + art + '</span>') +
           (isSeries || out
             ? '<span class="prod__badge">' + esc(I18N.t(isSeries ? "prod.pickVolume" : "pos.outOfStock")) + '</span>'
-            : '<span class="prod__badge" data-stock-num>' + total + ' u</span>') +
+            : '<span class="prod__badge" data-stock-num>' + (s.low_stock ? esc(I18N.t("stock.low", { n: total })) : total + ' u') + '</span>') +
         '</span>' +
         '<span class="prod__body">' +
           '<span class="prod__name">' + esc(name) + '</span>' +
@@ -606,15 +643,29 @@
         }).join("") + '</select></div>'
       : "";
 
-    var methods = ["cash", "card", "transfer"].map(function (m) {
+    if (!items.length) { resetPay(); ctx.customer = ""; }
+    var jump = $("[data-cart-jump]", root);
+    if (jump) {
+      jump.hidden = !items.length;
+      jump.innerHTML = '<span>' + esc(I18N.t("pos.cart")) + ' · <b>' + t.count + '</b></span><span class="num">' + UI.money(t.total) + ' →</span>';
+      if (!jump._bound) {
+        jump._bound = true;
+        jump.addEventListener("click", function () {
+          var y = host.getBoundingClientRect().top + scrollY - 120;
+          window.scrollTo({ top: y, behavior: UI.reduced ? "auto" : "smooth" });
+        });
+        // Con el carrito a la vista la barra sobra (taparía el cobro).
+        if ("IntersectionObserver" in window) {
+          new IntersectionObserver(function (en) {
+            jump.classList.toggle("is-away", en[0].isIntersecting);
+          }, { threshold: 0.05 }).observe(host);
+        }
+      }
+    }
+
+    var methods = ["cash", "card", "transfer", "mixed"].map(function (m) {
       return '<button class="chip' + (ctx.method === m ? " is-active" : "") + '" data-method="' + m + '">' + esc(I18N.t("method." + m)) + '</button>';
     }).join("");
-
-    var cashRow = ctx.method === "cash"
-      ? '<div class="field"><label>' + esc(I18N.t("pos.received")) + '</label>' +
-        '<input class="input" type="number" min="0" step="0.01" data-paid placeholder="' + t.total.toFixed(2) + '"></div>' +
-        '<div class="cart__totals"><div class="row"><span>' + esc(I18N.t("pos.change")) + '</span><span data-change>' + UI.money(0) + '</span></div></div>'
-      : "";
 
     host.innerHTML =
       '<h2>' + esc(I18N.t("pos.cart")) + (t.count ? ' · <span class="mono">' + t.count + '</span>' : "") + '</h2>' +
@@ -625,25 +676,122 @@
         '<div class="row"><span>' + esc(I18N.t("pos.tax")) + ' (16%)</span><span class="num">' + UI.money(t.tax) + '</span></div>' +
         '<div class="row row--total"><span>' + esc(I18N.t("pos.total")) + '</span><span class="num" data-total>' + UI.money(t.total) + '</span></div>' +
       '</div>' +
-      '<div class="field" style="margin-top:.6rem"><label>' + esc(I18N.t("pos.customer")) + '</label><input class="input" data-customer></div>' +
+      '<div class="field" style="margin-top:.6rem"><label>' + esc(I18N.t("pos.customer")) + '</label><input class="input" data-customer value="' + esc(ctx.customer) + '"></div>' +
       regSel +
       '<label class="muted mono" style="font-size:.7rem">' + esc(I18N.t("pos.paidWith")) + '</label>' +
       '<div class="pay-methods">' + methods + '</div>' +
-      cashRow +
+      payFieldsHTML(t) +
+      '<div class="pay-status" data-pay-status></div>' +
       '<div style="display:flex;gap:.5rem;margin-top:.4rem">' +
         '<button class="btn btn--ghost btn--sm" data-clear ' + (items.length ? "" : "disabled") + '>' + esc(I18N.t("btn.clear")) + '</button>' +
-        '<button class="btn btn--neon btn--block" data-charge ' + (items.length ? "" : "disabled") + '>' + esc(I18N.t("btn.charge")) + ' · ' + UI.money(t.total) + '</button>' +
+        '<button class="btn btn--neon btn--block" data-charge disabled>' + esc(I18N.t("btn.charge")) + ' · ' + UI.money(t.total) + '</button>' +
       '</div>';
 
-    var paid = $("[data-paid]", host);
-    if (paid) {
-      paid.addEventListener("input", function () {
-        var change = (parseFloat(paid.value) || 0) - t.total;
-        $("[data-change]", host).textContent = UI.money(change > 0 ? change : 0);
+    $$("[data-pay]", host).forEach(function (inp) {
+      inp.addEventListener("input", function () {
+        ctx.pay[inp.getAttribute("data-pay")] = inp.value;
+        updatePayStatus(host, t);
       });
-    }
+    });
+    var custEl = $("[data-customer]", host);
+    custEl.addEventListener("input", function () { ctx.customer = custEl.value; });
+    updatePayStatus(host, t);
+
     var regEl = $("[data-register]", host);
     if (regEl) regEl.addEventListener("change", function () { ctx.registerId = +this.value || null; });
+  }
+
+  /* ---------------- Cobro ---------------- */
+  function money2(v) { var n = parseFloat(v); return isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : 0; }
+
+  /** Pagos capturados según el método activo + lo que falta / sobra. */
+  function payState(t) {
+    var p = ctx.pay, m = ctx.method, list = [];
+    if (m === "cash") list.push({ method: "cash", amount: money2(p.cash), reference: "" });
+    else if (m === "card") list.push({ method: "card", amount: t.total, reference: p.cardRef.trim() });
+    else if (m === "transfer") list.push({ method: "transfer", amount: t.total, reference: p.transferRef.trim() });
+    else {
+      list.push({ method: "cash", amount: money2(p.cash), reference: "" });
+      list.push({ method: "card", amount: money2(p.card), reference: p.cardRef.trim() });
+      list.push({ method: "transfer", amount: money2(p.transfer), reference: p.transferRef.trim() });
+    }
+    list = list.filter(function (x) { return x.amount > 0; });
+    var paid = 0, nonCash = 0;
+    list.forEach(function (x) { paid += x.amount; if (x.method !== "cash") nonCash += x.amount; });
+    paid = Math.round(paid * 100) / 100;
+    var overpay = Math.round(nonCash * 100) / 100 > t.total;
+    var missing = Math.max(0, Math.round((t.total - paid) * 100) / 100);
+    var change = Math.max(0, Math.round((paid - t.total) * 100) / 100);
+    return { payments: list, paid: paid, missing: missing, change: change, overpay: overpay,
+             ok: list.length > 0 && !missing && !overpay };
+  }
+
+  /** Billetes "redondos" por encima del total: 287 -> 300, 500, 1000. */
+  function quickBills(total) {
+    var out = [];
+    [50, 100, 200, 500, 1000].forEach(function (b) {
+      var v = Math.ceil(total / b) * b;
+      if (v > total && out.indexOf(v) === -1) out.push(v);
+    });
+    return out.slice(0, 3);
+  }
+
+  function amountField(key, label) {
+    return '<div class="field"><label>' + esc(label) + '</label>' +
+      '<input class="input" type="number" inputmode="decimal" min="0" step="0.01" data-pay="' + key + '" value="' + esc(ctx.pay[key]) + '"></div>';
+  }
+  function refField(key, ph) {
+    return '<div class="field"><label>' + esc(I18N.t("pos.reference")) + '</label>' +
+      '<input class="input" maxlength="80" autocomplete="off" data-pay="' + key + '" placeholder="' + esc(I18N.t(ph)) + '" value="' + esc(ctx.pay[key]) + '"></div>';
+  }
+
+  function payFieldsHTML(t) {
+    var m = ctx.method;
+    if (!STORE.cart.length) return "";
+    if (m === "card") return refField("cardRef", "pos.cardRefPh");
+    if (m === "transfer") return refField("transferRef", "pos.transferRefPh");
+    if (m === "cash") {
+      return amountField("cash", I18N.t("pos.received")) +
+        '<div class="pay-quick">' +
+          '<button type="button" class="chip" data-quick="exact">' + esc(I18N.t("pos.exact")) + '</button>' +
+          quickBills(t.total).map(function (v) {
+            return '<button type="button" class="chip" data-quick="' + v + '">$' + v.toLocaleString("es-MX") + '</button>';
+          }).join("") +
+        '</div>';
+    }
+    // Mixto: un renglón por método; "Resto" llena lo que falta.
+    function row(key, refKey, ph) {
+      return '<div class="pay-split__row">' +
+        '<div class="pay-split__amt">' + amountField(key, I18N.t("method." + key)) +
+          '<button type="button" class="chip pay-split__fill" data-fill="' + key + '">' + esc(I18N.t("pos.rest")) + '</button></div>' +
+        (refKey ? refField(refKey, ph) : "") +
+      '</div>';
+    }
+    return '<div class="pay-split">' +
+      '<p class="muted" style="font-size:.72rem;margin:0">' + esc(I18N.t("pos.mixedHint")) + '</p>' +
+      row("cash") + row("card", "cardRef", "pos.cardRefPh") + row("transfer", "transferRef", "pos.transferRefPh") +
+    '</div>';
+  }
+
+  function updatePayStatus(host, t) {
+    var box = $("[data-pay-status]", host);
+    var btn = $("[data-charge]", host);
+    if (!box || !btn) return;
+    if (!STORE.cart.length) { box.innerHTML = ""; btn.disabled = true; return; }
+    var s = payState(t);
+    var rows = [];
+    if (ctx.method === "cash" || ctx.method === "mixed") {
+      rows.push('<div class="row"><span>' + esc(I18N.t("pos.paid")) + '</span><span class="num">' + UI.money(s.paid) + '</span></div>');
+    }
+    if (s.overpay) {
+      rows.push('<div class="row is-bad"><span>' + esc(I18N.t("pos.overpay")) + '</span></div>');
+    } else if (s.missing > 0) {
+      rows.push('<div class="row is-bad"><span>' + esc(I18N.t("pos.missing")) + '</span><span class="num">' + UI.money(s.missing) + '</span></div>');
+    } else if (ctx.method === "cash" || ctx.method === "mixed") {
+      rows.push('<div class="row is-good"><span>' + esc(I18N.t("pos.change")) + '</span><span class="num">' + UI.money(s.change) + '</span></div>');
+    }
+    box.innerHTML = rows.length ? '<div class="cart__totals">' + rows.join("") + '</div>' : "";
+    btn.disabled = !s.ok;
   }
 
   function checkout(root) {
@@ -651,20 +799,18 @@
     var t = STORE.cartTotals();
     if (!STORE.cart.length) return;
 
-    var method = ctx.method;
-    var paidInput = $("[data-paid]", host);
-    var amountPaid = paidInput && paidInput.value ? parseFloat(paidInput.value) : t.total;
-    if (method === "cash" && amountPaid < t.total) {
-      UI.toast(I18N.t("pos.needPayment"), "warn");
+    var ps = payState(t);
+    if (!ps.ok) {
+      UI.toast(I18N.t(ps.overpay ? "pos.overpay" : "pos.needPayment"), "warn");
       return;
     }
     var regEl = $("[data-register]", host);
     var payload = {
       branch_id: ctx.branchId,
       register_id: (regEl && regEl.value ? +regEl.value : null) || ctx.registerId || null,
-      customer_name: ($("[data-customer]", host) || {}).value || "",
-      payment_method: method,
-      amount_paid: amountPaid,
+      customer_name: ctx.customer.trim(),
+      payments: ps.payments,
+      amount_paid: ps.paid,
       expected_total: t.total,
       items: STORE.cart.map(function (l) { return { product_id: l.id, quantity: l.qty }; })
     };
@@ -742,6 +888,133 @@
     setTimeout(close, 8000);
   }
 
+  /* ---------------- Corte de caja ----------------
+     Turno = desde el último corte de esta caja. El servidor suma las ventas
+     completadas por método; aquí solo se captura fondo + efectivo contado. */
+  function cutRowsHTML(c) {
+    var row = function (k, v) { return '<div class="row"><span>' + esc(I18N.t(k)) + '</span><span class="num">' + v + '</span></div>'; };
+    return '<div class="cart__totals cut__rows">' +
+      row("cut.from", UI.fmtDate(c.from_at, true)) + row("cut.to", UI.fmtDate(c.to_at, true)) +
+      row("cut.sales", c.sales_count) + (c.void_count ? row("cut.voids", c.void_count) : "") +
+      row("cut.total", UI.money(c.total_sales)) +
+      row("cut.cash", UI.money(c.cash_total)) + row("cut.card", UI.money(c.card_total)) +
+      row("cut.transfer", UI.money(c.transfer_total)) +
+    '</div>';
+  }
+  function diffHTML(diff) {
+    var k = Math.abs(diff) < 0.005 ? "cut.exact" : (diff > 0 ? "cut.over" : "cut.short");
+    return '<div class="row cut__diff ' + (k === "cut.exact" ? "is-good" : "is-bad") + '"><span>' + esc(I18N.t("cut.diff")) +
+      ' · ' + esc(I18N.t(k)) + '</span><span class="num">' + UI.money(Math.abs(diff)) + '</span></div>';
+  }
+  function cutModal(root) {
+    var regEl = $("[data-register]", root);
+    var regId = (regEl && regEl.value ? +regEl.value : null) || ctx.registerId || null;
+    var qs = "?branch_id=" + ctx.branchId + (regId ? "&register_id=" + regId : "");
+    API.get("cash-cuts/preview" + qs).then(function (d) {
+      var c = d.cut;
+      var reg = ctx.registers.filter(function (r) { return r.id == regId; })[0];
+      var form = document.createElement("form");
+      form.className = "cut-form";
+      form.setAttribute("novalidate", "");
+      form.innerHTML =
+        '<p class="muted mono" style="font-size:.75rem;margin:0 0 .6rem">' + esc(I18N.t("cut.register")) + ': ' +
+          esc(reg ? reg.name : I18N.t("cut.noRegister")) + '</p>' +
+        cutRowsHTML(c) +
+        '<div class="resv-grid" style="margin-top:.8rem">' +
+          '<div class="field"><label>' + esc(I18N.t("cut.opening")) + '</label><input class="input" type="number" inputmode="decimal" min="0" step="0.01" name="opening_cash"></div>' +
+          '<div class="field"><label>' + esc(I18N.t("cut.counted")) + '</label><input class="input" type="number" inputmode="decimal" min="0" step="0.01" name="cash_counted" required></div>' +
+        '</div>' +
+        '<div class="cart__totals" data-cut-live></div>' +
+        '<div class="field" style="margin-top:.6rem"><label>' + esc(I18N.t("cut.notes")) + '</label><input class="input" name="notes" maxlength="300"></div>' +
+        '<button class="btn btn--neon btn--block" type="submit">' + esc(I18N.t("cut.close")) + '</button>';
+      UI.modal({ title: I18N.t("cut.title"), content: form });
+      var live = form.querySelector("[data-cut-live]");
+      function refresh() {
+        var opening = parseFloat(form.opening_cash.value) || 0;
+        var expected = Math.round((opening + c.cash_total) * 100) / 100;
+        var html = '<div class="row"><span>' + esc(I18N.t("cut.expected")) + '</span><span class="num">' + UI.money(expected) + '</span></div>';
+        if (form.cash_counted.value !== "") html += diffHTML((parseFloat(form.cash_counted.value) || 0) - expected);
+        live.innerHTML = html;
+      }
+      form.addEventListener("input", refresh);
+      refresh();
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        if (form.cash_counted.value === "") { UI.toast(I18N.t("cut.needCount"), "warn"); return; }
+        var btn = form.querySelector('button[type="submit"]');
+        btn.classList.add("is-loading");
+        API.post("cash-cuts", {
+          branch_id: ctx.branchId, register_id: regId,
+          opening_cash: parseFloat(form.opening_cash.value) || 0,
+          cash_counted: parseFloat(form.cash_counted.value) || 0,
+          notes: form.notes.value.trim()
+        }).then(function (r) {
+          UI.toast(I18N.t("cut.done"), "ok");
+          showCutTicket(r.cut);
+        }).catch(function (err) {
+          btn.classList.remove("is-loading");
+          UI.toast((err && err.message) || I18N.t("toast.error"), "error");
+        });
+      });
+    }).catch(function (err) { UI.toast((err && err.message) || I18N.t("toast.error"), "error"); });
+  }
+  function cutTicketHTML(c) {
+    var r = function (k, v, cls) { return '<div class="t-row' + (cls ? " " + cls : "") + '"><span>' + esc(I18N.t(k)) + '</span><span>' + v + '</span></div>'; };
+    return '<div class="ticket">' +
+      '<h2>◈ ' + esc(I18N.t("cut.title").toUpperCase()) + '</h2>' +
+      '<p style="text-align:center" class="muted">' + esc(c.branch_name || "") + '<br>' + esc(c.register_name || I18N.t("cut.noRegister")) + '</p><hr>' +
+      r("cut.by", esc(c.user_name || "")) + r("cut.from", UI.fmtDate(c.from_at, true)) + r("cut.to", UI.fmtDate(c.to_at, true)) + '<hr>' +
+      r("cut.sales", c.sales_count) + (c.void_count ? r("cut.voids", c.void_count) : "") +
+      r("cut.cash", UI.money(c.cash_total)) + r("cut.card", UI.money(c.card_total)) + r("cut.transfer", UI.money(c.transfer_total)) +
+      r("cut.total", UI.money(c.total_sales), "t-row--total") + '<hr>' +
+      (c.opening_cash ? r("cut.opening", UI.money(c.opening_cash)) : "") +
+      r("cut.expected", UI.money(c.opening_cash + c.cash_total)) + r("cut.counted", UI.money(c.cash_counted)) +
+      r("cut.diff", (c.difference > 0 ? "+" : "") + UI.money(c.difference), "t-row--total") +
+      (c.notes ? '<hr><p>' + esc(c.notes) + '</p>' : '') +
+    '</div>';
+  }
+  function showCutTicket(c) {
+    var wrap = document.createElement("div");
+    wrap.innerHTML = cutTicketHTML(c) + '<div class="ticket__actions">' + printOptsHTML() + printBtn() + '</div>';
+    UI.modal({ content: wrap });
+    bindPrintOpts(wrap);
+    wrap.querySelector("[data-print]").addEventListener("click", function () { window.print(); UI.closeModal(); });
+  }
+  V._cutTicketHTML = cutTicketHTML;
+  V._showCutTicket = showCutTicket;
+
+  /* Cancelar venta (gerente/admin): motivo obligatorio; el servidor regresa
+     el stock y la saca de reportes y cortes. */
+  function voidSaleModal(sale, done) {
+    var form = document.createElement("form");
+    form.setAttribute("novalidate", "");
+    form.innerHTML =
+      '<p class="muted" style="margin:0 0 .8rem">' + esc(I18N.t("void.hint")) + '</p>' +
+      '<div class="field"><label>' + esc(I18N.t("void.reason")) + '</label>' +
+        '<input class="input" name="reason" required minlength="3" maxlength="200" placeholder="' + esc(I18N.t("void.reasonPh")) + '"></div>' +
+      '<p class="field__error" data-void-error hidden></p>' +
+      '<button class="btn btn--block btn--danger" type="submit">' + esc(I18N.t("void.confirm")) + '</button>';
+    UI.modal({ title: I18N.t("void.title", { folio: sale.folio }), content: form });
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var reason = form.reason.value.trim();
+      var errBox = form.querySelector("[data-void-error]");
+      if (reason.length < 3) { form.reason.focus(); return; }
+      var btn = form.querySelector('button[type="submit"]');
+      btn.classList.add("is-loading");
+      API.post("sales/" + sale.id + "/void", { reason: reason }).then(function (r) {
+        UI.closeModal();
+        UI.toast(I18N.t("void.done") + " · " + sale.folio, "ok");
+        if (done) done(r.sale);
+      }).catch(function (err) {
+        btn.classList.remove("is-loading");
+        errBox.textContent = (err && err.message) || I18N.t("toast.error");
+        errBox.hidden = false;
+      });
+    });
+  }
+  V._voidSaleModal = voidSaleModal;
+
   /* ---------------- Ticket ---------------- */
   function ticketHTML(s) {
     var loc = I18N.lang === "en" ? "en-US" : "es-MX";
@@ -754,6 +1027,7 @@
     return (
       '<div class="ticket">' +
         '<h2>◈ GEEKPOINT POS</h2>' +
+        (s.status === "void" ? '<p class="ticket__void">' + esc(I18N.t("void.stamp")) + (s.void_reason ? '<small>' + esc(s.void_reason) + '</small>' : '') + '</p>' : '') +
         '<p style="text-align:center" class="muted">' + esc(s.branch_name || "") + '<br>' + esc(s.branch_address || "") + '</p>' +
         '<hr>' +
         '<div class="t-row"><span>' + esc(I18N.t("ticket.folio")) + '</span><span>' + esc(s.folio) + '</span></div>' +
@@ -765,8 +1039,12 @@
         '<div class="t-row"><span>' + esc(I18N.t("pos.subtotal")) + '</span><span>' + UI.money(s.subtotal) + '</span></div>' +
         '<div class="t-row"><span>' + esc(I18N.t("pos.tax")) + '</span><span>' + UI.money(s.tax) + '</span></div>' +
         '<div class="t-row t-row--total"><span>' + esc(I18N.t("pos.total")) + '</span><span>' + UI.money(s.total) + '</span></div>' +
-        '<div class="t-row"><span>' + esc(I18N.t("method." + s.payment_method)) + '</span><span>' + UI.money(s.amount_paid) + '</span></div>' +
-        (s.payment_method === "cash" ? '<div class="t-row"><span>' + esc(I18N.t("pos.change")) + '</span><span>' + UI.money(s.change_due) + '</span></div>' : "") +
+        (s.payments && s.payments.length ? s.payments : [{ method: s.payment_method, amount: s.amount_paid, reference: "" }]).map(function (p) {
+          return '<div class="t-row"><span>' + esc(I18N.t("method." + p.method)) +
+            (p.reference ? ' <small>' + esc(I18N.t("pos.ref")) + ' ' + esc(p.reference) + '</small>' : '') +
+            '</span><span>' + UI.money(p.amount) + '</span></div>';
+        }).join("") +
+        (Number(s.change_due) > 0 || s.payment_method === "cash" ? '<div class="t-row"><span>' + esc(I18N.t("pos.change")) + '</span><span>' + UI.money(s.change_due) + '</span></div>' : "") +
         '<hr><p style="text-align:center">' + esc(I18N.t("ticket.thanks")) + '</p>' +
       '</div>'
     );
@@ -954,9 +1232,15 @@
           '<div class="ticket__actions">' +
             printOptsHTML() +
             printBtn() +
+            (d.sale.status !== "void" && (STORE.role === "manager" || STORE.role === "admin")
+              ? '<button class="btn btn--ghost btn--sm" data-void>' + esc(I18N.t("void.btn")) + '</button>' : '') +
             '<a class="btn btn--neon btn--sm" href="#/pos" data-link>' + esc(I18N.t("ticket.back")) + '</a>' +
           '</div>';
         bindPrintOpts(host);
+        var vb = host.querySelector("[data-void]");
+        if (vb) vb.addEventListener("click", function () {
+          voidSaleModal(d.sale, function () { ticketView.mount(root, params); });
+        });
         var pb = host.querySelector("[data-print]");
         if (pb) pb.addEventListener("click", function () { window.print(); });
       }).catch(function (err) { host.innerHTML = V._error(err); });

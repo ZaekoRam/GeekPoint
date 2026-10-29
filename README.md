@@ -20,9 +20,9 @@
 
 <br>
 
-![Estado](https://img.shields.io/badge/Estado-Funcional%20y%20publicado-19C37D?style=for-the-badge)
-![Fase](https://img.shields.io/badge/Fase%202-Entregada-FFD400?style=for-the-badge&logoColor=black)
-![Fase](https://img.shields.io/badge/Fase%203-13%E2%80%9319%20nov%202026-8B5BFF?style=for-the-badge)
+![Estado](https://img.shields.io/badge/Estado-Versi%C3%B3n%20final-19C37D?style=for-the-badge)
+![Fases](https://img.shields.io/badge/Fases-1%20%C2%B7%202%20%C2%B7%203%20completadas-FFD400?style=for-the-badge&logoColor=black)
+![Publicado](https://img.shields.io/badge/Publicado-geekpoint.com.mx-8B5BFF?style=for-the-badge)
 
 <table>
   <thead>
@@ -51,6 +51,7 @@
 <a href="#sucursales"><img src="https://img.shields.io/badge/Sucursales-FFD400?style=flat-square&labelColor=0c0c0e" alt="Sucursales"></a>
 <a href="#tecnologia"><img src="https://img.shields.io/badge/Tecnolog%C3%ADa-00E5FF?style=flat-square&labelColor=0c0c0e" alt="Tecnología"></a>
 <a href="#capturas"><img src="https://img.shields.io/badge/Capturas-FF2D95?style=flat-square" alt="Capturas"></a>
+<a href="#video"><img src="https://img.shields.io/badge/Video-00E5FF?style=flat-square&labelColor=0c0c0e" alt="Video"></a>
 <a href="#equipo"><img src="https://img.shields.io/badge/Equipo-8B5BFF?style=flat-square" alt="Equipo"></a>
 <a href="#instalacion"><img src="https://img.shields.io/badge/Instalaci%C3%B3n-00E5FF?style=flat-square&labelColor=0c0c0e" alt="Instalación"></a>
 
@@ -232,24 +233,48 @@ Cuatro sedes reales, cada una con su clave, ciudad, horario e inventario propio.
 
 <img src="assets/divider.svg" width="100%" alt="">
 
-<img src="assets/h08.svg" alt="08 · Avance del proyecto" width="100%">
+<a name="video"></a>
+<img src="assets/h08.svg" alt="08 · Video comercial" width="100%">
+
+<p align="center">
+  Conoce GeekPoint en un par de minutos: la tienda, el punto de venta y las cuatro sucursales.<br>
+  <b>Elige tu idioma y dale clic a la miniatura para verlo en YouTube.</b>
+</p>
+
+<table align="center">
+  <tr>
+    <td align="center" width="50%">
+      <a href="https://www.youtube.com/watch?v=VIDEO_ES" target="_blank"><img src="assets/video-es.svg" alt="Ver el video comercial de GeekPoint en español" width="100%"></a>
+      <br><b>🇲🇽 Español</b>
+    </td>
+    <td align="center" width="50%">
+      <a href="https://www.youtube.com/watch?v=VIDEO_EN" target="_blank"><img src="assets/video-en.svg" alt="Watch the GeekPoint commercial video in English" width="100%"></a>
+      <br><b>🇺🇸 English</b>
+    </td>
+  </tr>
+</table>
+
+<img src="assets/divider.svg" width="100%" alt="">
+
+<img src="assets/h09.svg" alt="09 · Fases del proyecto" width="100%">
 
 <p align="center">
   <img src="assets/fases.svg" alt="Cronograma: Fase 1 anteproyecto, Fase 2 prototipo funcional, Fase 3 entrega final" width="100%">
 </p>
 
-### 🧭 Hacia la Fase 3
+### ✅ Entregables del proyecto
 
-- [ ] Pulir el inicio de sesión y decidir sobre el sistema de apartados de usuario.
-- [ ] Completar el manual técnico y el manual de usuario.
-- [ ] Pruebas integrales por rol (Administrador, Gerente y Cajero).
-- [ ] Optimizar inventario y alertas; depurar datos de prueba.
-- [ ] Reporte final, artículo IEEE y video comercial.
+- [x] Protocolo y anteproyecto (Fase 1).
+- [x] Prototipo funcional publicado en [geekpoint.com.mx](https://geekpoint.com.mx) (Fase 2).
+- [x] Manual técnico y manual de usuario.
+- [x] Pruebas integrales por rol: Administrador, Gerente y Cajero.
+- [x] Reporte final y artículo IEEE.
+- [x] Video comercial en español y en inglés.
 
 <img src="assets/divider.svg" width="100%" alt="">
 
 <a name="equipo"></a>
-<img src="assets/h09.svg" alt="09 · Equipo" width="100%">
+<img src="assets/h10.svg" alt="10 · Equipo" width="100%">
 
 **Universidad de Colima — Facultad de Ingeniería Electromecánica**<br>
 **Ingeniería de Software · 3.er semestre, Grupo E**<br>
@@ -268,7 +293,7 @@ Cuatro sedes reales, cada una con su clave, ciudad, horario e inventario propio.
 <img src="assets/divider.svg" width="100%" alt="">
 
 <a name="instalacion"></a>
-<img src="assets/h10.svg" alt="10 · Instalación" width="100%">
+<img src="assets/h11.svg" alt="11 · Instalación" width="100%">
 
 ### 💻 Requisitos
 
@@ -296,12 +321,10 @@ CREATE DATABASE geekpoint CHARACTER SET utf8mb4;
 
 4. **Sirve `public_html/`** desde tu servidor local (`htdocs` en XAMPP o `www` en Laragon) y abre `http://localhost/GeekPoint/public_html/`.
 
-<!-- AJUSTA los pasos 2–4 a los nombres reales de tus archivos de configuración y SQL -->
-
 <img src="assets/divider.svg" width="100%" alt="">
 
 <a name="estructura"></a>
-<img src="assets/h11.svg" alt="11 · Estructura" width="100%">
+<img src="assets/h12.svg" alt="12 · Estructura" width="100%">
 
 ```text
 GeekPoint/
@@ -311,7 +334,7 @@ GeekPoint/
 └── README.md
 ```
 
-<img src="assets/h12.svg" alt="12 · Créditos y licencia" width="100%">
+<img src="assets/h13.svg" alt="13 · Créditos y licencia" width="100%">
 
 ### 🙌 Créditos
 
@@ -326,5 +349,5 @@ GeekPoint/
 Este proyecto se distribuye bajo la licencia **MIT**: puedes usar, estudiar, modificar y compartir el código, siempre que se incluya el crédito a los autores originales.
 
 <p align="center">
-  <img src="assets/fin.svg" alt="¡Nos vemos en la tienda! Continuará… Fase 3" width="100%">
+  <img src="assets/fin.svg" alt="¡Nos vemos en la tienda! Proyecto Integrador 2026" width="100%">
 </p>

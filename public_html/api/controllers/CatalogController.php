@@ -487,16 +487,10 @@ class CatalogController extends Controller
         if (!Database::ping()) {
             return [];
         }
-        // La columna `tags` puede no existir aún (migración
-        // 2026_09_08_000001 sin ejecutar): se detecta para no romper el catálogo.
-        $hasTags = false;
-        try {
-            $hasTags = (bool) Database::scalar(
-                "SELECT 1 FROM information_schema.COLUMNS
-                  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'v_inventory' AND COLUMN_NAME = 'tags' LIMIT 1"
-            );
-        } catch (\Throwable $e) {}
-
+        // `v_inventory` siempre expone `tags` (migración 2026_10_19_000001).
+        // Antes se consultaba information_schema en CADA visita para
+        // comprobarlo, y en el MySQL compartido de Hostinger esa consulta es
+        // de las más lentas del catálogo.
         try {
             // El filtro de categoría es por TEXTO (slug o nombre ES/EN en
             // minúsculas), NUNCA por id numérico — los ids no coinciden entre
@@ -508,7 +502,7 @@ class CatalogController extends Controller
                         MAX(c.name_es)       AS cat_es,
                         MAX(c.name_en)       AS cat_en,
                         MAX(p.description)   AS description,
-                        " . ($hasTags ? "MAX(p.tags)" : "''") . " AS tags,
+                        MAX(p.tags)          AS tags,
                         MAX(p.image_url)     AS image_url,
                         MAX(p.figure_png_url) AS figure_png_url,
                         MAX(UNIX_TIMESTAMP(p.updated_at)) AS updated_ts,

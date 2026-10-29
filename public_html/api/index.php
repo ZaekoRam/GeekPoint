@@ -182,6 +182,9 @@ $router->put('users/{id}',         function ($p) use ($request) { (new UserContr
 $router->patch('users/{id}/status', function ($p) use ($request) { (new UserController($request))->setStatus($p['id']); });
 $router->delete('users/{id}',      function ($p) use ($request) { (new UserController($request))->destroy($p['id']); });
 
+// --- Clientes de la tienda (solo admin, lectura) ---
+$router->get('customers', function () use ($request) { (new UserController($request))->customers(); });
+
 // --- Categorías ---
 $router->get('categories', function () use ($request) { (new CategoryController($request))->index(); });
 
@@ -238,6 +241,12 @@ $router->patch('reservations/{folio}/status', function ($p) use ($request) { (ne
 $router->post('sales',      function () use ($request) { (new SaleController($request))->store(); });
 $router->get('sales',       function () use ($request) { (new SaleController($request))->index(); });
 $router->get('sales/{id}',  function ($p) use ($request) { (new SaleController($request))->show($p['id']); });
+$router->post('sales/{id}/void', function ($p) use ($request) { (new SaleController($request))->void($p['id']); });
+
+// --- Corte de caja ---
+$router->get('cash-cuts/preview', function () use ($request) { (new CashCutController($request))->preview(); });
+$router->get('cash-cuts',         function () use ($request) { (new CashCutController($request))->index(); });
+$router->post('cash-cuts',        function () use ($request) { (new CashCutController($request))->store(); });
 
 // --- Reportes ---
 $router->get('reports/overview',     function () use ($request) { (new ReportController($request))->overview(); });

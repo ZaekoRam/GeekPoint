@@ -106,17 +106,17 @@ class Mailer
 
     private static function p($html)
     {
-        return '<p style="margin:0 0 18px;font:15px/1.6 Arial,sans-serif;color:#111014">' . $html . '</p>';
+        return '<p style="margin:0 0 18px;font:15px/1.6 Arial,sans-serif;color:#f3efe4">' . $html . '</p>';
     }
 
     private static function small($html)
     {
-        return '<p style="margin:0 0 18px;font:12px/1.5 Arial,sans-serif;color:#5d5a63">' . $html . '</p>';
+        return '<p style="margin:0 0 18px;font:12px/1.5 Arial,sans-serif;color:#b9b4a8">' . $html . '</p>';
     }
 
     private static function label($text)
     {
-        return '<p style="margin:0 0 6px;font:bold 11px Arial,sans-serif;letter-spacing:2px;color:#5d5a63">' . self::e($text) . '</p>';
+        return '<p style="margin:0 0 6px;font:bold 11px Arial,sans-serif;letter-spacing:2px;color:#b9b4a8">' . self::e($text) . '</p>';
     }
 
     /** Botón amarillo (enlace). */
@@ -141,17 +141,17 @@ class Mailer
         $rows = '';
         foreach ($r['items'] ?? [] as $it) {
             $rows .= '<tr>'
-                . '<td style="padding:10px 0;border-bottom:1px solid #e6e0cf;font:15px/1.4 Arial,sans-serif;color:#111014">'
+                . '<td style="padding:10px 0;border-bottom:1px solid #3a3840;font:15px/1.4 Arial,sans-serif;color:#f3efe4">'
                 .   self::e($it['quantity']) . ' × ' . self::e($it['title'])
-                .   (!empty($it['is_preventa']) ? ' <span style="font:bold 11px Arial,sans-serif;color:#a35b00">PREVENTA</span>' : '')
+                .   (!empty($it['is_preventa']) ? ' <span style="font:bold 11px Arial,sans-serif;color:#ffb347">PREVENTA</span>' : '')
                 . '</td>'
-                . '<td style="padding:10px 0;border-bottom:1px solid #e6e0cf;font:15px/1.4 Arial,sans-serif;color:#111014;text-align:right;white-space:nowrap">'
+                . '<td style="padding:10px 0;border-bottom:1px solid #3a3840;font:15px/1.4 Arial,sans-serif;color:#f3efe4;text-align:right;white-space:nowrap">'
                 .   self::money($it['line_total'])
                 . '</td></tr>';
         }
         return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 6px">' . $rows
-            . '<tr><td style="padding:14px 0 0;font:bold 16px Arial,sans-serif;color:#111014">Total</td>'
-            . '<td style="padding:14px 0 0;font:bold 16px Arial,sans-serif;color:#111014;text-align:right;white-space:nowrap">'
+            . '<tr><td style="padding:14px 0 0;font:bold 16px Arial,sans-serif;color:#f3efe4">Total</td>'
+            . '<td style="padding:14px 0 0;font:bold 16px Arial,sans-serif;color:#f3efe4;text-align:right;white-space:nowrap">'
             . self::money($r['total'] ?? 0) . '</td></tr></table>';
     }
 
@@ -173,7 +173,7 @@ class Mailer
             !empty($branch['hours']) ? 'Horario: ' . self::e($branch['hours']) : '',
             !empty($branch['phone']) ? 'Tel. ' . self::e($branch['phone']) : '',
         ]);
-        return self::label($label) . '<p style="margin:0 0 22px;font:15px/1.5 Arial,sans-serif;color:#111014">' . implode('<br>', $lines) . '</p>';
+        return self::label($label) . '<p style="margin:0 0 22px;font:15px/1.5 Arial,sans-serif;color:#f3efe4">' . implode('<br>', $lines) . '</p>';
     }
 
     private static function branchText($branch)
@@ -185,34 +185,38 @@ class Mailer
 
     /**
      * Marco común de todos los correos: encabezado amarillo con la marca,
-     * cuerpo con la mascota difuminada de fondo (imagen ya difuminada: los
-     * clientes de correo no soportan filter: blur; Outlook de escritorio no
-     * muestra fondos y queda en blanco) y pie negro.
+     * cuerpo OSCURO con la mascota de fondo y pie negro.
+     *
+     * Es oscuro a propósito: Gmail (Android/iOS) en modo oscuro invierte los
+     * correos claros (texto negro -> blanco) pero NO las imágenes, y el texto
+     * quedaba blanco sobre la mascota clara. Un correo que ya es oscuro lo deja
+     * casi igual, así que se lee en modo claro y oscuro. La mascota es una
+     * versión oscurecida (fondo-correo-oscuro.jpg).
      */
     private static function layout($subject, $eyebrow, $heading, $bodyHtml, $footNote = '')
     {
-        $bg = self::e(self::siteUrl() . '/assets/images/mail/fondo-correo.jpg');
+        $bg = self::e(self::siteUrl() . '/assets/images/mail/fondo-correo-oscuro.jpg');
         $site = self::e(self::siteUrl());
         $foot = ($footNote !== '' ? $footNote . '<br>' : '')
             . 'Este correo se envió desde una dirección que no recibe respuestas.<br>'
             . '<a href="' . $site . '" style="color:#ffd400">geekpoint.com.mx</a>';
 
         return '<!doctype html><html lang="es"><head><meta charset="utf-8">'
-            . '<meta name="viewport" content="width=device-width,initial-scale=1"><title>' . self::e($subject) . '</title></head>'
-            . '<body style="margin:0;padding:0;background:#f3efe4">'
-            . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3efe4"><tr><td align="center" style="padding:24px 12px">'
-            . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border:3px solid #111014">'
+            . '<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><meta name="supported-color-schemes" content="dark"><title>' . self::e($subject) . '</title></head>'
+            . '<body style="margin:0;padding:0;background:#0c0c0e">'
+            . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#0c0c0e" style="background:#0c0c0e"><tr><td align="center" style="padding:24px 12px">'
+            . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#151419;border:3px solid #ffd400">'
             . '<tr><td style="background:#ffd400;padding:20px 24px;border-bottom:3px solid #111014">'
             .   '<span style="display:inline-block;background:#111014;color:#ffd400;font:bold 18px Impact,Arial Black,sans-serif;padding:4px 9px">G</span>'
             .   '<span style="font:bold 22px Impact,Arial Black,sans-serif;color:#111014;letter-spacing:1px;vertical-align:middle;padding-left:8px">GEEKPOINT</span>'
             . '</td></tr>'
-            . '<tr><td background="' . $bg . '" bgcolor="#ffffff" style="padding:28px 24px;background-color:#ffffff;'
+            . '<tr><td background="' . $bg . '" bgcolor="#151419" style="padding:28px 24px;background-color:#151419;'
             .   'background-image:url(' . $bg . ');background-repeat:no-repeat;background-position:right top">'
             .   self::label($eyebrow)
-            .   '<h1 style="margin:0 0 16px;font:28px/1.1 Impact,Arial Black,sans-serif;color:#111014;text-transform:uppercase">' . self::e($heading) . '</h1>'
+            .   '<h1 style="margin:0 0 16px;font:28px/1.1 Impact,Arial Black,sans-serif;color:#f3efe4;text-transform:uppercase">' . self::e($heading) . '</h1>'
             .   $bodyHtml
             . '</td></tr>'
-            . '<tr><td style="background:#111014;padding:16px 24px;font:12px/1.6 Arial,sans-serif;color:#c9c5bb">' . $foot . '</td></tr>'
+            . '<tr><td style="background:#000000;border-top:3px solid #ffd400;padding:16px 24px;font:12px/1.6 Arial,sans-serif;color:#c9c5bb">' . $foot . '</td></tr>'
             . '</table></td></tr></table></body></html>';
     }
 
@@ -231,7 +235,7 @@ class Mailer
         $subject = 'Tu apartado ' . $folio . ' en GeekPoint';
 
         $preventa = !empty($r['is_preventa'])
-            ? '<p style="margin:0 0 20px;padding:12px 14px;background:#fff3b0;font:14px/1.5 Arial,sans-serif;color:#111014">'
+            ? '<p style="margin:0 0 20px;padding:12px 14px;background:#ffd400;font:14px/1.5 Arial,sans-serif;color:#111014">'
               . 'Tu pedido incluye artículos en <b>preventa</b>: te avisaremos cuando estén listos para recoger.</p>'
             : '';
 
@@ -356,7 +360,7 @@ class Mailer
             $text .= '- ' . $b['name'] . ': ' . (int) $b['stock'] . "\n";
         }
         $body = self::p('<b>' . self::e($title) . '</b> volvió a estar disponible. Apártalo antes de que se agote otra vez.')
-            . ($list !== '' ? self::label('DISPONIBLE EN') . '<p style="margin:0 0 22px;font:15px/1.6 Arial,sans-serif;color:#111014">' . $list . '</p>' : '')
+            . ($list !== '' ? self::label('DISPONIBLE EN') . '<p style="margin:0 0 22px;font:15px/1.6 Arial,sans-serif;color:#f3efe4">' . $list . '</p>' : '')
             . self::button($shopLink, 'Ver en la tienda');
         $html = self::layout($subject, 'AVISO DE STOCK', '¡Ya llegó!', $body,
             'Recibes esto porque pediste un aviso de stock. <a href="' . self::e($unsubscribeLink) . '" style="color:#c9c5bb">Cancelar aviso</a>');

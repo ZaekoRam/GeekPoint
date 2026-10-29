@@ -1,6 +1,6 @@
 /* =============================================================
    Vista: Panel de Gerencia.  window.Views.manager
-   Subrutas: #/manager  /products  /registers  /inventory  /sales
+   Subrutas: #/manager  /products  /registers  /inventory  /sales  /cuts
    ============================================================= */
 (function () {
   "use strict";
@@ -12,7 +12,8 @@
     { href: "#/manager/products", i18n: "nav.products", ico: "📚" },
     { href: "#/manager/registers", i18n: "nav.registers", ico: "🖥️" },
     { href: "#/manager/inventory", i18n: "nav.inventory", ico: "📦" },
-    { href: "#/manager/sales", i18n: "nav.sales", ico: "🧾" }
+    { href: "#/manager/sales", i18n: "nav.sales", ico: "🧾" },
+    { href: "#/manager/cuts", i18n: "cut.history", ico: "🧮" }
   ];
 
   var _categories = null;
@@ -42,7 +43,7 @@
   function mount(root, params) {
     var sub = (params && params.sub) || "";
     var panel = $("[data-panel]", root);
-    var loaders = { "": overview, "products": products, "registers": registers, "inventory": inventory, "sales": sales };
+    var loaders = { "": overview, "products": products, "registers": registers, "inventory": inventory, "sales": sales, "cuts": cuts };
     (loaders[sub] || overview)(panel, root);
   }
 
@@ -79,7 +80,8 @@
           { key: "folio", label: I18N.t("col.folio"), render: function (r) { return '<a class="mono" href="#/ticket/' + r.id + '" data-link>' + esc(r.folio) + '</a>'; } },
           { key: "cashier_name", label: I18N.t("col.cashier"), render: function (r) { return esc(r.cashier_name); } },
           { key: "payment_method", label: I18N.t("col.method"), render: function (r) { return '<span class="badge">' + esc(I18N.t("method." + r.payment_method)) + '</span>'; } },
-          { key: "total", label: I18N.t("col.total"), cls: "num right", render: function (r) { return UI.money(r.total); } },
+          { key: "total", label: I18N.t("col.total"), cls: "num right", render: function (r) {
+            return r.status === "void" ? '<del class="muted">' + UI.money(r.total) + '</del> ' + statusBadge("void") : UI.money(r.total); } },
           { key: "created_at", label: I18N.t("col.date"), render: function (r) { return '<span class="muted" style="font-size:.78rem">' + UI.fmtDate(r.created_at, true) + '</span>'; } }
         ], d.recent_sales);
     }).catch(function (err) { panel.innerHTML = V._error(err); });
@@ -242,7 +244,10 @@
     }).catch(function (err) { panel.innerHTML = V._error(err); });
   }
 
-  /* ---------------- Sales history ---------------- */
+  /* ---------------- Sales history (con cancelación) ---------------- */
+  function statusBadge(st) {
+    return '<span class="badge' + (st === "void" ? " badge--danger" : "") + '">' + esc(I18N.t("status." + st)) + '</span>';
+  }
   function sales(panel) {
     panel.innerHTML = V._loading();
     API.get("sales?limit=100").then(function (d) {
@@ -251,9 +256,43 @@
         { key: "cashier_name", label: I18N.t("col.cashier"), render: function (r) { return esc(r.cashier_name); } },
         { key: "items_count", label: I18N.t("col.qty"), cls: "num" },
         { key: "payment_method", label: I18N.t("col.method"), render: function (r) { return '<span class="badge">' + esc(I18N.t("method." + r.payment_method)) + '</span>'; } },
-        { key: "total", label: I18N.t("col.total"), cls: "num right", render: function (r) { return UI.money(r.total); } },
-        { key: "created_at", label: I18N.t("col.date"), render: function (r) { return '<span class="muted" style="font-size:.78rem">' + UI.fmtDate(r.created_at, true) + '</span>'; } }
-      ], d.sales);
+        { key: "total", label: I18N.t("col.total"), cls: "num right", render: function (r) {
+          return r.status === "void" ? '<del class="muted">' + UI.money(r.total) + '</del>' : UI.money(r.total); } },
+        { key: "status", label: I18N.t("col.status"), render: function (r) { return statusBadge(r.status || "completed"); } },
+        { key: "created_at", label: I18N.t("col.date"), render: function (r) { return '<span class="muted" style="font-size:.78rem">' + UI.fmtDate(r.created_at, true) + '</span>'; } },
+        { key: "id", label: I18N.t("col.actions"), render: function (r) {
+          return r.status === "void" ? "" : '<button class="btn btn--ghost btn--sm" data-void="' + r.id + '">' + esc(I18N.t("void.btn")) + '</button>'; } }
+      ], d.sales, { stack: true });
+      panel.onclick = function (e) {
+        var b = e.target.closest("[data-void]");
+        if (!b || !V._voidSaleModal) return;
+        var sale = d.sales.find(function (x) { return x.id == b.getAttribute("data-void"); });
+        if (sale) V._voidSaleModal(sale, function () { sales(panel); });
+      };
+    }).catch(function (err) { panel.innerHTML = V._error(err); });
+  }
+
+  /* ---------------- Cortes de caja ---------------- */
+  function cuts(panel) {
+    panel.innerHTML = V._loading();
+    API.get("cash-cuts").then(function (d) {
+      panel.innerHTML = V._table([
+        { key: "to_at", label: I18N.t("col.date"), render: function (r) { return '<span class="mono" style="font-size:.78rem">' + UI.fmtDate(r.to_at, true) + '</span>'; } },
+        { key: "register_name", label: I18N.t("cut.register"), render: function (r) { return esc(r.register_name || I18N.t("cut.noRegister")); } },
+        { key: "user_name", label: I18N.t("cut.by"), render: function (r) { return esc(r.user_name); } },
+        { key: "sales_count", label: I18N.t("cut.sales"), cls: "num" },
+        { key: "total_sales", label: I18N.t("cut.total"), cls: "num right", render: function (r) { return UI.money(r.total_sales); } },
+        { key: "difference", label: I18N.t("cut.diff"), cls: "num right", render: function (r) {
+          var cls = Math.abs(r.difference) < 0.005 ? "" : ' style="color:var(--danger);font-weight:700"';
+          return '<span' + cls + '>' + (r.difference > 0 ? "+" : "") + UI.money(r.difference) + '</span>'; } },
+        { key: "id", label: "", render: function (r) { return '<button class="btn btn--ghost btn--sm" data-cut="' + r.id + '">🧾</button>'; } }
+      ], d.cuts, { empty: I18N.t("empty.none"), stack: true });
+      panel.onclick = function (e) {
+        var b = e.target.closest("[data-cut]");
+        if (!b) return;
+        var c = d.cuts.find(function (x) { return x.id == b.getAttribute("data-cut"); });
+        if (c && V._showCutTicket) V._showCutTicket(c);
+      };
     }).catch(function (err) { panel.innerHTML = V._error(err); });
   }
 
