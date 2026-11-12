@@ -5,7 +5,8 @@
     ['categories', 'tags', 'product_tags', 'product_images'],          // catálogo
     ['products', 'inventory', 'stock_movements'],                       // producto e inventario
     ['branches', 'registers', 'sales', 'sale_items'],                   // sucursal y ventas
-    ['users', 'sessions', 'stock_alerts'],                              // usuarios
+    ['payment_methods', 'sale_payments', 'cash_cuts'],                  // pagos y cortes de caja
+    ['roles', 'users', 'sessions', 'stock_alerts'],                     // usuarios
     ['reservations', 'reservation_items'],                              // apartados
     ['v_inventory', 'v_consolidated_inventory', 'catalog_cache',
      'products_legacy', 'schema_migrations'],                           // vistas y auxiliares

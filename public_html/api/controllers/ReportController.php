@@ -92,12 +92,15 @@ class ReportController extends Controller
             'inventory_value'   => (float) Database::scalar('SELECT COALESCE(SUM(price * stock),0) FROM v_inventory WHERE branch_id = ? AND status = "active"', [$id]),
         ];
 
+        // Solo lo vendido EN esta sucursal: si un cajero estuvo antes en otra,
+        // sus ventas de allá no entran en el reporte de aquí.
         $byCashier = Database::all(
             'SELECT u.id, u.name,
                     COUNT(s.id) AS month_count,
                     COALESCE(SUM(s.total),0) AS month_total
              FROM users u
-             LEFT JOIN sales s ON s.user_id = u.id AND s.status = "completed" AND s.created_at >= ?
+             LEFT JOIN sales s ON s.user_id = u.id AND s.branch_id = u.branch_id
+                              AND s.status = "completed" AND s.created_at >= ?
              WHERE u.branch_id = ? AND u.role = "cashier"
              GROUP BY u.id, u.name ORDER BY month_total DESC',
             [$monthStart . ' 00:00:00', $id]

@@ -1,6 +1,9 @@
 /* =============================================================
    Vista: Panel del Administrador General.  window.Views.admin
-   Subrutas:  #/admin  #/admin/branches  #/admin/users  #/admin/customers  #/admin/inventory
+   Subrutas:  #/admin  #/admin/branches  #/admin/users  #/admin/customers
+              #/admin/registers  #/admin/inventory  #/admin/sales
+   Ventas admite un filtro de entrada (enlaces del Resumen):
+              #/admin/sales/today  /sales/month  /sales/branch/{id}
    ============================================================= */
 (function () {
   "use strict";
@@ -13,20 +16,23 @@
     { href: "#/admin/users", i18n: "nav.users", ico: "👥" },
     { href: "#/admin/customers", i18n: "nav.customers", ico: "🛍️" },
     { href: "#/admin/registers", i18n: "nav.registers", ico: "🖥️" },
-    { href: "#/admin/inventory", i18n: "nav.inventory", ico: "📦" }
+    { href: "#/admin/inventory", i18n: "nav.inventory", ico: "📦" },
+    { href: "#/admin/sales", i18n: "nav.sales", ico: "🧾" }
   ];
 
+  var SECTIONS = ["branches", "users", "customers", "registers", "inventory", "sales"];
+
+  /** "sales/branch/3" -> ["sales", "branch", "3"]: sección y lo que venga detrás. */
+  function routeParts(params) {
+    return String((params && params.sub) || "").split("/").filter(Boolean);
+  }
+
   function activeHref(sub) {
-    if (sub === "branches") return "#/admin/branches";
-    if (sub === "users") return "#/admin/users";
-    if (sub === "customers") return "#/admin/customers";
-    if (sub === "registers") return "#/admin/registers";
-    if (sub === "inventory") return "#/admin/inventory";
-    return "#/admin";
+    return SECTIONS.indexOf(sub) !== -1 ? "#/admin/" + sub : "#/admin";
   }
 
   function render(params) {
-    var sub = (params && params.sub) || "";
+    var sub = routeParts(params)[0] || "";
     var head = "";
     if (sub === "branches") head = '<button class="btn btn--neon btn--sm" data-new-branch>+ ' + esc(I18N.t("btn.newBranch")) + '</button>';
     if (sub === "users") head = '<button class="btn btn--neon btn--sm" data-new-user>+ ' + esc(I18N.t("btn.newUser")) + '</button>';
@@ -45,12 +51,13 @@
   }
 
   function mount(root, params) {
-    var sub = (params && params.sub) || "";
+    var parts = routeParts(params);
+    var sub = parts[0] || "", args = parts.slice(1);
     var panel = $("[data-panel]", root);
 
-    var loaders = { "": overview, "branches": branches, "users": users, "customers": customers, "registers": registers, "inventory": inventory };
+    var loaders = { "": overview, "branches": branches, "users": users, "customers": customers, "registers": registers, "inventory": inventory, "sales": sales };
     var fn = loaders[sub] || overview;
-    fn(panel, root);
+    fn(panel, root, args);
 
     root.addEventListener("click", function (e) {
       if (e.target.closest("[data-reload]")) fn(panel, root);
@@ -64,8 +71,8 @@
       var k = d.kpis;
       panel.innerHTML =
         V._kpi([
-          { label: I18N.t("kpi.salesToday"), value: UI.money(k.sales_today_total), foot: k.sales_today_count + " " + I18N.t("col.tickets").toLowerCase(), mod: "kpi--accent" },
-          { label: I18N.t("kpi.salesMonth"), value: UI.money(k.sales_month_total), foot: k.sales_month_count + " " + I18N.t("col.tickets").toLowerCase() },
+          { label: I18N.t("kpi.salesToday"), value: UI.money(k.sales_today_total), foot: k.sales_today_count + " " + I18N.t("col.tickets").toLowerCase(), mod: "kpi--accent", href: "#/admin/sales/today" },
+          { label: I18N.t("kpi.salesMonth"), value: UI.money(k.sales_month_total), foot: k.sales_month_count + " " + I18N.t("col.tickets").toLowerCase(), href: "#/admin/sales/month" },
           { label: I18N.t("kpi.branchesActive"), value: k.branches_active + " / " + k.branches_total, mono: true, href: "#/admin/branches" },
           { label: I18N.t("kpi.users"), value: k.users_total, mono: true, href: "#/admin/users" },
           { label: I18N.t("kpi.products"), value: k.products_total, mono: true, href: "#/admin/inventory" },
@@ -88,8 +95,210 @@
           { key: "today_total", label: I18N.t("col.today"), cls: "num center", render: function (r) { return UI.money(r.today_total, true); } },
           { key: "month_total", label: I18N.t("col.month"), cls: "num center", render: function (r) { return UI.money(r.month_total, true); } },
           { key: "month_count", label: I18N.t("col.tickets"), cls: "num center", render: function (r) { return r.month_count; } },
-          { key: "low_stock", label: I18N.t("col.lowstock"), cls: "num center", render: function (r) { return r.low_stock ? '<span class="badge badge--warn">' + r.low_stock + '</span>' : '0'; } }
+          { key: "low_stock", label: I18N.t("col.lowstock"), cls: "num center", render: function (r) { return r.low_stock ? '<span class="badge badge--warn">' + r.low_stock + '</span>' : '0'; } },
+          { key: "id", label: I18N.t("nav.sales"), render: function (r) {
+            return '<a class="btn btn--ghost btn--sm" href="#/admin/sales/branch/' + r.id + '" data-link>' + esc(I18N.t("sales.viewBranch")) + '</a>'; } }
         ], d.by_branch);
+    }).catch(function (err) { panel.innerHTML = V._error(err); });
+  }
+
+  /* ---------------- Ventas de todas las sucursales (consulta) ----------------
+     Filtros por sucursal, cajero, forma de pago, estado, fechas y folio o
+     cliente. El resumen de arriba (ventas, total, ticket promedio, canceladas)
+     lo calcula el servidor sobre TODO lo filtrado, no solo sobre la página.
+     Cada folio abre el ticket con su detalle; desde ahí se puede cancelar
+     la venta. */
+  var SALES_PAGE = 50;
+  var SALES_METHODS = ["cash", "card", "transfer", "mixed"];
+  var _salesFilters = null;     // se conservan al cambiar de idioma o volver a la sección
+
+  function _emptySalesFilters() {
+    return { branch_id: "", user_id: "", payment_method: "", status: "", from: "", to: "", q: "" };
+  }
+  function _isoDate(d) {
+    return d.getFullYear() + "-" + _pad2(d.getMonth() + 1) + "-" + _pad2(d.getDate());
+  }
+  /** Rango de fechas de un atajo: today | week (últimos 7 días) | month | all. */
+  function _salesRange(key) {
+    var now = new Date(), from = new Date(now);
+    if (key === "week") from.setDate(now.getDate() - 6);
+    else if (key === "month") from.setDate(1);
+    else if (key !== "today") return { from: "", to: "" };
+    return { from: _isoDate(from), to: _isoDate(now) };
+  }
+
+  function sales(panel, root, args) {
+    var f = _salesFilters || _emptySalesFilters();
+    if (args && args.length) {                       // llegada desde el Resumen con el filtro puesto
+      f = _emptySalesFilters();
+      if (args[0] === "branch") f.branch_id = String(parseInt(args[1], 10) || "");
+      else { var preset = _salesRange(args[0]); f.from = preset.from; f.to = preset.to; }
+      // El filtro ya quedó aplicado: la dirección vuelve a la de la sección para
+      // que recargar o cambiar de idioma no pise lo que se ajuste después.
+      try { history.replaceState(null, "", "#/admin/sales"); } catch (e) { /* sin History API */ }
+    }
+    _salesFilters = f;
+
+    panel.innerHTML = V._loading();
+    Promise.all([API.get("branches"), API.get("users")]).then(function (res) {
+      var brs = res[0].branches, staff = res[1].users;
+      var rows = [], summary = { count: 0, completed: 0, "void": 0, total: 0 };
+      var seq = 0;                                   // descarta respuestas de un filtro anterior
+
+      var opt = function (value, label, current) {
+        return '<option value="' + esc(value) + '"' + (String(current) === String(value) ? " selected" : "") + '>' + esc(label) + '</option>';
+      };
+      var item = function (labelKey, control) {
+        return '<label class="toolbar__item"><span>' + esc(I18N.t(labelKey)) + '</span>' + control + '</label>';
+      };
+
+      panel.innerHTML =
+        '<div class="toolbar toolbar--sales" data-sales-filters>' +
+          item("col.branch", '<select class="select" data-f="branch_id">' + opt("", I18N.t("sales.allBranches"), f.branch_id) +
+            brs.map(function (b) { return opt(b.id, b.name, f.branch_id); }).join("") + '</select>') +
+          item("col.cashier", '<select class="select" data-f="user_id"></select>') +
+          item("col.method", '<select class="select" data-f="payment_method">' + opt("", I18N.t("sales.all"), f.payment_method) +
+            SALES_METHODS.map(function (m) { return opt(m, I18N.t("method." + m), f.payment_method); }).join("") + '</select>') +
+          item("col.status", '<select class="select" data-f="status">' + opt("", I18N.t("sales.all"), f.status) +
+            opt("completed", I18N.t("status.completed"), f.status) + opt("void", I18N.t("status.void"), f.status) + '</select>') +
+          item("sales.from", '<input class="input" type="date" data-f="from" value="' + esc(f.from) + '">') +
+          item("sales.to", '<input class="input" type="date" data-f="to" value="' + esc(f.to) + '">') +
+          '<input class="input" type="search" data-f="q" placeholder="' + esc(I18N.t("sales.searchPh")) + '" value="' + esc(f.q) + '">' +
+        '</div>' +
+        '<div class="toolbar toolbar--sales">' +
+          ["today", "week", "month", "all"].map(function (r) {
+            return '<button type="button" class="chip" data-range="' + r + '">' + esc(I18N.t("sales.range." + r)) + '</button>';
+          }).join("") +
+          '<span class="spacer"></span>' +
+          '<button type="button" class="btn btn--ghost btn--sm" data-sales-clear>' + esc(I18N.t("sales.clear")) + '</button>' +
+        '</div>' +
+        '<div data-sales-summary></div>' +
+        '<div data-sales-table>' + V._loading() + '</div>' +
+        '<div class="sales-more" data-sales-more></div>';
+
+      var filtersBox = $("[data-sales-filters]", panel);
+      var tableBox = $("[data-sales-table]", panel);
+
+      // Cajeros de la sucursal elegida (el admin no tiene sucursal: va siempre).
+      function fillCashiers() {
+        var list = staff.filter(function (u) {
+          return !f.branch_id || u.role === "admin" || String(u.branch_id) === String(f.branch_id);
+        });
+        if (f.user_id && !list.some(function (u) { return String(u.id) === String(f.user_id); })) f.user_id = "";
+        $('[data-f="user_id"]', panel).innerHTML = opt("", I18N.t("sales.all"), f.user_id) + list.map(function (u) {
+          return opt(u.id, u.name + " · " + I18N.t("role." + u.role), f.user_id);
+        }).join("");
+      }
+
+      // Marca el atajo que coincide con las fechas puestas (si alguno).
+      function paintRanges() {
+        $$("[data-range]", panel).forEach(function (chip) {
+          var r = _salesRange(chip.getAttribute("data-range"));
+          chip.classList.toggle("is-active", r.from === f.from && r.to === f.to);
+        });
+      }
+
+      function url(offset) {
+        var qs = ["limit=" + SALES_PAGE, "offset=" + offset];
+        Object.keys(f).forEach(function (k) { if (f[k] !== "") qs.push(k + "=" + encodeURIComponent(f[k])); });
+        return "sales?" + qs.join("&");
+      }
+
+      function draw() {
+        var avg = summary.completed ? summary.total / summary.completed : 0;
+        $("[data-sales-summary]", panel).innerHTML = V._kpi([
+          { label: I18N.t("sales.kpi.count"), value: summary.completed, mono: true, mod: "kpi--accent" },
+          { label: I18N.t("sales.kpi.total"), value: UI.money(summary.total) },
+          { label: I18N.t("kpi.ticketAvg"), value: UI.money(avg) },
+          { label: I18N.t("sales.kpi.void"), value: summary["void"], mono: true, mod: summary["void"] ? "kpi--warn" : "" }
+        ]);
+
+        tableBox.innerHTML = V._table([
+          { key: "folio", label: I18N.t("col.folio"), render: function (r) {
+            return '<a class="mono" style="white-space:nowrap" href="#/ticket/' + r.id + '" data-sale="' + r.id + '">' + esc(r.folio) + '</a>'; } },
+          { key: "created_at", label: I18N.t("col.date"), render: function (r) {
+            return '<span style="white-space:nowrap">' + esc(UI.fmtDate(r.created_at)) +
+              '<br><span class="muted mono" style="font-size:.7rem">' + esc(UI.fmtTime(r.created_at)) + '</span></span>'; } },
+          { key: "branch_name", label: I18N.t("col.branch"), render: function (r) {
+            return '<span>' + esc(r.branch_name) + (r.register_name
+              ? '<br><span class="muted mono" style="font-size:.7rem">' + esc(r.register_name) + '</span>' : '') + '</span>'; } },
+          { key: "cashier_name", label: I18N.t("col.cashier"), render: function (r) { return esc(r.cashier_name); } },
+          { key: "items_count", label: I18N.t("col.qty"), cls: "num" },
+          { key: "payment_method", label: I18N.t("col.method"), render: function (r) {
+            return '<span class="badge">' + esc(I18N.t("method." + r.payment_method)) + '</span>'; } },
+          { key: "total", label: I18N.t("col.total"), cls: "num right", render: function (r) {
+            return r.status === "void" ? '<del class="muted">' + UI.money(r.total) + '</del>' : UI.money(r.total); } },
+          { key: "status", label: I18N.t("col.status"), render: function (r) {
+            return '<span class="badge' + (r.status === "void" ? " badge--danger" : " badge--ok") + '">' + esc(I18N.t("status." + r.status)) + '</span>'; } },
+          // Una sola acción por fila: el detalle. Cancelar la venta se hace desde
+          // el ticket que se abre, donde se ve qué se está cancelando.
+          { key: "id", label: I18N.t("col.actions"), render: function (r) {
+            return '<button type="button" class="btn btn--ghost btn--sm" data-sale="' + r.id + '">' + esc(I18N.t("sales.detail")) + '</button>'; } }
+        ], rows, { empty: I18N.t("sales.empty"), stack: true });
+
+        var left = summary.count - rows.length;
+        $("[data-sales-more]", panel).innerHTML = left > 0
+          ? '<button type="button" class="btn btn--ghost" data-sales-next>' + esc(I18N.t("sales.more", { n: Math.min(left, SALES_PAGE), left: left })) + '</button>'
+          : "";
+      }
+
+      function load(append) {
+        var mine = ++seq;
+        if (!append) tableBox.innerHTML = V._loading();
+        return API.get(url(append ? rows.length : 0)).then(function (d) {
+          if (mine !== seq || !panel.isConnected) return;
+          rows = append ? rows.concat(d.sales) : d.sales;
+          summary = d.summary || summary;
+          draw();
+        }).catch(function (err) {
+          if (mine === seq && panel.isConnected) tableBox.innerHTML = V._error(err);
+        });
+      }
+
+      function openSale(id) {
+        API.get("sales/" + id).then(function (d) {
+          V._showTicketModal(d.sale, { onVoided: function () { load(false); } });
+        }).catch(apiToast);
+      }
+
+      filtersBox.addEventListener("change", function (e) {
+        var el = e.target.closest("[data-f]");
+        if (!el || el.type === "search") return;
+        f[el.getAttribute("data-f")] = el.value;
+        if (el.getAttribute("data-f") === "branch_id") fillCashiers();
+        paintRanges();
+        load(false);
+      });
+      var search = $('[data-f="q"]', panel);
+      search.addEventListener("input", UI.debounce(function () {
+        f.q = search.value.trim();
+        load(false);
+      }, 300));
+
+      panel.onclick = function (e) {
+        var range = e.target.closest("[data-range]");
+        if (range) {
+          var r = _salesRange(range.getAttribute("data-range"));
+          f.from = r.from; f.to = r.to;
+          $('[data-f="from"]', panel).value = f.from;
+          $('[data-f="to"]', panel).value = f.to;
+          paintRanges();
+          load(false);
+          return;
+        }
+        if (e.target.closest("[data-sales-clear]")) {
+          _salesFilters = null;
+          sales(panel, root);
+          return;
+        }
+        if (e.target.closest("[data-sales-next]")) { load(true); return; }
+        var sl = e.target.closest("[data-sale]");
+        if (sl) { e.preventDefault(); openSale(sl.getAttribute("data-sale")); }
+      };
+
+      fillCashiers();
+      paintRanges();
+      load(false);
     }).catch(function (err) { panel.innerHTML = V._error(err); });
   }
 
@@ -268,6 +477,10 @@
 
   function userForm(u, branchesList, done) {
     u = u || {};
+    // Un administrador no tiene sucursal ni cambia de rol o estado desde aquí:
+    // de su ficha solo se editan nombre, correo y contraseña. (Antes el
+    // formulario le mandaba "gerente" + la primera sucursal y lo degradaba.)
+    var isAdminUser = u.role === "admin";
     var opts = branchesList.map(function (b) {
       return '<option value="' + b.id + '"' + (u.branch_id == b.id ? " selected" : "") + '>' + esc(b.name) + '</option>';
     }).join("");
@@ -276,17 +489,18 @@
       row("branchName", '<input class="input" name="name" required value="' + esc(u.name || "") + '">', "col.name") +
       row("email", '<input class="input" type="email" name="email" required value="' + esc(u.email || "") + '">', "col.email") +
       row("password", '<input class="input" type="text" name="password" ' + (u.id ? "" : "required") + ' placeholder="' + (u.id ? esc(I18N.t("form.passwordHint")) : "") + '">') +
-      row("role",
-        '<select class="select" name="role">' +
-          '<option value="manager"' + (u.role === "manager" ? " selected" : "") + '>' + esc(I18N.t("role.manager")) + '</option>' +
-          '<option value="cashier"' + (u.role === "cashier" ? " selected" : "") + '>' + esc(I18N.t("role.cashier")) + '</option>' +
-        '</select>', "col.role") +
-      row("assignBranch", '<select class="select" name="branch_id" required>' + opts + '</select>') +
-      (u.id ? row("status",
-        '<select class="select" name="status">' +
-          '<option value="active"' + (u.status === "active" ? " selected" : "") + '>' + esc(I18N.t("status.active")) + '</option>' +
-          '<option value="inactive"' + (u.status === "inactive" ? " selected" : "") + '>' + esc(I18N.t("status.inactive")) + '</option>' +
-        '</select>') : "") +
+      (isAdminUser ? "" :
+        row("role",
+          '<select class="select" name="role">' +
+            '<option value="manager"' + (u.role === "manager" ? " selected" : "") + '>' + esc(I18N.t("role.manager")) + '</option>' +
+            '<option value="cashier"' + (u.role === "cashier" ? " selected" : "") + '>' + esc(I18N.t("role.cashier")) + '</option>' +
+          '</select>', "col.role") +
+        row("assignBranch", '<select class="select" name="branch_id" required>' + opts + '</select>') +
+        (u.id ? row("status",
+          '<select class="select" name="status">' +
+            '<option value="active"' + (u.status === "active" ? " selected" : "") + '>' + esc(I18N.t("status.active")) + '</option>' +
+            '<option value="inactive"' + (u.status === "inactive" ? " selected" : "") + '>' + esc(I18N.t("status.inactive")) + '</option>' +
+          '</select>', "col.status") : "")) +
       formButtons();
     var m = UI.modal({ title: I18N.t(u.id ? "btn.edit" : "btn.newUser"), content: c });
     bindForm(c, m, function (payload) {
@@ -333,7 +547,7 @@
     if (!branches.length) { UI.toast(I18N.t("toast.error"), "error"); return; }
     function nextName(bid) {
       var n = (existing || []).filter(function (r) { return String(r.branch_id) === String(bid); }).length + 1;
-      return "Caja " + n;
+      return I18N.t("reg.defaultName", { n: n });
     }
     var f = document.createElement("form");
     f.innerHTML =
@@ -358,10 +572,11 @@
   }
 
   /* ---------------- Inventario + gestión manual de productos ---------------- */
-  var PRV_LABEL = {
-    manga: "MANGA", figuras: "FIGURA", comics: "CÓMIC", tcg: "TCG",
-    coleccionables: "COLECCIONABLE", preventa: "PREVENTA"
-  };
+  /** Etiqueta de categoría de la tarjeta de inventario ("FIGURA" / "FIGURE"). */
+  function prvLabel(slug) {
+    var key = "invcat." + slug, t = I18N.t(key);
+    return t === key ? (slug || "—") : t;
+  }
   var PRV_PREFIX = { manga: "MNG", figuras: "FIG", comics: "CMC", tcg: "TCG", coleccionables: "COL", preventa: "PRV" };
   var EDITORIALS = ["Panini", "Marvel Comics", "DC Comics", "Image Comics", "Dark Horse Comics",
     "IDW Publishing", "Vertigo", "Bandai", "Good Smile Company", "Kotobukiya", "Funko",
@@ -757,7 +972,7 @@
       // La insignia muestra el stock de la SUCURSAL seleccionada, no el total.
       var total = branchStock(g, activeBranchId);
       var totalCls = total === 0 ? "badge--danger" : (total <= 6 ? "badge--warn" : "badge--ok");
-      var cat = esc(PRV_LABEL[g.category_slug] || g.category_slug || "—");
+      var cat = esc(prvLabel(g.category_slug));
       var perBranch = branchDigest(brMap, branches, activeBranchId);
       var name = g.displayName || g.name;
       var dp = Number(g.discount_percent) || 0;
@@ -1634,7 +1849,7 @@
 
   /* ---------------- Importar carta Pokémon TCG ---------------- */
   function pkmImportModal(branchesList, done) {
-    if (!window.PokemonAPI) { UI.toast("Servicio Pokémon TCG no disponible.", "error"); return; }
+    if (!window.PokemonAPI) { UI.toast(I18N.t("pkm.unavailable"), "error"); return; }
 
     var wrap = document.createElement("div");
     wrap.className = "pkm-import";
@@ -1676,7 +1891,7 @@
         resultsEl.innerHTML = '<div class="pkm-grid">' + res.cards.map(cardCell).join("") + '</div>' +
           '<p class="muted mono" style="font-size:.72rem;margin-top:.6rem">' + res.total + ' ' + esc(I18N.t("pkm.results")) + '</p>';
       }).catch(function (e) {
-        resultsEl.innerHTML = '<p class="muted">' + esc((e && e.message) || "Error") + '</p>';
+        resultsEl.innerHTML = '<p class="muted">' + esc((e && e.message) || I18N.t("toast.error")) + '</p>';
       });
     }, 320);
     qEl.addEventListener("input", run);
@@ -1799,7 +2014,7 @@
         resultsEl.innerHTML = '<div class="pkm-grid">' + res.items.map(cell).join("") + '</div>' +
           '<p class="muted mono" style="font-size:.72rem;margin-top:.6rem">' + res.items.length + ' ' + esc(I18N.t("fig.results")) + ' · ' + esc(srcNote) + '</p>';
       }).catch(function (e) {
-        resultsEl.innerHTML = '<p class="muted">' + esc((e && e.message) || "Error") + '</p>';
+        resultsEl.innerHTML = '<p class="muted">' + esc((e && e.message) || I18N.t("toast.error")) + '</p>';
       });
     }, 340);
     qEl.addEventListener("input", run);
@@ -1902,7 +2117,7 @@
       { key: "created_at", label: I18N.t("col.date"), render: function (r) { return '<span class="muted" style="font-size:.78rem">' + UI.fmtDate(r.created_at, true) + '</span>'; } },
       { key: "product_name", label: I18N.t("col.product"), render: function (r) { return esc(r.product_name || "—"); } },
       { key: "branch_name", label: I18N.t("col.branch"), render: function (r) { return esc(r.branch_name || "—"); } },
-      { key: "type", label: I18N.t("col.movement"), render: function (r) { return '<span class="badge">' + esc(r.type) + '</span>'; } },
+      { key: "type", label: I18N.t("col.movement"), render: function (r) { return '<span class="badge">' + esc(V._movementType(r.type)) + '</span>'; } },
       { key: "quantity_delta", label: I18N.t("col.delta"), cls: "num", render: function (r) { return (r.quantity_delta > 0 ? "+" : "") + r.quantity_delta; } },
       { key: "resulting_stock", label: I18N.t("col.result"), cls: "num" },
       { key: "user_name", label: I18N.t("col.cashier"), render: function (r) { return esc(r.user_name || "—"); } }

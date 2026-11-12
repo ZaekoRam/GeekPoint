@@ -211,7 +211,7 @@
         var nextNum = (d.registers ? d.registers.length : 0) + 1;
         var f = document.createElement("form");
         f.innerHTML = V._formRow(I18N.t("col.name"),
-          '<input class="input" name="name" required value="Caja ' + nextNum + '">') + V._formButtons();
+          '<input class="input" name="name" required value="' + esc(I18N.t("reg.defaultName", { n: nextNum })) + '">') + V._formButtons();
         UI.modal({ title: I18N.t("btn.newRegister"), content: f });
         V._bindForm(f, function (payload) {
           return API.post("registers", payload).then(function () { UI.toast(I18N.t("toast.created"), "ok"); UI.closeModal(); registers(panel, root); });
@@ -236,10 +236,10 @@
         V._table([
           { key: "created_at", label: I18N.t("col.date"), render: function (r) { return '<span class="muted" style="font-size:.78rem">' + UI.fmtDate(r.created_at, true) + '</span>'; } },
           { key: "product_name", label: I18N.t("col.product"), render: function (r) { return esc(r.product_name || "—"); } },
-          { key: "type", label: I18N.t("col.movement"), render: function (r) { return '<span class="badge">' + esc(r.type) + '</span>'; } },
+          { key: "type", label: I18N.t("col.movement"), render: function (r) { return '<span class="badge">' + esc(V._movementType(r.type)) + '</span>'; } },
           { key: "quantity_delta", label: I18N.t("col.delta"), cls: "num", render: function (r) { return (r.quantity_delta > 0 ? "+" : "") + r.quantity_delta; } },
           { key: "resulting_stock", label: I18N.t("col.result"), cls: "num" },
-          { key: "reference", label: I18N.t("col.folio"), render: function (r) { return '<span class="mono" style="font-size:.75rem">' + esc(r.reference || "") + '</span>'; } }
+          { key: "reference", label: I18N.t("col.folio"), render: function (r) { return '<span class="mono" style="font-size:.75rem">' + esc(V._movementRef(r.reference)) + '</span>'; } }
         ], res[1].movements, { empty: I18N.t("empty.none") });
     }).catch(function (err) { panel.innerHTML = V._error(err); });
   }

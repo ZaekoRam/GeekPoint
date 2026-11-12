@@ -37,6 +37,8 @@
     if (body !== undefined && body !== null && !isForm) headers["Content-Type"] = "application/json";
     var tk = token();
     if (tk) headers["Authorization"] = "Bearer " + tk;
+    // Idioma de la página: el API contesta sus mensajes (errores, avisos) en él.
+    if (window.I18N && I18N.lang) headers["X-Lang"] = I18N.lang;
 
     var ctrl = new AbortController();
     var timer = setTimeout(function () { ctrl.abort(); }, opts.timeout || 12000);

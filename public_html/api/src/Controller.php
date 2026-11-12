@@ -29,6 +29,16 @@ abstract class Controller
         return $this->user;
     }
 
+    /**
+     * Exige una cuenta de personal (admin, gerente o cajero). Los clientes se
+     * registran solos desde la tienda: tener sesión no basta para leer datos
+     * de operación (productos por sucursal, cajas, inventario...).
+     */
+    protected function authStaff()
+    {
+        return $this->authRole(['admin', 'manager', 'cashier']);
+    }
+
     protected function body($key, $default = null)
     {
         return $this->req->input($key, $default);

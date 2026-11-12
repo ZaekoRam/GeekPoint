@@ -153,7 +153,7 @@ Desarrollar una plataforma web que unifique **catálogo en línea, inventario po
     <tr><td><b>🏬 Inventario por sucursal</b></td><td>Cada sede tiene su propio stock; cada venta lo actualiza automáticamente.</td></tr>
     <tr><td><b>🧾 Punto de venta</b></td><td>Venta actual con subtotal, IVA y total; selección de caja; pago en efectivo, tarjeta o transferencia.</td></tr>
     <tr><td><b>🎫 Ticket</b></td><td>Folio, fecha, sucursal, cajero, productos, totales, método de pago y cambio, con opción de imprimir.</td></tr>
-    <tr><td><b>📊 Paneles</b></td><td>Administrador y Gerente con ventas del día y del mes, alertas de stock, gráfica de 14 días y más vendidos.</td></tr>
+    <tr><td><b>📊 Paneles</b></td><td>Administrador y Gerente con ventas del día y del mes, alertas de stock, gráfica de 14 días y más vendidos. El Administrador consulta las ventas de todas las sucursales, con filtros por sucursal, fecha, cajero y forma de pago, y el detalle de cada una.</td></tr>
     <tr><td><b>👥 Usuarios y sucursales</b></td><td>Alta, edición, pausa y baja de sucursales; cuentas con rol y sucursal asignada.</td></tr>
     <tr><td><b>🌎 Idioma y tema</b></td><td>Español / inglés y modo oscuro / claro desde la barra superior.</td></tr>
   </tbody>

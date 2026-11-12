@@ -26,6 +26,10 @@ class SaleController extends Controller
         }
         Auth::assertBranchAccess($user, $branchId);
 
+        // Métodos con los que se puede cobrar: los activos del catálogo payment_methods.
+        $known   = PaymentMethods::codes();
+        $allowed = PaymentMethods::activeCodes();
+
         $payments = $this->body('payments');
         if ($payments !== null) {
             if (!is_array($payments) || count($payments) === 0 || count($payments) > 3) {
@@ -35,8 +39,11 @@ class SaleController extends Controller
             foreach ($payments as $i => $pay) {
                 $m = is_array($pay) ? ($pay['method'] ?? '') : '';
                 $amt = is_array($pay) ? ($pay['amount'] ?? null) : null;
-                if (!in_array($m, ['cash', 'card', 'transfer'], true) || isset($seen[$m])) {
+                if (!in_array($m, $known, true) || isset($seen[$m])) {
                     Response::validation(['payments' => ['Método de pago no válido o repetido.']]);
+                }
+                if (!in_array($m, $allowed, true)) {
+                    Response::validation(['payments' => ['Ese método de pago está desactivado.']]);
                 }
                 if (!is_numeric($amt) || (float) $amt <= 0) {
                     Response::validation(['payments' => ['Cada pago necesita un monto mayor a cero.']]);
@@ -51,8 +58,11 @@ class SaleController extends Controller
             $payments = array_values($payments);
         } else {
             $legacy = $this->body('payment_method', 'cash');
-            if (!in_array($legacy, ['cash', 'card', 'transfer'], true)) {
+            if (!in_array($legacy, $known, true)) {
                 Response::validation(['payment_method' => ['Método de pago no válido.']]);
+            }
+            if (!in_array($legacy, $allowed, true)) {
+                Response::validation(['payment_method' => ['Ese método de pago está desactivado.']]);
             }
         }
 
@@ -258,7 +268,17 @@ class SaleController extends Controller
         Response::ok(['sale' => $this->fullSale($saleId)], 201);
     }
 
-    /** GET /sales — historial filtrable */
+    /**
+     * GET /sales — historial filtrable.
+     *   ?branch_id=        sucursal (solo admin; el gerente ya queda en la suya)
+     *   &user_id=          quién cobró (admin y gerente; el cajero solo ve las suyas)
+     *   &from= &to=        fechas AAAA-MM-DD, ambas incluidas
+     *   &payment_method=   cash | card | transfer | mixed
+     *   &status=           completed | void
+     *   &q=                folio o nombre del cliente
+     *   &limit= &offset=   página (máx. 200 por página)
+     * `summary` resume TODO lo que cumple el filtro, no solo la página.
+     */
     public function index()
     {
         $user = $this->authRole(['cashier', 'manager', 'admin']);
@@ -279,14 +299,29 @@ class SaleController extends Controller
             $params[] = (int) $user['id'];
         }
 
-        if (($from = $this->query('from'))) { $where[] = 's.created_at >= ?'; $params[] = $from . ' 00:00:00'; }
-        if (($to = $this->query('to')))     { $where[] = 's.created_at <= ?'; $params[] = $to . ' 23:59:59'; }
+        if ($user['role'] !== 'cashier' && ($uid = $this->query('user_id')) !== null && $uid !== '') {
+            $where[] = 's.user_id = ?';
+            $params[] = (int) $uid;
+        }
+        if (($from = $this->dateParam('from')) !== null) { $where[] = 's.created_at >= ?'; $params[] = $from . ' 00:00:00'; }
+        if (($to = $this->dateParam('to')) !== null)     { $where[] = 's.created_at <= ?'; $params[] = $to . ' 23:59:59'; }
         if (($m = $this->query('payment_method')) && in_array($m, ['cash', 'card', 'transfer', 'mixed'], true)) {
             $where[] = 's.payment_method = ?';
             $params[] = $m;
         }
+        if (($st = $this->query('status')) && in_array($st, ['completed', 'void'], true)) {
+            $where[] = 's.status = ?';
+            $params[] = $st;
+        }
+        if (($q = trim((string) $this->query('q', ''))) !== '') {
+            $where[] = '(s.folio LIKE ? OR s.customer_name LIKE ?)';
+            $like = '%' . addcslashes(mb_substr($q, 0, 60), '%_\\') . '%';
+            array_push($params, $like, $like);
+        }
 
-        $limit = min(200, max(1, (int) $this->query('limit', 50)));
+        $limit  = min(200, max(1, (int) $this->query('limit', 50)));
+        $offset = max(0, (int) $this->query('offset', 0));
+        $sqlWhere = implode(' AND ', $where);
 
         $rows = Database::all(
             'SELECT s.*, b.name AS branch_name, b.code AS branch_code,
@@ -296,12 +331,41 @@ class SaleController extends Controller
              JOIN branches b ON b.id = s.branch_id
              JOIN users u    ON u.id = s.user_id
              LEFT JOIN registers r ON r.id = s.register_id
-             WHERE ' . implode(' AND ', $where) . '
+             WHERE ' . $sqlWhere . '
              ORDER BY s.created_at DESC, s.id DESC
-             LIMIT ' . $limit,
+             LIMIT ' . $limit . ' OFFSET ' . $offset,
             $params
         );
-        Response::ok(['sales' => array_map([$this, 'castSale'], $rows)]);
+
+        // Las canceladas se cuentan aparte y no suman al total vendido.
+        $sum = Database::one(
+            'SELECT COUNT(*) AS n,
+                    COALESCE(SUM(s.status = "completed"), 0) AS completed,
+                    COALESCE(SUM(s.status = "void"), 0) AS voided,
+                    COALESCE(SUM(CASE WHEN s.status = "completed" THEN s.total END), 0) AS total
+             FROM sales s
+             WHERE ' . $sqlWhere,
+            $params
+        );
+
+        Response::ok([
+            'sales'   => array_map([$this, 'castSale'], $rows),
+            'summary' => [
+                'count'     => (int) $sum['n'],
+                'completed' => (int) $sum['completed'],
+                'void'      => (int) $sum['voided'],
+                'total'     => (float) $sum['total'],
+            ],
+            'limit'   => $limit,
+            'offset'  => $offset,
+        ]);
+    }
+
+    /** GET /payment-methods — catálogo de métodos de pago (para el POS y los filtros). */
+    public function paymentMethods()
+    {
+        $this->authRole(['cashier', 'manager', 'admin']);
+        Response::ok(['payment_methods' => PaymentMethods::all()]);
     }
 
     /** GET /sales/{id} — venta completa con renglones (ticket) */
@@ -399,15 +463,27 @@ class SaleController extends Controller
         return strtoupper(end($parts) ?: $code);
     }
 
+    /** Fecha AAAA-MM-DD de la query, o null si falta o no es una fecha real. */
+    private function dateParam($key)
+    {
+        $v = (string) $this->query($key, '');
+        if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $v, $m) || !checkdate((int) $m[2], (int) $m[3], (int) $m[1])) {
+            return null;
+        }
+        return $v;
+    }
+
     private function fullSale($id)
     {
         $sale = Database::one(
             'SELECT s.*, b.name AS branch_name, b.code AS branch_code, b.address AS branch_address,
-                    b.phone AS branch_phone, u.name AS cashier_name, r.name AS register_name
+                    b.phone AS branch_phone, u.name AS cashier_name, r.name AS register_name,
+                    vu.name AS voided_by_name
              FROM sales s
              JOIN branches b ON b.id = s.branch_id
              JOIN users u    ON u.id = s.user_id
              LEFT JOIN registers r ON r.id = s.register_id
+             LEFT JOIN users vu    ON vu.id = s.voided_by
              WHERE s.id = ?',
             [(int) $id]
         );

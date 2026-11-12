@@ -4,7 +4,7 @@ class RegisterController extends Controller
 {
     public function index()
     {
-        $user = $this->auth();
+        $user = $this->authStaff();
         $branchId = Auth::scopedBranchId($user, $this->query('branch_id'));
 
         if ($branchId !== null) {

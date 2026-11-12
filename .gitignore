@@ -27,8 +27,13 @@ u498388917_*.sql
 
 # Documentos con cuentas demo y archivos de depuración local
 docs/Cuentas-demo-GeekPoint.docx
+docs/Cuentas-demo-docentes.md
+database/cuentas_demo_docentes.sql
 public_html/assets/debug/
 public_html/mascot-debug-respaldo.html
 
 # Respaldos locales de la BD (contienen datos reales)
 database/backups/
+database/ 
+
+

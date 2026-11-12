@@ -68,6 +68,24 @@
     return d.toLocaleString(loc, opts);
   }
 
+  /** Fecha completa con hora y año ("28 oct 2026, 13:03"): tickets e historial de ventas. */
+  function fmtDateTime(s) {
+    if (!s) return "—";
+    var d = new Date(String(s).replace(" ", "T"));
+    if (isNaN(d)) return s;
+    var loc = ((window.I18N && I18N.lang) === "en") ? "en-US" : "es-MX";
+    return d.toLocaleString(loc, { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  }
+
+  /** Solo la hora ("13:03" / "01:03 p.m."), para tablas donde la fecha va en su propio renglón. */
+  function fmtTime(s) {
+    if (!s) return "";
+    var d = new Date(String(s).replace(" ", "T"));
+    if (isNaN(d)) return "";
+    var loc = ((window.I18N && I18N.lang) === "en") ? "en-US" : "es-MX";
+    return d.toLocaleTimeString(loc, { hour: "2-digit", minute: "2-digit" });
+  }
+
   /* ---------- Toasts ---------- */
   function toastLayer() {
     var l = $(".toasts");
@@ -100,7 +118,7 @@
     wrap.innerHTML =
       '<div class="modal__backdrop" data-close></div>' +
       '<div class="modal__card' + (opts.wide ? " modal__card--wide" : "") + '" role="dialog" aria-modal="true">' +
-        '<button class="modal__close" data-close aria-label="Cerrar">✕</button>' +
+        '<button class="modal__close" data-close aria-label="' + escHTML(window.I18N ? I18N.t("btn.close") : "Cerrar") + '">✕</button>' +
         (opts.title ? '<h2 class="modal__title">' + escHTML(opts.title) + '</h2>' : "") +
         '<div class="modal__body"></div>' +
       '</div>';
@@ -228,7 +246,7 @@
 
   window.UI = {
     $: $, $$: $$, escHTML: escHTML, safe: safe, debounce: debounce,
-    money: money, num: num, fmtDate: fmtDate,
+    money: money, num: num, fmtDate: fmtDate, fmtDateTime: fmtDateTime, fmtTime: fmtTime,
     toast: toast, modal: modal, openModal: modal, closeModal: closeModal, confirm: confirmDialog,
     bindTilt: bindTilt,
     printMode: getPrintMode, setPrintMode: applyPrintMode,

@@ -349,6 +349,17 @@
       esc(I18N.t(ok ? "status.active" : "status.inactive")) + '</span>';
   }
 
+  /* Movimientos de inventario: la base guarda el tipo en inglés (sale,
+     restock…) y la referencia como folio o un código fijo (ALTA, AJUSTE,
+     IMPORT). Aquí se convierten al idioma de la página; lo que no tenga
+     llave (un folio, un tipo nuevo) se muestra tal cual. */
+  function tOr(key, fallback) {
+    var t = I18N.t(key);
+    return t === key ? fallback : t;
+  }
+  function movementType(type) { return tOr("mov." + type, type || ""); }
+  function movementRef(ref) { return ref ? tOr("movref." + ref, ref) : ""; }
+
   function loading() {
     return '<div class="state">' + ICON.loading + '<p>' + esc(I18N.t("misc.loading")) + '</p></div>';
   }
@@ -492,6 +503,8 @@
   Views._bars = bars;
   Views._table = table;
   Views._statusBadge = statusBadge;
+  Views._movementType = movementType;
+  Views._movementRef = movementRef;
   Views._loading = loading;
   Views._error = errorState;
   Views._formRow = formRow;

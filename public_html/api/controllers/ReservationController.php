@@ -253,7 +253,16 @@ class ReservationController extends Controller
         if ($status === 'lista') {
             Database::run('UPDATE reservations SET status = ?, ready_at = NOW() WHERE id = ?', [$status, (int) $row['id']]);
         } else {
+            // La venta con la que se liquida debe existir y ser de una sucursal
+            // a la que este usuario tiene acceso.
             $saleId = $this->intOrNull($this->body('sale_id'));
+            if ($saleId !== null) {
+                $sale = Database::one('SELECT branch_id FROM sales WHERE id = ?', [$saleId]);
+                if (!$sale) {
+                    Response::validation(['sale_id' => ['Esa venta no existe.']]);
+                }
+                Auth::assertBranchAccess($user, (int) $sale['branch_id']);
+            }
             Database::run(
                 'UPDATE reservations SET status = ?, sale_id = ?, resolved_by = ?, resolved_at = NOW() WHERE id = ?',
                 [$status, $saleId, $user['id'], (int) $row['id']]

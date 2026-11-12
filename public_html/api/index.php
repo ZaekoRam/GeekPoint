@@ -117,7 +117,7 @@ if (in_array('*', $allowed, true)) {
     header('Vary: Origin');
 }
 header('Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-HTTP-Method-Override');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-HTTP-Method-Override, X-Lang');
 header('Access-Control-Max-Age: 86400');
 
 // -------------------------------------------------------------------
@@ -242,6 +242,7 @@ $router->post('sales',      function () use ($request) { (new SaleController($re
 $router->get('sales',       function () use ($request) { (new SaleController($request))->index(); });
 $router->get('sales/{id}',  function ($p) use ($request) { (new SaleController($request))->show($p['id']); });
 $router->post('sales/{id}/void', function ($p) use ($request) { (new SaleController($request))->void($p['id']); });
+$router->get('payment-methods', function () use ($request) { (new SaleController($request))->paymentMethods(); });
 
 // --- Corte de caja ---
 $router->get('cash-cuts/preview', function () use ($request) { (new CashCutController($request))->preview(); });

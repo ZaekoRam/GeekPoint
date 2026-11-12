@@ -25,7 +25,7 @@ class FigureController extends Controller
     /** GET /figures/search */
     public function search()
     {
-        $this->auth();
+        $this->authRole(['admin', 'manager']);   // importador del panel: no es para cajeros ni clientes
 
         $q = trim((string) $this->query('q', ''));
         if (mb_strlen($q) < 2) {

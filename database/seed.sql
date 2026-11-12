@@ -10,6 +10,8 @@ SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
 
 TRUNCATE TABLE `stock_movements`;
+TRUNCATE TABLE `cash_cuts`;
+TRUNCATE TABLE `sale_payments`;
 TRUNCATE TABLE `sale_items`;
 TRUNCATE TABLE `sales`;
 TRUNCATE TABLE `registers`;
@@ -55,6 +57,7 @@ INSERT INTO `branches` (`id`,`code`,`name`,`city`,`state`,`address`,`phone`,`hou
 
 -- ---------------------------------------------------------------------
 --  Usuarios   (password = "password")
+--  `role` es el code del catálogo `roles` (lo carga schema.sql).
 -- ---------------------------------------------------------------------
 INSERT INTO `users` (`id`,`name`,`email`,`password_hash`,`role`,`branch_id`,`status`) VALUES
   (1,'Adriana Sáenz','admin@geekpoint.mx','$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi','admin',NULL,'active'),
@@ -336,6 +339,10 @@ INSERT INTO `sale_items`
   (4,13,'Jujutsu Kaisen Vol. 1','MNG-JJK-01',149.00,0.00,0.00,149.00,0.160,1,159.00,25.44,184.44),
   (5,19,'Magic — Bundle Lost Caverns','TCG-MTG-LCI',1490.00,0.00,0.00,1490.00,0.160,1,1490.00,238.40,1728.40),
   (6,25,'Dandadan Vol. 12','MNG-DND-12',159.00,0.00,0.00,159.00,0.160,1,158.00,25.28,183.28);
+
+-- Cada venta lleva su renglón de pago (método del catálogo payment_methods).
+INSERT INTO `sale_payments` (`sale_id`, `method`, `amount`, `created_at`)
+SELECT `id`, `payment_method`, `amount_paid`, `created_at` FROM `sales`;
 
 INSERT INTO `stock_movements`
   (`branch_id`,`product_id`,`user_id`,`type`,`quantity_delta`,`resulting_stock`,`reference`,`note`,`created_at`) VALUES

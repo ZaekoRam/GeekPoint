@@ -5,7 +5,7 @@ class InventoryController extends Controller
     /** GET /inventory/alerts — productos en o bajo el mínimo */
     public function alerts()
     {
-        $user = $this->auth();
+        $user = $this->authStaff();
         $branchId = Auth::scopedBranchId($user, $this->query('branch_id'));
 
         $where  = ['p.status = "active"', 'p.stock <= p.min_stock'];
@@ -40,7 +40,7 @@ class InventoryController extends Controller
     /** GET /inventory/movements — historial de movimientos de stock */
     public function movements()
     {
-        $user = $this->auth();
+        $user = $this->authStaff();
         $branchId = Auth::scopedBranchId($user, $this->query('branch_id'));
 
         $where  = ['1=1'];

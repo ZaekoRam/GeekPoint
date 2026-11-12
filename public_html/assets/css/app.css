@@ -690,6 +690,9 @@ a.kpi--link:hover .kpi__go { opacity: 1; transform: translateX(0); }
 .ticket .muted { color: #666; }
 .ticket hr { border: 0; border-top: 1px dashed #bbb; margin: .7rem 0; }
 .ticket .t-row { display: flex; justify-content: space-between; gap: .5rem; }
+/* El valor (derecha) conserva su ancho: un importe como "$118.00 MXN" no se
+   parte en dos renglones; si el nombre del producto es largo, envuelve él. */
+.ticket .t-row > span:last-child { flex: 0 0 auto; max-width: 62%; text-align: right; }
 .ticket .t-row--total { font-weight: 700; font-size: 1rem; }
 .ticket__actions { margin-top: 1.2rem; display: flex; gap: .6rem; justify-content: center; align-items: center; flex-wrap: wrap; }
 .ticket-print-opts { display: inline-flex; align-items: center; gap: .4rem; font-size: .74rem; color: var(--muted); }
@@ -760,6 +763,22 @@ a.kpi--link:hover .kpi__go { opacity: 1; transform: translateX(0); }
 /* ---------- Toolbar / filtros ---------- */
 .toolbar { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; margin-bottom: 1rem; }
 .toolbar .input, .toolbar .select { width: auto; min-width: 160px; }
+
+/* Ventas (admin): cada filtro va pegado a su etiqueta, así al partirse la
+   fila no queda una etiqueta sola al final de un renglón. */
+.toolbar--sales { gap: .6rem 1rem; }
+.toolbar--sales .spacer { flex: 1; }
+.toolbar__item { display: inline-flex; align-items: center; gap: .45rem; }
+.toolbar__item > span { font-family: var(--mono); font-size: .75rem; color: var(--muted); white-space: nowrap; }
+.toolbar--sales .select { max-width: 17rem; }            /* un nombre largo de cajero no ensancha la fila */
+.toolbar--sales .input[type="date"] { min-width: 0; }
+.toolbar--sales .input[type="search"] { flex: 1 1 12rem; max-width: 18rem; }
+.sales-more { display: flex; justify-content: center; margin-top: 1rem; }
+@media (max-width: 640px) {
+  .toolbar--sales .toolbar__item { flex: 1 1 100%; min-width: 0; justify-content: space-between; }
+  .toolbar--sales .toolbar__item .input, .toolbar--sales .toolbar__item .select { flex: 0 0 62%; width: 62%; min-width: 0; max-width: none; }
+  .toolbar--sales .input[type="search"] { flex: 1 1 100%; max-width: none; }
+}
 
 /* ---------- Row actions ---------- */
 .rowacts { display: flex; gap: .4rem; }

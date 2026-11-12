@@ -349,11 +349,11 @@
           '<p class="rk__hint">' + UI.escHTML(I18N.t("resv.present")) + '</p>' +
         '</div>' +
         '<div class="ticket__actions">' +
-          '<label class="ticket-print-opts"><span>Papel</span>' +
+          '<label class="ticket-print-opts"><span>' + UI.escHTML(I18N.t("ticket.paper")) + '</span>' +
             '<select class="select select--sm" data-printmode>' +
-              '<option value="80">Térmica 80 mm</option>' +
-              '<option value="58">Térmica 58 mm</option>' +
-              '<option value="a4">Hoja A4</option>' +
+              '<option value="80">' + UI.escHTML(I18N.t("ticket.paper80")) + '</option>' +
+              '<option value="58">' + UI.escHTML(I18N.t("ticket.paper58")) + '</option>' +
+              '<option value="a4">' + UI.escHTML(I18N.t("ticket.paperA4")) + '</option>' +
             '</select></label>' +
           '<button class="btn btn--ghost btn--sm printbtn" data-print>' +
             '<span class="printer" aria-hidden="true">' +

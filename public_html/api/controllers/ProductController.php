@@ -5,7 +5,7 @@ class ProductController extends Controller
     /** GET /products  — búsqueda para POS y listado para gerente/admin */
     public function index()
     {
-        $user = $this->auth();
+        $user = $this->authStaff();
         $branchId = Auth::scopedBranchId($user, $this->query('branch_id'));
 
         $where  = ['p.status <> "deleted"'];
@@ -93,7 +93,7 @@ class ProductController extends Controller
 
     public function show($id)
     {
-        $user = $this->auth();
+        $user = $this->authStaff();
         $row = $this->findFull($id);
         if (!$row) Response::notFound('Producto no encontrado.');
         Auth::assertBranchAccess($user, $row['branch_id']);
@@ -252,11 +252,16 @@ class ProductController extends Controller
         try {
             // 1) Producto maestro: se crea o se refresca una sola vez.
             $master = Database::one(
-                'SELECT id, discount_percent, discount_starts_at, discount_ends_at FROM products WHERE sku = ?',
+                'SELECT id, price, discount_percent, discount_starts_at, discount_ends_at FROM products WHERE sku = ?',
                 [$sku]
             );
             if ($master) {
                 $productId = (int) $master['id'];
+                // El precio es del catálogo, compartido por todas las sucursales:
+                // un gerente que resurte un producto que ya existe no lo cambia.
+                if ($user['role'] !== 'admin') {
+                    $price = (float) $master['price'];
+                }
                 $masterDiscount = $discount['supplied'] ? $discount : Pricing::validateInput([], $master);
                 Database::run(
                     'UPDATE products SET name = ?, category_id = ?, description = ?, price = ?, figure_png_url = ?,
@@ -348,6 +353,7 @@ class ProductController extends Controller
             ? $this->sanitizeTags($d['tags'])
             : (string) ($current['tags'] ?? '');
         $discount = $this->discountForWrite($user, $d, $current);
+        $this->assertCanSetPrice($user, $d, $current);
         $productName = mb_substr(trim((string) $d['name']), 0, 180);
         $categoryId = $this->intOrNull($d['category_id'] ?? $current['category_id']);
         $categorySlug = (string) Database::scalar('SELECT slug FROM categories WHERE id = ? LIMIT 1', [$categoryId]);
@@ -812,6 +818,25 @@ class ProductController extends Controller
         $r['low_stock']  = $r['stock'] <= $r['min_stock'];
         $r = array_merge($r, Pricing::calculate($r));
         return $r;
+    }
+
+    /**
+     * Precio e IVA son del catálogo maestro (una sola fila por SKU para todas
+     * las sucursales). Solo el administrador general los cambia; el gerente
+     * edita lo demás de la ficha y lo propio de su sucursal (stock mínimo,
+     * estado). El formulario del gerente reenvía el precio actual tal cual.
+     */
+    private function assertCanSetPrice(array $user, array $data, array $current)
+    {
+        if ($user['role'] === 'admin') {
+            return;
+        }
+        $priceChanged = abs(round((float) $data['price'], 2) - (float) $current['price']) >= 0.005;
+        $taxChanged = isset($data['tax_rate']) && is_numeric($data['tax_rate'])
+            && abs((float) $data['tax_rate'] - (float) $current['tax_rate']) >= 0.0005;
+        if ($priceChanged || $taxChanged) {
+            Response::forbidden('Solo el administrador general puede cambiar el precio.');
+        }
     }
 
     private function discountForWrite(array $user, array $data, array $current = []): array

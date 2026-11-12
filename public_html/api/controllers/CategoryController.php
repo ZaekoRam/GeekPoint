@@ -4,7 +4,7 @@ class CategoryController extends Controller
 {
     public function index()
     {
-        $this->auth();
+        $this->authStaff();
         $rows = Database::all('SELECT * FROM categories ORDER BY sort_order, name_es');
         foreach ($rows as &$r) {
             $r['id'] = (int) $r['id'];

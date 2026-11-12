@@ -26,7 +26,7 @@ class PokemonController extends Controller
     /** GET /pokemon/cards */
     public function cards()
     {
-        $this->auth();
+        $this->authRole(['admin', 'manager']);   // importador del panel: no es para cajeros ni clientes
 
         $name = trim((string) $this->query('name', ''));
         $set  = trim((string) $this->query('set', ''));
@@ -52,7 +52,7 @@ class PokemonController extends Controller
     /** GET /pokemon/sets */
     public function sets()
     {
-        $this->auth();
+        $this->authRole(['admin', 'manager']);   // importador del panel: no es para cajeros ni clientes
         $url = self::API . '/sets?orderBy=-releaseDate&select=' . rawurlencode('id,name,series,releaseDate,total');
         $this->relay($url, 'pkmsets', 86400);
     }

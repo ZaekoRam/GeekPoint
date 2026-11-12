@@ -46,8 +46,9 @@
     document.documentElement.setAttribute("data-theme", current);
 
     var toggle = document.querySelector(".themeToggle");
-    if (toggle) toggle.setAttribute("aria-label",
-      current === "dark" ? "Cambiar a tema claro" : "Cambiar a tema oscuro");
+    if (toggle) toggle.setAttribute("aria-label", window.I18N
+      ? I18N.t(current === "dark" ? "theme.toLight" : "theme.toDark")
+      : (current === "dark" ? "Cambiar a tema claro" : "Cambiar a tema oscuro"));
 
     var checkbox = document.querySelector(".themeToggleInput");
     if (checkbox && checkbox.checked !== (current === "dark"))
@@ -181,6 +182,9 @@
       requestTheme(checkbox.checked ? "dark" : "light");
     });
   }
+
+  // La etiqueta accesible del interruptor sigue al idioma de la página.
+  window.addEventListener("i18n:change", reflect);
 
   if (document.readyState === "loading")
     document.addEventListener("DOMContentLoaded", init);

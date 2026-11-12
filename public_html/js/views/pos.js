@@ -11,8 +11,25 @@
     products: [], filter: { q: "", cat: "" }, method: "cash", loaded: false,
     // Lo capturado en el cobro vive aquí: el carrito se redibuja con cada
     // cambio (cantidades, método) y no debe borrar lo que ya se tecleó.
-    pay: null, customer: ""
+    pay: null, customer: "",
+    // Catálogo payment_methods del servidor; null = aún no llega (o API vieja).
+    payCatalog: null
   };
+
+  /* Métodos de pago. Son tres y fijos (el corte de caja lleva un total por
+     cada uno); el catálogo del servidor dice cuáles están activos y cómo se
+     llaman. Sin catálogo se ofrecen los tres. */
+  var PAY_CODES = ["cash", "card", "transfer"];
+  function activePay() {
+    if (!ctx.payCatalog) return PAY_CODES;
+    return PAY_CODES.filter(function (code) {
+      return ctx.payCatalog.some(function (m) { return m.code === code && m.status === "active"; });
+    });
+  }
+  function payLabel(code) {
+    var m = (ctx.payCatalog || []).filter(function (x) { return x.code === code; })[0];
+    return m ? I18N.pick({ es: m.name_es, en: m.name_en }) : I18N.t("method." + code);
+  }
 
   function resetPay() {
     ctx.pay = { cash: "", card: "", cardRef: "", transfer: "", transferRef: "" };
@@ -45,11 +62,11 @@
   /* Selector de tamaño de papel para la impresión del ticket (térmica / A4). */
   function printOptsHTML() {
     var m = (window.UI && UI.printMode && UI.printMode()) || "80";
-    function opt(v, label) { return '<option value="' + v + '"' + (m === v ? ' selected' : '') + '>' + label + '</option>'; }
+    function opt(v, key) { return '<option value="' + v + '"' + (m === v ? ' selected' : '') + '>' + esc(I18N.t(key)) + '</option>'; }
     return '<label class="ticket-print-opts">' +
-      '<span>' + esc(I18N.t("ticket.paper") || "Papel") + '</span>' +
+      '<span>' + esc(I18N.t("ticket.paper")) + '</span>' +
       '<select class="select select--sm" data-printmode>' +
-        opt("80", "Térmica 80 mm") + opt("58", "Térmica 58 mm") + opt("a4", "Hoja A4") +
+        opt("80", "ticket.paper80") + opt("58", "ticket.paper58") + opt("a4", "ticket.paperA4") +
       '</select></label>';
   }
   function bindPrintOpts(scope) {
@@ -100,7 +117,8 @@
     resolveBranch(root).then(function () {
       return Promise.all([
         API.get("categories").then(function (d) { ctx.categories = d.categories; }),
-        API.get("registers" + (isAdmin() ? "?branch_id=" + ctx.branchId : "")).then(function (d) { ctx.registers = d.registers; }).catch(function () { ctx.registers = []; })
+        API.get("registers" + (isAdmin() ? "?branch_id=" + ctx.branchId : "")).then(function (d) { ctx.registers = d.registers; }).catch(function () { ctx.registers = []; }),
+        API.get("payment-methods").then(function (d) { ctx.payCatalog = d.payment_methods || null; }).catch(function () { ctx.payCatalog = null; })
       ]);
     }).then(function () {
       ctx.registerId = firstRegisterId();   // el POS arranca con la Caja 1 elegida
@@ -663,9 +681,14 @@
       }
     }
 
-    var methods = ["cash", "card", "transfer", "mixed"].map(function (m) {
-      return '<button class="chip' + (ctx.method === m ? " is-active" : "") + '" data-method="' + m + '">' + esc(I18N.t("method." + m)) + '</button>';
-    }).join("");
+    // Solo los métodos activos del catálogo; "Mixto" necesita al menos dos.
+    var payCodes = activePay();
+    var payOptions = payCodes.length > 1 ? payCodes.concat("mixed") : payCodes;
+    if (payOptions.length && payOptions.indexOf(ctx.method) === -1) ctx.method = payOptions[0];
+    var methods = payOptions.length ? payOptions.map(function (m) {
+      return '<button class="chip' + (ctx.method === m ? " is-active" : "") + '" data-method="' + m + '">' +
+        esc(m === "mixed" ? I18N.t("method.mixed") : payLabel(m)) + '</button>';
+    }).join("") : '<p class="muted" style="font-size:.78rem;margin:0">' + esc(I18N.t("pos.noMethods")) + '</p>';
 
     host.innerHTML =
       '<h2>' + esc(I18N.t("pos.cart")) + (t.count ? ' · <span class="mono">' + t.count + '</span>' : "") + '</h2>' +
@@ -715,7 +738,8 @@
       list.push({ method: "card", amount: money2(p.card), reference: p.cardRef.trim() });
       list.push({ method: "transfer", amount: money2(p.transfer), reference: p.transferRef.trim() });
     }
-    list = list.filter(function (x) { return x.amount > 0; });
+    var usable = activePay();
+    list = list.filter(function (x) { return x.amount > 0 && usable.indexOf(x.method) !== -1; });
     var paid = 0, nonCash = 0;
     list.forEach(function (x) { paid += x.amount; if (x.method !== "cash") nonCash += x.amount; });
     paid = Math.round(paid * 100) / 100;
@@ -759,10 +783,11 @@
           }).join("") +
         '</div>';
     }
-    // Mixto: un renglón por método; "Resto" llena lo que falta.
+    // Mixto: un renglón por método activo; "Resto" llena lo que falta.
     function row(key, refKey, ph) {
+      if (activePay().indexOf(key) === -1) return "";
       return '<div class="pay-split__row">' +
-        '<div class="pay-split__amt">' + amountField(key, I18N.t("method." + key)) +
+        '<div class="pay-split__amt">' + amountField(key, payLabel(key)) +
           '<button type="button" class="chip pay-split__fill" data-fill="' + key + '">' + esc(I18N.t("pos.rest")) + '</button></div>' +
         (refKey ? refField(refKey, ph) : "") +
       '</div>';
@@ -1015,58 +1040,96 @@
   }
   V._voidSaleModal = voidSaleModal;
 
-  /* ---------------- Ticket ---------------- */
+  /* ---------------- Ticket ----------------
+     Lleva todo aquello a lo que queda ligada la venta: sucursal, caja,
+     quién atendió, fecha y hora, cada producto con su cantidad y precio
+     unitario, el total y la forma de pago. */
+  function tRow(label, value, cls) {
+    return '<div class="t-row' + (cls ? " " + cls : "") + '"><span>' + label + '</span><span>' + value + '</span></div>';
+  }
   function ticketHTML(s) {
-    var loc = I18N.lang === "en" ? "en-US" : "es-MX";
     var rows = (s.items || []).map(function (it) {
-      var detail = Number(it.unit_discount) > 0
-        ? '<small>' + esc(I18N.t("discount.listPrice")) + ' ' + UI.money(it.list_unit_price) + ' · −' + it.discount_percent + '% · ' + UI.money(it.unit_price) + '</small>'
-        : '';
-      return '<div class="t-row"><span>' + it.quantity + '× ' + esc(it.product_name) + detail + '</span><span>' + UI.money(it.line_total) + '</span></div>';
+      // "2 × $149.00": cantidad por precio unitario (con el de lista si hubo descuento).
+      var detail = it.quantity + ' × ' + UI.money(it.unit_price);
+      if (Number(it.unit_discount) > 0) {
+        detail += ' · ' + esc(I18N.t("discount.listPrice")) + ' ' + UI.money(it.list_unit_price) + ' −' + it.discount_percent + '%';
+      }
+      return tRow(esc(it.product_name) + '<small>' + detail + '</small>', UI.money(it.line_total));
     }).join("");
+
+    // Forma de pago: el método, y con pago mixto un renglón por método.
+    var pays = (s.payments && s.payments.length) ? s.payments
+      : [{ method: s.payment_method, amount: s.amount_paid, reference: "" }];
+    var refHTML = function (p) {
+      return p.reference ? '<small>' + esc(I18N.t("pos.ref")) + ' ' + esc(p.reference) + '</small>' : '';
+    };
+    var payHTML;
+    if (pays.length === 1) {
+      payHTML = tRow(esc(I18N.t("ticket.payment")) + refHTML(pays[0]), esc(I18N.t("method." + pays[0].method))) +
+        (pays[0].method === "cash" ? tRow(esc(I18N.t("pos.received")), UI.money(pays[0].amount)) : "");
+    } else {
+      payHTML = tRow(esc(I18N.t("ticket.payment")), esc(I18N.t("method.mixed"))) +
+        pays.map(function (p) { return tRow(esc(I18N.t("method." + p.method)) + refHTML(p), UI.money(p.amount)); }).join("");
+    }
+
+    var voidHTML = "";
+    if (s.status === "void") {
+      var by = [s.voided_by_name, s.voided_at ? UI.fmtDateTime(s.voided_at) : ""].filter(Boolean).join(" · ");
+      voidHTML = '<p class="ticket__void">' + esc(I18N.t("void.stamp")) +
+        (s.void_reason ? '<small>' + esc(s.void_reason) + '</small>' : '') +
+        (by ? '<small>' + esc(by) + '</small>' : '') + '</p>';
+    }
+
     return (
       '<div class="ticket">' +
         '<h2>◈ GEEKPOINT POS</h2>' +
-        (s.status === "void" ? '<p class="ticket__void">' + esc(I18N.t("void.stamp")) + (s.void_reason ? '<small>' + esc(s.void_reason) + '</small>' : '') + '</p>' : '') +
+        voidHTML +
         '<p style="text-align:center" class="muted">' + esc(s.branch_name || "") + '<br>' + esc(s.branch_address || "") + '</p>' +
         '<hr>' +
-        '<div class="t-row"><span>' + esc(I18N.t("ticket.folio")) + '</span><span>' + esc(s.folio) + '</span></div>' +
-        '<div class="t-row"><span>' + esc(I18N.t("ticket.date")) + '</span><span>' + UI.fmtDate(s.created_at, true) + '</span></div>' +
-        '<div class="t-row"><span>' + esc(I18N.t("ticket.cashier")) + '</span><span>' + esc(s.cashier_name || "") + '</span></div>' +
-        (s.register_name ? '<div class="t-row"><span>' + esc(I18N.t("pos.register")) + '</span><span>' + esc(s.register_name) + '</span></div>' : "") +
+        tRow(esc(I18N.t("ticket.folio")), esc(s.folio)) +
+        tRow(esc(I18N.t("ticket.date")), esc(UI.fmtDateTime(s.created_at))) +
+        tRow(esc(I18N.t("ticket.cashier")), esc(s.cashier_name || "")) +
+        (s.register_name ? tRow(esc(I18N.t("pos.register")), esc(s.register_name)) : "") +
+        (s.customer_name ? tRow(esc(I18N.t("ticket.customer")), esc(s.customer_name)) : "") +
         '<hr>' + rows + '<hr>' +
-        (Number(s.discount_total) > 0 ? '<div class="t-row"><span>' + esc(I18N.t("discount.total")) + '</span><span>−' + UI.money(s.discount_total) + '</span></div>' : '') +
-        '<div class="t-row"><span>' + esc(I18N.t("pos.subtotal")) + '</span><span>' + UI.money(s.subtotal) + '</span></div>' +
-        '<div class="t-row"><span>' + esc(I18N.t("pos.tax")) + '</span><span>' + UI.money(s.tax) + '</span></div>' +
-        '<div class="t-row t-row--total"><span>' + esc(I18N.t("pos.total")) + '</span><span>' + UI.money(s.total) + '</span></div>' +
-        (s.payments && s.payments.length ? s.payments : [{ method: s.payment_method, amount: s.amount_paid, reference: "" }]).map(function (p) {
-          return '<div class="t-row"><span>' + esc(I18N.t("method." + p.method)) +
-            (p.reference ? ' <small>' + esc(I18N.t("pos.ref")) + ' ' + esc(p.reference) + '</small>' : '') +
-            '</span><span>' + UI.money(p.amount) + '</span></div>';
-        }).join("") +
-        (Number(s.change_due) > 0 || s.payment_method === "cash" ? '<div class="t-row"><span>' + esc(I18N.t("pos.change")) + '</span><span>' + UI.money(s.change_due) + '</span></div>' : "") +
+        (Number(s.discount_total) > 0 ? tRow(esc(I18N.t("discount.total")), '−' + UI.money(s.discount_total)) : '') +
+        tRow(esc(I18N.t("pos.subtotal")), UI.money(s.subtotal)) +
+        tRow(esc(I18N.t("pos.tax")), UI.money(s.tax)) +
+        tRow(esc(I18N.t("pos.total")), UI.money(s.total), "t-row--total") +
+        payHTML +
+        (Number(s.change_due) > 0 || s.payment_method === "cash" ? tRow(esc(I18N.t("pos.change")), UI.money(s.change_due)) : "") +
         '<hr><p style="text-align:center">' + esc(I18N.t("ticket.thanks")) + '</p>' +
       '</div>'
     );
   }
 
-  function showTicketModal(s) {
+  /* Ticket en un modal. Tras cobrar (POS) ofrece "Ver ticket"; al consultar
+     una venta desde un panel (opts.onVoided) ofrece cancelarla en su lugar. */
+  function showTicketModal(s, opts) {
+    opts = opts || {};
+    var fromPanel = typeof opts.onVoided === "function";
+    var canVoid = fromPanel && s.status !== "void" && (STORE.role === "manager" || STORE.role === "admin");
     var wrap = document.createElement("div");
     wrap.innerHTML = ticketHTML(s) +
       '<div class="ticket__actions">' +
         printOptsHTML() +
         printBtn() +
-        '<a class="btn btn--neon btn--sm" href="#/ticket/' + s.id + '" data-link>' + esc(I18N.t("btn.viewTicket")) + '</a>' +
+        (canVoid ? '<button type="button" class="btn btn--ghost btn--sm" data-void>' + esc(I18N.t("void.btn")) + '</button>' : '') +
+        (fromPanel ? '' : '<a class="btn btn--neon btn--sm" href="#/ticket/' + s.id + '" data-link>' + esc(I18N.t("btn.viewTicket")) + '</a>') +
       '</div>';
     UI.modal({ content: wrap });
     bindPrintOpts(wrap);
-    wrap.querySelector("[data-link]").addEventListener("click", UI.closeModal);
-    // "Imprimir": lanza la impresión y vuelve al POS en un solo paso.
+    var link = wrap.querySelector("[data-link]");
+    if (link) link.addEventListener("click", UI.closeModal);
+    var vb = wrap.querySelector("[data-void]");
+    if (vb) vb.addEventListener("click", function () { voidSaleModal(s, opts.onVoided); });
+    // "Imprimir": lanza la impresión y cierra el ticket en un solo paso.
     wrap.querySelector("[data-print]").addEventListener("click", function () {
       window.print();
       UI.closeModal();
     });
   }
+  V._showTicketModal = showTicketModal;
 
   /* ---------------- Apartados (cobro de reservas de la tienda) ---------------- */
   function skuFromRef(ref) {

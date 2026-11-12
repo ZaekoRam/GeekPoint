@@ -4,7 +4,7 @@ class BranchController extends Controller
 {
     public function index()
     {
-        $user = $this->auth();
+        $user = $this->authStaff();
 
         if ($user['role'] === 'admin') {
             $rows = Database::all(
@@ -24,7 +24,7 @@ class BranchController extends Controller
 
     public function show($id)
     {
-        $user = $this->auth();
+        $user = $this->authStaff();
         Auth::assertBranchAccess($user, $id);
         $row = Database::one('SELECT * FROM branches WHERE id = ?', [(int) $id]);
         if (!$row) Response::notFound('Sucursal no encontrada.');

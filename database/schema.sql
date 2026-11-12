@@ -5,8 +5,9 @@
 -- =====================================================================
 --  Ejecuta este archivo UNA vez para crear todas las tablas (instalación
 --  nueva). Luego ejecuta database/seed.sql para cargar datos de demostración.
---  Ya incluye las migraciones hasta 2026_10_19_000001 (modelo normalizado:
---  catálogo maestro + inventario por sucursal). Una base existente se
+--  Ya incluye las migraciones hasta 2026_11_11_000001 (modelo normalizado:
+--  catálogo maestro + inventario por sucursal, pagos por venta, cortes de
+--  caja y los catálogos de roles y métodos de pago). Una base existente se
 --  actualiza con los archivos de database/migrations/, no con este.
 --  Diagrama entidad-relación: docs/diagrama-er.md
 -- =====================================================================
@@ -36,6 +37,22 @@ CREATE TABLE `branches` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------
+--  Roles (catálogo): admin | manager | cashier | customer
+--  `code` es el valor que guarda users.role y el que usa la API.
+--  Sus filas se insertan al final de este archivo.
+-- ---------------------------------------------------------------------
+DROP TABLE IF EXISTS `roles`;
+CREATE TABLE `roles` (
+  `id`         INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `code`       VARCHAR(20) NOT NULL,
+  `name_es`    VARCHAR(60) NOT NULL,
+  `name_en`    VARCHAR(60) NOT NULL,
+  `sort_order` INT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_roles_code` (`code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
 --  Usuarios (admin general, gerentes, cajeros, clientes)
 -- ---------------------------------------------------------------------
 DROP TABLE IF EXISTS `users`;
@@ -47,7 +64,7 @@ CREATE TABLE `users` (
   `email_token_hash`    CHAR(64) NULL,
   `email_token_sent_at` DATETIME NULL,
   `password_hash` VARCHAR(255) NOT NULL,
-  `role`          ENUM('admin','manager','cashier','customer') NOT NULL,
+  `role`          VARCHAR(20) NOT NULL,          -- -> roles.code
   `branch_id`     INT UNSIGNED NULL,
   `status`        ENUM('active','inactive') NOT NULL DEFAULT 'active',
   `last_login_at` DATETIME NULL,
@@ -58,7 +75,9 @@ CREATE TABLE `users` (
   KEY `ix_users_branch` (`branch_id`),
   KEY `ix_users_role` (`role`),
   CONSTRAINT `fk_users_branch` FOREIGN KEY (`branch_id`)
-    REFERENCES `branches` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+    REFERENCES `branches` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `fk_users_role` FOREIGN KEY (`role`)
+    REFERENCES `roles` (`code`) ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------
@@ -251,6 +270,7 @@ CREATE TABLE `sales` (
 -- ---------------------------------------------------------------------
 --  Cortes de caja
 -- ---------------------------------------------------------------------
+DROP TABLE IF EXISTS `cash_cuts`;
 CREATE TABLE `cash_cuts` (
   `id`             INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `branch_id`      INT UNSIGNED NOT NULL,
@@ -278,19 +298,42 @@ CREATE TABLE `cash_cuts` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------
---  Formas de pago de una venta (una o varias: pago mixto)
+--  Métodos de pago (catálogo): cash | card | transfer
+--  `code` es el valor que guarda sale_payments.method. Con status
+--  'inactive' el POS deja de ofrecer ese método. Sus filas se insertan al
+--  final de este archivo.
 -- ---------------------------------------------------------------------
+DROP TABLE IF EXISTS `payment_methods`;
+CREATE TABLE `payment_methods` (
+  `id`         INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `code`       VARCHAR(20) NOT NULL,
+  `name_es`    VARCHAR(60) NOT NULL,
+  `name_en`    VARCHAR(60) NOT NULL,
+  `status`     ENUM('active','inactive') NOT NULL DEFAULT 'active',
+  `sort_order` INT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_payment_methods_code` (`code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
+--  Pagos de una venta: un renglón por método (varios = pago mixto).
+--  Toda venta tiene al menos uno; sales.payment_method es solo el resumen.
+-- ---------------------------------------------------------------------
+DROP TABLE IF EXISTS `sale_payments`;
 CREATE TABLE `sale_payments` (
   `id`         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `sale_id`    BIGINT UNSIGNED NOT NULL,
-  `method`     ENUM('cash','card','transfer') NOT NULL,
+  `method`     VARCHAR(20) NOT NULL,                 -- -> payment_methods.code
   `amount`     DECIMAL(12,2) NOT NULL,
   `reference`  VARCHAR(80) NOT NULL DEFAULT '',      -- últimos 4 / autorización / ref. de transferencia
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `ix_sale_payments_sale` (`sale_id`),
+  KEY `ix_sale_payments_method` (`method`),
   CONSTRAINT `fk_sale_payments_sale` FOREIGN KEY (`sale_id`)
-    REFERENCES `sales` (`id`) ON DELETE CASCADE
+    REFERENCES `sales` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_sale_payments_method` FOREIGN KEY (`method`)
+    REFERENCES `payment_methods` (`code`) ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------
@@ -464,7 +507,37 @@ CREATE TABLE `catalog_cache` (
   PRIMARY KEY (`cache_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ---------------------------------------------------------------------
+--  Registro de migraciones aplicadas (database/migrations/)
+-- ---------------------------------------------------------------------
+DROP TABLE IF EXISTS `schema_migrations`;
+CREATE TABLE `schema_migrations` (
+  `version`    VARCHAR(64) NOT NULL,
+  `applied_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`version`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 SET FOREIGN_KEY_CHECKS = 1;
+
+-- =====================================================================
+--  Datos de catálogo (los necesitan las llaves foráneas de users y
+--  sale_payments; no son datos de demostración)
+-- =====================================================================
+INSERT INTO `roles` (`id`, `code`, `name_es`, `name_en`, `sort_order`) VALUES
+  (1, 'admin',    'Administrador general', 'General administrator', 1),
+  (2, 'manager',  'Gerente de sucursal',   'Branch manager',        2),
+  (3, 'cashier',  'Cajero',                'Cashier',               3),
+  (4, 'customer', 'Cliente',               'Customer',              4);
+
+INSERT INTO `payment_methods` (`id`, `code`, `name_es`, `name_en`, `status`, `sort_order`) VALUES
+  (1, 'cash',     'Efectivo',      'Cash',     'active', 1),
+  (2, 'card',     'Tarjeta',       'Card',     'active', 2),
+  (3, 'transfer', 'Transferencia', 'Transfer', 'active', 3);
+
+-- Este esquema ya trae lo de estas migraciones: no hay que volver a correrlas.
+INSERT INTO `schema_migrations` (`version`) VALUES
+  ('2026_10_19_000001'), ('2026_10_26_000001'), ('2026_10_28_000002'),
+  ('2026_10_28_000003'), ('2026_11_11_000001');
 
 -- =====================================================================
 --  Vistas

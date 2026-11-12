@@ -26,8 +26,8 @@ class UserController extends Controller
                     b.name AS branch_name
              FROM users u
              LEFT JOIN branches b ON b.id = u.branch_id
-             WHERE ' . implode(' AND ', $where) . '
-             ORDER BY u.role, u.name',
+             WHERE ' . implode(' AND ', $where) . "
+             ORDER BY FIELD(u.role, 'admin', 'manager', 'cashier'), u.name",
             $params
         );
         foreach ($rows as &$r) {
@@ -120,7 +120,7 @@ class UserController extends Controller
 
     public function update($id)
     {
-        $this->authRole(['admin']);
+        $admin = $this->authRole(['admin']);
         $id = (int) $id;
         $current = Database::one('SELECT * FROM users WHERE id = ?', [$id]);
         if (!$current) Response::notFound('Usuario no encontrado.');
@@ -136,22 +136,36 @@ class UserController extends Controller
             Response::error(409, 'duplicate', 'Ese correo ya está en uso.');
         }
 
-        $role = in_array($d['role'] ?? $current['role'], ['admin', 'manager', 'cashier'], true)
-            ? $d['role'] : $current['role'];
-        $branchId = array_key_exists('branch_id', $d)
-            ? $this->intOrNull($d['branch_id'])
-            : ($current['branch_id'] !== null ? (int) $current['branch_id'] : null);
+        // El rol solo se cambia entre gerente y cajero. Un administrador sigue
+        // siendo administrador (editar su nombre no debe degradarlo) y un
+        // cliente de la tienda no pasa a ser personal desde aquí.
+        $staffRoles = ['manager', 'cashier'];
+        $role = $current['role'];
+        if (in_array($current['role'], $staffRoles, true) && in_array($d['role'] ?? null, $staffRoles, true)) {
+            $role = $d['role'];
+        }
+        $needsBranch = in_array($role, $staffRoles, true);
 
-        if ($role !== 'admin' && !$branchId) {
-            Response::validation(['branch_id' => ['Los gerentes y cajeros necesitan sucursal.']]);
+        $branchId = null;
+        if ($needsBranch) {
+            $branchId = array_key_exists('branch_id', $d)
+                ? $this->intOrNull($d['branch_id'])
+                : ($current['branch_id'] !== null ? (int) $current['branch_id'] : null);
+            if (!$branchId) {
+                Response::validation(['branch_id' => ['Los gerentes y cajeros necesitan sucursal.']]);
+            }
+            if (!Database::scalar('SELECT id FROM branches WHERE id = ?', [$branchId])) {
+                Response::validation(['branch_id' => ['La sucursal no existe.']]);
+            }
         }
 
+        // Nadie se desactiva a sí mismo (se quedaría sin poder entrar).
+        $status = $id === (int) $admin['id']
+            ? $current['status']
+            : $this->pickEnum($d['status'] ?? $current['status'], ['active', 'inactive'], $current['status']);
+
         $fields = 'name = ?, email = ?, role = ?, branch_id = ?, status = ?';
-        $params = [
-            trim($d['name']), $email, $role,
-            $role === 'admin' ? null : $branchId,
-            $this->pickEnum($d['status'] ?? $current['status'], ['active', 'inactive'], $current['status']),
-        ];
+        $params = [trim($d['name']), $email, $role, $branchId, $status];
 
         if (!empty($d['password'])) {
             if (strlen((string) $d['password']) < 6) {
