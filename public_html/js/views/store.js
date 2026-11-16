@@ -92,8 +92,34 @@
 
   /* Orden del catálogo. "relevance" = el orden que manda la API (destacados). */
   var sortKey = "relevance";
+  /* Existencias que la tienda puede apartar, por sucursal.
+     En una serie de manga del inventario lo que se aparta son sus TOMOS (la
+     ficha de serie, MNG-S-*, solo los agrupa y el servidor la rechaza), así
+     que cuenta la suma de los tomos y no el stock de la ficha de serie: la
+     tarjeta dice lo mismo que el selector de tomos del modal. */
+  function sellableBranches(p) {
+    var covers = p.volume_covers || [];
+    var fromInventory = p.source === "local" || p.source === "series";
+    if (p.category !== "manga" || !fromInventory || !covers.length) return p.branches || [];
+    var byCode = {}, order = [];
+    function slot(b) {
+      var k = String(b.code);
+      if (!byCode[k]) { byCode[k] = { id: b.id, code: b.code, name: b.name, stock: 0 }; order.push(k); }
+      return byCode[k];
+    }
+    (p.branches || []).forEach(slot);            // conserva sedes y nombres aunque queden en 0
+    covers.forEach(function (c) {
+      (c.branches || []).forEach(function (b) { slot(b).stock += Number(b.stock) || 0; });
+    });
+    return order.map(function (k) { return byCode[k]; });
+  }
+  /** Copia del producto vista con sus existencias apartables (para tarjeta y orden). */
+  function stockView(p) {
+    var br = sellableBranches(p);
+    return br === p.branches ? p : Object.assign({}, p, { branches: br });
+  }
   function stockOf(p) {
-    return (p.branches || []).reduce(function (n, b) { return n + (b.stock || 0); }, 0);
+    return sellableBranches(p).reduce(function (n, b) { return n + (b.stock || 0); }, 0);
   }
   function priceOf(p) {
     var v = p.effective_price != null ? p.effective_price : p.price;
@@ -119,7 +145,12 @@
     return cmp ? out.sort(cmp) : out;
   }
   /* Filtros: sucursal (con existencias ahí) y rango de precio. */
-  var filterBranch = "", filterPrice = "";
+  var BRANCH_KEY = "gp_shopbranch";            // sucursal preferida del cliente, entre visitas
+  var filterBranch = (function () { try { return localStorage.getItem(BRANCH_KEY) || ""; } catch (e) { return ""; } })();
+  var filterPrice = "";
+  function rememberBranch() {
+    try { if (filterBranch) localStorage.setItem(BRANCH_KEY, filterBranch); else localStorage.removeItem(BRANCH_KEY); } catch (e) { /* sin storage */ }
+  }
   var PRICE_RANGES = { "0-200": [0, 200], "200-500": [200, 500], "500-1500": [500, 1500], "1500-": [1500, Infinity] };
   function applyFilters(list) {
     var range = PRICE_RANGES[filterPrice];
@@ -140,7 +171,10 @@
     var bSel = $("[data-fbranch]", root), pSel = $("[data-fprice]", root);
     if (!bSel || !pSel) return;
     var branches = activeBranches();
-    if (filterBranch && !branches.some(function (b) { return String(b.code) === filterBranch; })) filterBranch = "";
+    // Solo se descarta la sucursal guardada con la lista REAL ya cargada (antes
+    // de eso `branches` es la lista de muestra y la borraría sin razón).
+    var realList = !!(window.Catalog && Catalog.branches && Catalog.branches().length);
+    if (filterBranch && realList && !branches.some(function (b) { return String(b.code) === filterBranch; })) { filterBranch = ""; rememberBranch(); }
     bSel.innerHTML = '<option value="">' + esc(I18N.t("shop.filter.allBranches")) + '</option>' +
       branches.map(function (b) {
         return '<option value="' + esc(b.code) + '"' + (String(b.code) === filterBranch ? " selected" : "") + '>' + esc(b.name) + '</option>';
@@ -164,7 +198,7 @@
     }
     if (!bSel._bound) {
       bSel._bound = pSel._bound = true;
-      bSel.addEventListener("change", function () { filterBranch = bSel.value; scheduleGrid(root, activeCat()); });
+      bSel.addEventListener("change", function () { filterBranch = bSel.value; rememberBranch(); scheduleGrid(root, activeCat()); });
       pSel.addEventListener("change", function () { filterPrice = pSel.value; scheduleGrid(root, activeCat()); });
     }
   }
@@ -406,11 +440,6 @@
 
   function stockTag(p, total) {
     var sl = p.category === "manga" ? seriesLow(p) : null;
-    // Stock guardado en la ficha de la SERIE (no en tomos): si ningún tomo
-    // tiene piezas pero la serie sí, se usa el aviso normal de la serie.
-    var bsSeries = branchStock(p);
-    var seriesUnits = bsSeries ? bsSeries.n : total;
-    if (sl && sl.out === sl.known && seriesUnits > 0) sl = null;
     if (sl) {
       // Todos los tomos agotados = la serie está agotada (en la sede elegida).
       if (sl.out === sl.known) {
@@ -469,9 +498,10 @@
     if (p.discount_status === "active") {
       tags += '<span class="ptag promo-badge">−' + discountLabel(p) + '%</span>';
     }
-    var totalStock = (p.branches || []).reduce(function (n, b) { return n + (b.stock || 0); }, 0);
-    tags = stockTag(p, totalStock) + tags;
-    var bsCard = branchStock(p);
+    var sv = stockView(p);                       // existencias apartables (tomos, en series de manga)
+    var totalStock = stockOf(p);
+    tags = stockTag(sv, totalStock) + tags;
+    var bsCard = branchStock(sv);
     var isFigure = p.category === "figuras";
 
     // FIGURAS: la portada de la grilla es SIEMPRE el "expositor" — una CAJA 3D
@@ -518,7 +548,7 @@
               : '<button class="pcard__add" data-add>' + esc(I18N.t(p.category === "manga" ? "prod.chooseVolume" : "prod.add")) + '</button>') +
           '</div>' +
           '<span class="pcard__stock">' + (totalStock > 0 || filterBranch
-            ? stockLine(p, totalStock)
+            ? stockLine(sv, totalStock)
             : esc(I18N.t("prod.soldout"))) + '</span>' +
         '</div>' +
       '</article>'
@@ -611,9 +641,19 @@
     });
   }
 
-  function shareProduct(p) {
-    var url = productURL(p.id);
-    if (navigator.share) {
+  /* Enlace para compartir: pasa por el servidor (/api/share/<id>), que entrega
+     título, precio e imagen del producto a WhatsApp y similares y manda a la
+     persona a la tienda con el producto abierto. Sin API se usa el directo. */
+  function shareURL(id) {
+    var base = (window.API && API.base) || "";
+    if (!base) return productURL(id);
+    try { return new URL(base + "/share/" + encodeURIComponent(id), location.href).href; }
+    catch (e) { return productURL(id); }
+  }
+
+  function shareProduct(p, copyOnly) {
+    var url = shareURL(p.id);
+    if (navigator.share && !copyOnly) {
       navigator.share({ title: p.title + " · GeekPoint", url: url }).catch(function () {});
       return;
     }
@@ -668,8 +708,9 @@
       '<h4 class="related__title">' + esc(I18N.t("prod.related")) + '</h4>' +
       '<div class="related__row">' + list.map(function (q) {
         return '<button type="button" class="related__item" data-related="' + esc(q.id) + '">' +
-          '<span class="related__media"><img src="' + esc(Catalog.coverURL(q)) + '" alt="" loading="lazy" ' +
-            'onerror="this.style.visibility=\'hidden\'"></span>' +
+          // Detrás va la inicial del título: si la portada falla, no queda un cuadro vacío.
+          '<span class="related__media"><span class="related__ph" aria-hidden="true">' + esc(String(q.title || "?").trim().charAt(0).toUpperCase()) + '</span>' +
+            '<img src="' + esc(Catalog.coverURL(q)) + '" alt="" loading="lazy" onerror="this.remove()"></span>' +
           '<span class="related__name">' + esc(q.title) + '</span>' +
           '<span class="related__price">' + priceHTML(q, q.price_varies) + '</span>' +
         '</button>';
@@ -939,13 +980,16 @@
         '<div class="preview3d__buy">' +
           '<span class="preview3d__price" data-price>' + priceHTML(startProduct, false) + '</span>' +
           '<button class="btn btn--panini" data-buy>' + esc(I18N.t("prod.buy")) + '</button>' +
-          '<button type="button" class="btn btn--ghost btn--sm" data-share>' + esc(I18N.t("prod.share")) + '</button>' +
+          // "Compartir" abre el menú del sistema (celular); "Copiar enlace" va siempre.
+          (navigator.share ? '<button type="button" class="btn btn--ghost btn--sm" data-share>' + esc(I18N.t("prod.share")) + '</button>' : '') +
+          '<button type="button" class="btn btn--ghost btn--sm" data-copy-link>🔗 ' + esc(I18N.t("prod.copyLink")) + '</button>' +
         '</div>' +
       '</div>' +
       relatedHTML(p);
 
     wrap.addEventListener("click", function (e) {
       if (e.target.closest("[data-share]")) { shareProduct(p); return; }
+      if (e.target.closest("[data-copy-link]")) { shareProduct(p, true); return; }
       var rel = e.target.closest("[data-related]");
       if (rel) openProduct(rel.getAttribute("data-related"));
     });

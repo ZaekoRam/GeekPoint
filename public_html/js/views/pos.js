@@ -13,8 +13,42 @@
     // cambio (cantidades, método) y no debe borrar lo que ya se tecleó.
     pay: null, customer: "",
     // Catálogo payment_methods del servidor; null = aún no llega (o API vieja).
-    payCatalog: null
+    payCatalog: null,
+    // Apartados que se están cobrando en la venta actual: [{ folio, added }].
+    // Siguen pendientes hasta que la venta se cobra; si el carrito se vacía
+    // o se sueltan a mano, no les pasa nada.
+    resvs: []
   };
+
+  /* Venta en curso guardada en este navegador: si la página se recarga a
+     media venta, el carrito (y los apartados cargados) vuelven. Se liga al
+     usuario y a la sucursal; se borra al cobrar, vaciar o cerrar sesión. */
+  var CART_KEY = "gp_poscart";
+  function saveCart() {
+    try {
+      if (!STORE.cart.length || !STORE.user) { localStorage.removeItem(CART_KEY); return; }
+      localStorage.setItem(CART_KEY, JSON.stringify({
+        uid: STORE.user.id, branchId: ctx.branchId, items: STORE.cart,
+        resvs: ctx.resvs, customer: ctx.customer
+      }));
+    } catch (e) { /* sin storage */ }
+  }
+  function savedCart() {
+    try {
+      var d = JSON.parse(localStorage.getItem(CART_KEY) || "null");
+      return d && STORE.user && d.uid === STORE.user.id && Array.isArray(d.items) && d.items.length ? d : null;
+    } catch (e) { return null; }
+  }
+
+  function isTyping(el) {
+    return !!el && (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable);
+  }
+  /* El buscador recibe el foco solo con teclado físico: en táctil abriría el
+     teclado en pantalla encima de la grilla. */
+  function focusSearch(root, force) {
+    var q = $("[data-q]", root);
+    if (q && (force || UI.fineHover)) UI.safe(function () { q.focus(); q.select(); });
+  }
 
   /* Métodos de pago. Son tres y fijos (el corte de caja lleva un total por
      cada uno); el catálogo del servidor dice cuáles están activos y cómo se
@@ -97,6 +131,7 @@
         '<div class="content"><div class="pos">' +
           '<div>' +
             '<div class="pos__search"><input class="input" data-q placeholder="' + esc(I18N.t("pos.search")) + '" autocomplete="off"></div>' +
+            '<p class="pos__keys" data-keys>' + keysHTML() + '</p>' +
             '<p class="pos__lowstock" data-lowstock hidden></p>' +
             '<div class="pos__cats" data-cats></div>' +
             '<div class="pos__grid" data-grid>' + V._loading() + '</div>' +
@@ -109,9 +144,15 @@
     );
   }
 
+  function keysHTML() {
+    return [["F2", "pos.keys.search"], ["Enter", "pos.keys.add"], ["+ / −", "pos.keys.qty"], ["F9", "pos.keys.charge"]]
+      .map(function (k) { return '<span><kbd>' + k[0] + '</kbd> ' + esc(I18N.t(k[1])) + '</span>'; }).join("");
+  }
+
   function mount(root) {
     var grid = $("[data-grid]", root);
     ctx.method = "cash";
+    ctx.filter.q = "";
     STORE.cart = STORE.cart || [];
 
     resolveBranch(root).then(function () {
@@ -122,9 +163,11 @@
       ]);
     }).then(function () {
       ctx.registerId = firstRegisterId();   // el POS arranca con la Caja 1 elegida
+      var restored = restoreCart();
       renderCats(root);
       renderCart(root);
-      loadProducts(root);
+      focusSearch(root);
+      return Promise.resolve(loadProducts(root)).then(function () { if (restored) syncRestored(root); });
     }).catch(function (err) {
       grid.innerHTML = V._error(err);
     });
@@ -135,6 +178,47 @@
       loadProducts(root);
     }, 260);
     $("[data-q]", root).addEventListener("input", onQ);
+    // Enter (o lector de código de barras): si la búsqueda deja UN solo
+    // producto, se agrega a la venta y el buscador queda listo para el siguiente.
+    $("[data-q]", root).addEventListener("keydown", function (e) {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      var inp = e.target, q = inp.value.trim();
+      if (!q) return;
+      ctx.filter.q = q;
+      Promise.resolve(loadProducts(root)).then(function () {
+        if (inp.value.trim() !== q) return;
+        var only = ctx.products.length === 1 ? ctx.products[0] : null;
+        var series = only && (only.category_slug === "manga" || only.category_slug === "comics");
+        if (!only) { UI.toast(I18N.t(ctx.products.length ? "pos.keys.many" : "empty.none"), "warn"); return; }
+        if (series) { volumePickerModal(only.sku); return; }
+        STORE.cartAdd(mapProduct(only.sample || only));
+        inp.value = ""; ctx.filter.q = "";
+        loadProducts(root);
+      });
+    });
+
+    // Atajos de teclado de la caja (solo sin un modal abierto).
+    var onKey = function (e) {
+      if (e.ctrlKey || e.altKey || e.metaKey || document.querySelector(".modal")) return;
+      var typing = isTyping(e.target);
+      if (e.key === "F2" || (e.key === "/" && !typing)) { e.preventDefault(); focusSearch(root, true); return; }
+      if (e.key === "F9") {
+        e.preventDefault();
+        var cb = $("[data-charge]", root);
+        if (cb && !cb.disabled) checkout(root);
+        else if (STORE.cart.length) UI.toast(I18N.t("pos.needPayment"), "warn");
+        return;
+      }
+      if (e.key === "Escape" && e.target === $("[data-q]", root) && e.target.value) {
+        e.target.value = ""; ctx.filter.q = ""; loadProducts(root); return;
+      }
+      if (typing || !STORE.cart.length) return;
+      var last = STORE.cart[STORE.cart.length - 1];
+      if (e.key === "+") { e.preventDefault(); STORE.cartInc(last.id); }
+      else if (e.key === "-") { e.preventDefault(); STORE.cartDec(last.id); }
+    };
+    document.addEventListener("keydown", onKey);
 
     root.addEventListener("click", function (e) {
       if (e.target.closest("[data-resv-open]")) { resvModal(root); return; }
@@ -168,7 +252,17 @@
         }
         return;
       }
-      var clr = e.target.closest("[data-clear]"); if (clr) return STORE.cartClear();
+      var clr = e.target.closest("[data-clear]");
+      if (clr) {
+        // Una venta con varios artículos o un apartado cargado no se vacía de un clic.
+        if (STORE.cart.length > 1 || STORE.cartTotals().count > 2 || ctx.resvs.length) {
+          UI.confirm(I18N.t("pos.confirmClear", { n: STORE.cartTotals().count }), function () { STORE.cartClear(); focusSearch(root); },
+            { title: I18N.t("btn.clear"), yes: I18N.t("btn.clear"), danger: true });
+        } else { STORE.cartClear(); focusSearch(root); }
+        return;
+      }
+      var drop = e.target.closest("[data-resv-drop]");
+      if (drop) { dropReservation(root, drop.getAttribute("data-resv-drop")); return; }
       var pm = e.target.closest("[data-method]"); if (pm) { ctx.method = pm.getAttribute("data-method"); renderCart(root); return; }
       var qk = e.target.closest("[data-quick]");
       if (qk) {
@@ -192,12 +286,60 @@
     var offCart = STORE.on("cart", function () { renderCart(root); });
     var onLang = function () {
       $("[data-q]", root).setAttribute("placeholder", I18N.t("pos.search"));
+      $("[data-keys]", root).innerHTML = keysHTML();
       renderCats(root); renderCart(root);
       var grid = $("[data-grid]", root);
       if (ctx.products.length) grid.innerHTML = ctx.products.map(cardHTML).join("");
     };
     window.addEventListener("i18n:change", onLang);
-    root.__cleanup = function () { offCart(); window.removeEventListener("i18n:change", onLang); };
+    root.__cleanup = function () {
+      offCart(); window.removeEventListener("i18n:change", onLang);
+      document.removeEventListener("keydown", onKey);
+    };
+  }
+
+  /* Recupera la venta guardada (misma persona y sucursal) si no hay otra en curso. */
+  function restoreCart() {
+    if (STORE.cart.length) return false;
+    var sv = savedCart();
+    if (!sv || sv.branchId !== ctx.branchId) return false;
+    STORE.cart = sv.items;
+    ctx.resvs = Array.isArray(sv.resvs) ? sv.resvs : [];
+    ctx.customer = sv.customer || "";
+    return true;
+  }
+  /* Tras restaurar: el stock pudo cambiar mientras tanto; se ajusta a lo real. */
+  function syncRestored(root) {
+    var by = ctx.stockById || {}, cut = 0;
+    STORE.cart = STORE.cart.filter(function (l) {
+      if (by[l.id] == null) return true;
+      l.stock = by[l.id];
+      if (l.qty > l.stock) { l.qty = l.stock; cut++; }
+      return l.qty > 0;
+    });
+    renderCart(root);
+    UI.toast(I18N.t(cut ? "pos.restoredCut" : "pos.restored"), cut ? "warn" : "ok", 4500);
+  }
+
+  function cartQty(id) {
+    var l = (STORE.cart || []).filter(function (x) { return x.id === id; })[0];
+    return l ? l.qty : 0;
+  }
+
+  /* ✕ del aviso "Cobrando apartado": suelta el apartado (sigue pendiente) y
+     saca de la venta lo que él había agregado. Lo que el cajero haya puesto
+     aparte, o de más del mismo producto, se queda. */
+  function dropReservation(root, folio) {
+    var hit = ctx.resvs.filter(function (r) { return r.folio === folio; })[0];
+    var added = (hit && hit.added) || {};
+    ctx.resvs = ctx.resvs.filter(function (r) { return r !== hit; });
+    Object.keys(added).forEach(function (id) {
+      var line = (STORE.cart || []).filter(function (x) { return String(x.id) === String(id); })[0];
+      if (!line) return;
+      var left = line.qty - added[id];
+      if (left > 0) STORE.cartSetQty(line.id, left); else STORE.cartRemove(line.id);
+    });
+    renderCart(root);
   }
 
   function isAdmin() { return STORE.role === "admin"; }
@@ -214,8 +356,10 @@
     return API.get("branches").then(function (d) {
       ctx.branches = d.branches.filter(function (b) { return b.status === "active"; });
       ctx.branchId = ctx.branches.length ? ctx.branches[0].id : null;
+      var sv = !STORE.cart.length && savedCart();
+      if (sv && ctx.branches.some(function (b) { return b.id === sv.branchId; })) ctx.branchId = sv.branchId;
       slot.innerHTML = '<select class="select" data-branch style="width:auto;min-width:160px">' +
-        ctx.branches.map(function (b) { return '<option value="' + b.id + '">' + esc(b.name) + '</option>'; }).join("") + '</select>';
+        ctx.branches.map(function (b) { return '<option value="' + b.id + '"' + (b.id === ctx.branchId ? " selected" : "") + '>' + esc(b.name) + '</option>'; }).join("") + '</select>';
       $("[data-branch]", root).addEventListener("change", function () {
         ctx.branchId = +this.value;
         STORE.cartClear();
@@ -313,9 +457,10 @@
       '<button type="button" class="' + cls + '"' +
         (isSeries ? ' data-pick-series="' + esc(g.sku) + '"' : ' data-add="' + s.id + '"' + (out ? " disabled" : "")) + '>' +
         '<span class="prod__media">' +
-          (cover
-            ? '<img src="' + esc(cover) + '" alt="" loading="lazy" decoding="async" onerror="this.remove()">'
-            : '<span class="prod__art">' + art + '</span>') +
+          // El emoji de la categoría va siempre detrás: si la portada tarda o
+          // falla, la tarjeta nunca queda como un hueco liso.
+          '<span class="prod__art">' + art + '</span>' +
+          (cover ? '<img src="' + esc(cover) + '" alt="" loading="lazy" decoding="async" onerror="this.remove()">' : '') +
           (isSeries || out
             ? '<span class="prod__badge">' + esc(I18N.t(isSeries ? "prod.pickVolume" : "pos.outOfStock")) + '</span>'
             : '<span class="prod__badge" data-stock-num>' + (s.low_stock ? esc(I18N.t("stock.low", { n: total })) : total + ' u') + '</span>') +
@@ -634,7 +779,7 @@
     var itemsHTML = items.length ? items.map(function (l) {
       var discounted = Number(l.unit_savings) > 0;
       return (
-        '<div class="citem">' +
+        '<div class="citem" data-line="' + l.id + '">' +
           '<div><div class="citem__name">' + esc(l.name) + '</div>' +
             '<div class="citem__sub">' + (discounted
               ? '<del>' + UI.money(l.list_price) + '</del> ' + UI.money(l.price) + ' · −' + l.discount_percent + '%'
@@ -661,7 +806,18 @@
         }).join("") + '</select></div>'
       : "";
 
-    if (!items.length) { resetPay(); ctx.customer = ""; }
+    if (!items.length) { resetPay(); ctx.customer = ""; ctx.resvs = []; }
+    saveCart();
+    // Uno solo: aviso completo. Varios: píldoras con el folio, en una fila.
+    var manyResv = ctx.resvs.length > 1;
+    var resvHTML = ctx.resvs.map(function (rv) {
+      var full = I18N.t("resv.charging", { folio: rv.folio });
+      return '<div class="cart__resv' + (manyResv ? " cart__resv--pill" : "") + '" title="' + esc(full) + '"><span>🎫 ' +
+        esc(manyResv ? rv.folio : full) + '</span>' +
+        '<button type="button" class="cart__resv-x" data-resv-drop="' + esc(rv.folio) + '" title="' + esc(I18N.t("resv.drop")) +
+        '" aria-label="' + esc(I18N.t("resv.drop")) + '">✕</button></div>';
+    }).join("");
+    if (resvHTML) resvHTML = '<div class="cart__resvs">' + resvHTML + '</div>';
     var jump = $("[data-cart-jump]", root);
     if (jump) {
       jump.hidden = !items.length;
@@ -692,6 +848,7 @@
 
     host.innerHTML =
       '<h2>' + esc(I18N.t("pos.cart")) + (t.count ? ' · <span class="mono">' + t.count + '</span>' : "") + '</h2>' +
+      resvHTML +
       '<div class="cart__items">' + itemsHTML + '</div>' +
       '<div class="cart__totals">' +
         (t.discount > 0 ? '<div class="row cart__discount"><span>' + esc(I18N.t("discount.total")) + '</span><span class="num">−' + UI.money(t.discount) + '</span></div>' : '') +
@@ -710,6 +867,20 @@
         '<button class="btn btn--neon btn--block" data-charge disabled>' + esc(I18N.t("btn.charge")) + ' · ' + UI.money(t.total) + '</button>' +
       '</div>';
 
+    // Resalte breve de lo que cambió (renglón nuevo o con otra cantidad, y el
+    // total) para que se vea que el artículo sí entró.
+    var prevQty = ctx.lastQty || {}, nowQty = {};
+    items.forEach(function (l) { nowQty[l.id] = l.qty; });
+    if (ctx.lastQty && !UI.reduced) {
+      items.forEach(function (l) {
+        if (prevQty[l.id] === l.qty) return;
+        var rowEl = host.querySelector('.citem[data-line="' + l.id + '"]');
+        if (rowEl) rowEl.classList.add(prevQty[l.id] == null ? "is-new" : "is-changed");
+      });
+      if (ctx.lastTotal != null && ctx.lastTotal !== t.total && items.length) $("[data-total]", host).classList.add("is-bump");
+    }
+    ctx.lastQty = nowQty; ctx.lastTotal = t.total;
+
     $$("[data-pay]", host).forEach(function (inp) {
       inp.addEventListener("input", function () {
         ctx.pay[inp.getAttribute("data-pay")] = inp.value;
@@ -717,7 +888,7 @@
       });
     });
     var custEl = $("[data-customer]", host);
-    custEl.addEventListener("input", function () { ctx.customer = custEl.value; });
+    custEl.addEventListener("input", function () { ctx.customer = custEl.value; saveCart(); });
     updatePayStatus(host, t);
 
     var regEl = $("[data-register]", host);
@@ -847,11 +1018,19 @@
 
     var btn = $("[data-charge]", host);
     btn.classList.add("is-loading");
+    var resvs = ctx.resvs.slice();
     API.post("sales", payload).then(function (d) {
       btn.classList.remove("is-loading");
       STORE.cartClear();
       UI.toast(I18N.t("pos.done") + " · " + d.sale.folio, "ok");
-      showTicketModal(d.sale);
+      // La venta ya se cobró: ahora sí, el apartado queda cobrado y ligado a ella.
+      resvs.forEach(function (resv) {
+        API.patch("reservations/" + encodeURIComponent(resv.folio) + "/status", { status: "cobrada", sale_id: d.sale.id })
+          .then(function () { UI.toast(I18N.t("resv.cobradaMsg") + " · " + resv.folio, "ok"); })
+          .catch(function (err) { UI.toast(I18N.t("resv.linkFail", { folio: resv.folio }) + " " + ((err && err.message) || ""), "error", 7000); });
+      });
+      // Al cerrar el ticket, el buscador queda listo para la siguiente venta.
+      showTicketModal(d.sale, { onClose: function (instant) { if (!instant) focusSearch(root); } });
       Promise.resolve(loadProducts(root)).then(function () { stockFlash(sold); });
     }).catch(function (err) {
       btn.classList.remove("is-loading");
@@ -1082,7 +1261,8 @@
 
     return (
       '<div class="ticket">' +
-        '<h2>◈ GEEKPOINT POS</h2>' +
+        '<img class="ticket__logo" src="icons/icon-96.png" alt="" width="46" height="46" onerror="this.remove()">' +
+        '<h2>GEEKPOINT</h2>' +
         voidHTML +
         '<p style="text-align:center" class="muted">' + esc(s.branch_name || "") + '<br>' + esc(s.branch_address || "") + '</p>' +
         '<hr>' +
@@ -1098,7 +1278,9 @@
         tRow(esc(I18N.t("pos.total")), UI.money(s.total), "t-row--total") +
         payHTML +
         (Number(s.change_due) > 0 || s.payment_method === "cash" ? tRow(esc(I18N.t("pos.change")), UI.money(s.change_due)) : "") +
-        '<hr><p style="text-align:center">' + esc(I18N.t("ticket.thanks")) + '</p>' +
+        '<hr><p class="ticket__thanks">' + esc(I18N.t("ticket.thanks")) + '</p>' +
+        '<p class="ticket__foot">' + esc(I18N.t("ticket.count", { n: (s.items || []).reduce(function (a, it) { return a + (Number(it.quantity) || 0); }, 0) })) +
+          ' · ' + esc(s.folio) + '</p>' +
       '</div>'
     );
   }
@@ -1117,7 +1299,7 @@
         (canVoid ? '<button type="button" class="btn btn--ghost btn--sm" data-void>' + esc(I18N.t("void.btn")) + '</button>' : '') +
         (fromPanel ? '' : '<a class="btn btn--neon btn--sm" href="#/ticket/' + s.id + '" data-link>' + esc(I18N.t("btn.viewTicket")) + '</a>') +
       '</div>';
-    UI.modal({ content: wrap });
+    UI.modal({ content: wrap, onClose: opts.onClose });
     bindPrintOpts(wrap);
     var link = wrap.querySelector("[data-link]");
     if (link) link.addEventListener("click", UI.closeModal);
@@ -1144,7 +1326,12 @@
         '<input class="input" data-resv-folio placeholder="' + esc(I18N.t("resv.lookup")) + '" autocomplete="off">' +
         '<button class="btn btn--neon btn--sm" data-resv-find>' + esc(I18N.t("resv.searchBtn")) + '</button>' +
       '</div>' +
-      '<p class="mono" style="font-size:.68rem;color:var(--faint);letter-spacing:.12em;text-transform:uppercase;margin-bottom:.5rem">' + esc(I18N.t("resv.pending")) + '</p>' +
+      '<div class="resv-filter" data-resv-filter>' +
+        ["activos", "pendiente", "lista", "cobrada", "cancelada"].map(function (k) {
+          return '<button type="button" class="chip' + (k === "activos" ? " is-active" : "") + '" data-resv-status="' + k + '">' +
+            esc(I18N.t(k === "activos" ? "resv.filter.active" : "resv.status." + k)) + '</button>';
+        }).join("") +
+      '</div>' +
       '<div class="resv-list" data-resv-list>' + V._loading() + '</div>' +
       '<div data-resv-detail></div>';
     UI.modal({ title: I18N.t("resv.pos"), content: wrap, wide: true });
@@ -1152,12 +1339,27 @@
     var listEl = wrap.querySelector("[data-resv-list]");
     var detailEl = wrap.querySelector("[data-resv-detail]");
     var folioEl = wrap.querySelector("[data-resv-folio]");
+    var statusFilter = "activos";
+    function inSale(folio) { return ctx.resvs.some(function (x) { return x.folio === folio; }); }
+    function chargeBtn(folio, key, cls) {
+      return inSale(folio)
+        ? '<button class="' + cls + '" disabled data-resv-charge="' + esc(folio) + '">✓ ' + esc(I18N.t("resv.inSale")) + '</button>'
+        : '<button class="' + cls + '" data-resv-charge="' + esc(folio) + '">' + esc(I18N.t(key)) + '</button>';
+    }
+    /* Tras cargar un apartado: su botón pasa a "En la venta" sin recargar la lista. */
+    function paintLoaded() {
+      $$("[data-resv-charge]", wrap).forEach(function (b) {
+        if (!inSale(b.getAttribute("data-resv-charge"))) return;
+        b.disabled = true; b.classList.remove("is-loading");
+        b.textContent = "✓ " + I18N.t("resv.inSale");
+      });
+    }
 
     function rowHTML(r) {
       var prods = r.items_summary || (r.items || []).map(function (it) { return it.quantity + "× " + it.title; }).join(" · ");
       return '<div class="resv-item" data-folio="' + esc(r.folio) + '">' +
         '<div class="resv-item__main">' +
-          '<div class="resv-item__folio">' + esc(r.folio) + ' · <span class="badge">' + esc(I18N.t("resv.status." + r.status)) + '</span></div>' +
+          '<div class="resv-item__folio">' + esc(r.folio) + ' · <span class="badge badge--st-' + esc(r.status) + '">' + esc(I18N.t("resv.status." + r.status)) + '</span></div>' +
           '<div class="resv-item__meta">' + esc(r.customer_name) +
             (r.customer_phone ? ' · ☎ ' + esc(r.customer_phone) : '') +
             (r.branch_name ? ' · ' + esc(r.branch_name) : '') + '</div>' +
@@ -1166,18 +1368,22 @@
         '<div class="resv-item__side">' +
           '<div class="resv-item__total mono">' + UI.money(r.total) + '</div>' +
           (r.status === "pendiente" ? '<button class="btn btn--ghost btn--sm" data-resv-ready="' + esc(r.folio) + '">' + esc(I18N.t("resv.markReady")) + '</button>' : '') +
-          '<button class="btn btn--neon btn--sm" data-resv-charge="' + esc(r.folio) + '">' + esc(I18N.t("resv.chargeAtRegister")) + '</button>' +
-          '<button class="btn btn--ghost btn--sm" data-resv-cancel="' + esc(r.folio) + '">' + esc(I18N.t("btn.cancel")) + '</button>' +
+          (r.status === "pendiente" || r.status === "lista"
+            ? chargeBtn(r.folio, "resv.chargeAtRegister", "btn btn--neon btn--sm") +
+              '<button class="btn btn--ghost btn--sm" data-resv-cancel="' + esc(r.folio) + '">' + esc(I18N.t("btn.cancel")) + '</button>'
+            : '') +
         '</div>' +
       '</div>';
     }
 
     function loadList() {
       listEl.innerHTML = V._loading();
-      API.get("reservations?status=activos" + (ctx.branchId ? "&branch_id=" + ctx.branchId : "")).then(function (d) {
+      var asked = statusFilter;
+      API.get("reservations?status=" + asked + (ctx.branchId ? "&branch_id=" + ctx.branchId : "")).then(function (d) {
+        if (asked !== statusFilter) return;               // llegó la respuesta de un filtro anterior
         var rs = d.reservations || [];
         listEl.innerHTML = rs.length ? rs.map(rowHTML).join("")
-          : '<p class="muted">' + esc(I18N.t("resv.none")) + '</p>';
+          : '<p class="muted">' + esc(I18N.t(asked === "activos" ? "resv.none" : "resv.noneFilter")) + '</p>';
       }).catch(function (e) { listEl.innerHTML = V._error(e); });
     }
     loadList();
@@ -1186,7 +1392,7 @@
       var actionable = r.status === "pendiente" || r.status === "lista";
       detailEl.innerHTML =
         '<div class="card" style="margin-top:1rem;padding:1rem">' +
-          '<h3 style="font-size:1rem">' + esc(r.folio) + ' · <span class="badge">' + esc(I18N.t("resv.status." + r.status)) + '</span></h3>' +
+          '<h3 style="font-size:1rem">' + esc(r.folio) + ' · <span class="badge badge--st-' + esc(r.status) + '">' + esc(I18N.t("resv.status." + r.status)) + '</span></h3>' +
           '<p class="muted" style="font-size:.82rem;margin:.3rem 0">' + esc(I18N.t("resv.customer")) + ': ' + esc(r.customer_name) +
             (r.customer_phone ? ' · ' + esc(r.customer_phone) : '') + (r.customer_email ? ' · ' + esc(r.customer_email) : '') +
             (r.branch_name ? ' · ' + esc(r.branch_name) : '') + '</p>' +
@@ -1199,7 +1405,7 @@
           (actionable ? '<div style="display:flex;gap:.6rem;margin-top:1rem;flex-wrap:wrap">' +
             (r.status === "pendiente" ? '<button class="btn btn--ghost btn--sm" data-resv-ready="' + esc(r.folio) + '">' + esc(I18N.t("resv.markReady")) + '</button>' : '') +
             '<button class="btn btn--ghost btn--sm" data-resv-cancel="' + esc(r.folio) + '">' + esc(I18N.t("resv.cancelBtn")) + '</button>' +
-            '<button class="btn btn--neon" data-resv-charge="' + esc(r.folio) + '">' + esc(I18N.t("resv.charge")) + '</button>' +
+            chargeBtn(r.folio, "resv.charge", "btn btn--neon") +
           '</div>' : '') +
         '</div>';
     }
@@ -1212,9 +1418,18 @@
     }
 
     function chargeReservation(folio) {
+      // Se pueden cobrar varios apartados en una venta, pero nunca dos veces
+      // el mismo: si ya está cargado (o cargándose) no se repiten sus artículos.
+      if (ctx.resvs.some(function (x) { return x.folio === folio; })) {
+        UI.toast(I18N.t("resv.alreadyLoaded", { folio: folio }), "warn");
+        return;
+      }
+      if (ctx.resvLoading) return;
+      ctx.resvLoading = true;
       var btn = wrap.querySelector('[data-resv-charge="' + folio + '"]');
       if (btn) btn.classList.add("is-loading");
       API.get("reservations/" + encodeURIComponent(folio)).then(function (r) {
+        var added = {};                       // id de inventario -> piezas que puso este apartado
         var wanted = (r.items || []).map(function (it) { return { sku: skuFromRef(it.product_ref), qty: it.quantity }; })
           .filter(function (x) { return x.sku; });
         return Promise.all(wanted.map(function (x) {
@@ -1222,18 +1437,30 @@
             .then(function (d) {
               var p = (d.products || []).find(function (pp) { return pp.sku === x.sku; });
               if (!p) return 0;
+              // Cuánto se agregó DE VERDAD (cartAdd topa en el stock): es lo
+              // que se quita si luego se suelta el apartado con la ✕.
+              var before = cartQty(p.id);
               for (var i = 0; i < x.qty; i++) STORE.cartAdd(mapProduct(p));
-              return 1;
+              var got = cartQty(p.id) - before;
+              if (got > 0) added[p.id] = (added[p.id] || 0) + got;
+              return got > 0 ? 1 : 0;
             }).catch(function () { return 0; });
         })).then(function (hits) {
           var n = hits.reduce(function (a, b) { return a + b; }, 0);
-          return API.patch("reservations/" + encodeURIComponent(folio) + "/status", { status: "cobrada" }).then(function () {
-            UI.toast(I18N.t("resv.cobradaMsg") + " · " + I18N.t("resv.loaded", { n: n }), "ok");
-            UI.closeModal();
-            loadProducts(root);
-          });
+          ctx.resvLoading = false;
+          if (btn) btn.classList.remove("is-loading");
+          if (!n) { UI.toast(I18N.t("resv.noneLoaded"), "error"); return; }
+          // Solo se CARGA a la venta actual. El apartado se marca cobrado
+          // cuando esa venta se cobra (checkout); mientras, sigue pendiente.
+          ctx.resvs.push({ folio: r.folio, added: added });
+          if (!ctx.customer) ctx.customer = r.customer_name || "";
+          renderCart(root);
+          // El modal sigue abierto para sumar otro apartado del mismo cliente.
+          paintLoaded();
+          UI.toast(I18N.t("resv.loaded", { n: n }) + " " + I18N.t("resv.payToFinish"), "ok", 5000);
         });
       }).catch(function (err) {
+        ctx.resvLoading = false;
         if (btn) btn.classList.remove("is-loading");
         UI.toast((err && err.message) || I18N.t("toast.error"), "error");
       });
@@ -1262,6 +1489,13 @@
     }
 
     wrap.addEventListener("click", function (e) {
+      var st = e.target.closest("[data-resv-status]");
+      if (st) {
+        statusFilter = st.getAttribute("data-resv-status");
+        $$("[data-resv-status]", wrap).forEach(function (c) { c.classList.toggle("is-active", c === st); });
+        detailEl.innerHTML = "";
+        return loadList();
+      }
       // Botones primero: no deben disparar el detalle de la fila.
       var chg = e.target.closest("[data-resv-charge]");
       if (chg) return chargeReservation(chg.getAttribute("data-resv-charge"));

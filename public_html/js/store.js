@@ -57,7 +57,7 @@
     clearSession: function () {
       this.session = null;
       this.cart = [];
-      try { localStorage.removeItem(SKEY); } catch (e) {}
+      try { localStorage.removeItem(SKEY); localStorage.removeItem("gp_poscart"); } catch (e) {}
       emit("session", null);
       emit("cart", this.cart);
     },

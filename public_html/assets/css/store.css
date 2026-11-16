@@ -673,6 +673,8 @@ body:not(.in-app) .btn--panini.is-pop { animation: ctaPop .4s var(--ease-bounce)
 /* ---------- POS: panel de apartados ---------- */
 .resv-lookup { display: flex; gap: .5rem; margin-bottom: 1rem; }
 .resv-lookup .input { flex: 1; }
+.resv-filter { display: flex; flex-wrap: wrap; gap: .35rem; margin-bottom: .7rem; }
+.resv-filter .chip { cursor: pointer; }
 .resv-list { display: flex; flex-direction: column; gap: .55rem; max-height: 46vh; overflow-y: auto; }
 .resv-item {
   display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem;
@@ -831,3 +833,11 @@ body:not(.in-app)::before {
   .preview3d__buy [data-buy] { width: 100%; }
   .related__row { grid-auto-columns: 42%; }
 }
+
+/* ===== Pulido visual 14/11 ===== */
+/* Sugerencias: inicial del título detrás de la portada (nunca un cuadro vacío). */
+.related__media { position: relative; background: linear-gradient(145deg, var(--ink), #3a3d52); }
+.related__media img { position: absolute; inset: 0; z-index: 1; }
+.related__ph { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--display); font-size: 2.2rem; color: var(--yellow, #ffd400); opacity: .85; }
+/* Ficha de producto: los botones de la fila miden lo mismo. */
+.preview3d__buy .btn { align-self: stretch; display: inline-flex; align-items: center; justify-content: center; min-height: 48px; }

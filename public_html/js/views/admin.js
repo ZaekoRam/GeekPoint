@@ -111,6 +111,32 @@
   var SALES_PAGE = 50;
   var SALES_METHODS = ["cash", "card", "transfer", "mixed"];
   var _salesFilters = null;     // se conservan al cambiar de idioma o volver a la sección
+  var SALES_KEY = "gp_salesfilters";
+  var SALES_RANGES = ["today", "week", "month"];
+  /* Los filtros también se recuerdan entre visitas (este navegador). Si las
+     fechas eran un atajo ("Hoy", "Este mes"…) se guarda el atajo, no el día:
+     mañana "Hoy" debe seguir siendo hoy. */
+  function _saveSalesFilters(f) {
+    try {
+      var range = SALES_RANGES.filter(function (k) { var r = _salesRange(k); return r.from === f.from && r.to === f.to; })[0] || "";
+      localStorage.setItem(SALES_KEY, JSON.stringify({ uid: STORE.user && STORE.user.id, f: f, range: range }));
+    } catch (e) { /* sin storage */ }
+  }
+  function _savedSalesFilters() {
+    try {
+      var d = JSON.parse(localStorage.getItem(SALES_KEY) || "null");
+      if (!d || !d.f || !STORE.user || d.uid !== STORE.user.id) return null;
+      var f = _emptySalesFilters();
+      Object.keys(f).forEach(function (k) { if (typeof d.f[k] === "string") f[k] = d.f[k]; });
+      if (d.range) { var r = _salesRange(d.range); f.from = r.from; f.to = r.to; }
+      return f;
+    } catch (e) { return null; }
+  }
+  function _csvCell(v) {
+    var s = String(v == null ? "" : v);
+    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;          // que Excel no lo lea como fórmula
+    return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
 
   function _emptySalesFilters() {
     return { branch_id: "", user_id: "", payment_method: "", status: "", from: "", to: "", q: "" };
@@ -128,7 +154,7 @@
   }
 
   function sales(panel, root, args) {
-    var f = _salesFilters || _emptySalesFilters();
+    var f = _salesFilters || _savedSalesFilters() || _emptySalesFilters();
     if (args && args.length) {                       // llegada desde el Resumen con el filtro puesto
       f = _emptySalesFilters();
       if (args[0] === "branch") f.branch_id = String(parseInt(args[1], 10) || "");
@@ -170,6 +196,7 @@
             return '<button type="button" class="chip" data-range="' + r + '">' + esc(I18N.t("sales.range." + r)) + '</button>';
           }).join("") +
           '<span class="spacer"></span>' +
+          '<button type="button" class="btn btn--ghost btn--sm sales-export" data-sales-export>⬇ ' + esc(I18N.t("sales.export")) + '</button>' +
           '<button type="button" class="btn btn--ghost btn--sm" data-sales-clear>' + esc(I18N.t("sales.clear")) + '</button>' +
         '</div>' +
         '<div data-sales-summary></div>' +
@@ -198,10 +225,43 @@
         });
       }
 
-      function url(offset) {
-        var qs = ["limit=" + SALES_PAGE, "offset=" + offset];
+      function url(offset, limit) {
+        var qs = ["limit=" + (limit || SALES_PAGE), "offset=" + offset];
         Object.keys(f).forEach(function (k) { if (f[k] !== "") qs.push(k + "=" + encodeURIComponent(f[k])); });
         return "sales?" + qs.join("&");
+      }
+
+      /* CSV de TODO lo filtrado (no solo la página a la vista), pidiéndolo al
+         servidor de 200 en 200. Con BOM para que Excel respete los acentos. */
+      var EXPORT_MAX = 5000;
+      function exportCSV(btn) {
+        if (btn.classList.contains("is-loading")) return;
+        btn.classList.add("is-loading");
+        UI.toast(I18N.t("sales.exporting"), "ok", 1800);
+        var all = [], total = 0;
+        (function next() {
+          return API.get(url(all.length, 200)).then(function (d) {
+            all = all.concat(d.sales || []);
+            total = (d.summary && d.summary.count) || all.length;
+            if ((d.sales || []).length && all.length < total && all.length < EXPORT_MAX) return next();
+          });
+        })().then(function () {
+          btn.classList.remove("is-loading");
+          if (!all.length) { UI.toast(I18N.t("sales.exportEmpty"), "warn"); return; }
+          var head = ["col.folio", "col.date", "col.branch", "sales.csv.register", "col.cashier", "sales.csv.customer", "col.qty", "col.method", "col.total", "col.status"]
+            .map(function (k) { return I18N.t(k); });
+          var lines = [head].concat(all.map(function (r) {
+            return [r.folio, r.created_at, r.branch_name, r.register_name || "", r.cashier_name, r.customer_name || "", r.items_count,
+              I18N.t("method." + r.payment_method), Number(r.total).toFixed(2), I18N.t("status." + r.status)];
+          })).map(function (row) { return row.map(_csvCell).join(","); });
+          var blob = new Blob(["\ufeff" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+          var a = document.createElement("a");
+          a.href = URL.createObjectURL(blob);
+          a.download = "ventas-geekpoint" + (f.from ? "_" + f.from : "") + (f.to && f.to !== f.from ? "_" + f.to : "") + ".csv";
+          document.body.appendChild(a); a.click(); a.remove();
+          setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
+          UI.toast(I18N.t(all.length < total ? "sales.exportCap" : "sales.exported", { n: all.length }), all.length < total ? "warn" : "ok", 4500);
+        }).catch(function (err) { btn.classList.remove("is-loading"); apiToast(err); });
       }
 
       function draw() {
@@ -235,6 +295,11 @@
           { key: "id", label: I18N.t("col.actions"), render: function (r) {
             return '<button type="button" class="btn btn--ghost btn--sm" data-sale="' + r.id + '">' + esc(I18N.t("sales.detail")) + '</button>'; } }
         ], rows, { empty: I18N.t("sales.empty"), stack: true });
+        // Sin resultados por culpa de un filtro: la salida va ahí mismo.
+        if (!rows.length && Object.keys(f).some(function (k) { return f[k] !== ""; })) {
+          tableBox.insertAdjacentHTML("beforeend", '<p class="state-action"><button type="button" class="btn btn--ghost btn--sm" data-sales-clear>' +
+            esc(I18N.t("sales.clear")) + '</button></p>');
+        }
 
         var left = summary.count - rows.length;
         $("[data-sales-more]", panel).innerHTML = left > 0
@@ -244,6 +309,7 @@
 
       function load(append) {
         var mine = ++seq;
+        _saveSalesFilters(f);
         if (!append) tableBox.innerHTML = V._loading();
         return API.get(url(append ? rows.length : 0)).then(function (d) {
           if (mine !== seq || !panel.isConnected) return;
@@ -286,8 +352,11 @@
           load(false);
           return;
         }
+        var exp = e.target.closest("[data-sales-export]");
+        if (exp) { exportCSV(exp); return; }
         if (e.target.closest("[data-sales-clear]")) {
           _salesFilters = null;
+          try { localStorage.removeItem(SALES_KEY); } catch (err) { /* sin storage */ }
           sales(panel, root);
           return;
         }

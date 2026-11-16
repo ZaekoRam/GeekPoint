@@ -246,7 +246,7 @@
 
   /* ---------------- Sales history (con cancelación) ---------------- */
   function statusBadge(st) {
-    return '<span class="badge' + (st === "void" ? " badge--danger" : "") + '">' + esc(I18N.t("status." + st)) + '</span>';
+    return '<span class="badge' + (st === "void" ? " badge--danger" : " badge--ok") + '">' + esc(I18N.t("status." + st)) + '</span>';
   }
   function sales(panel) {
     panel.innerHTML = V._loading();

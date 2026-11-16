@@ -267,6 +267,92 @@ class CatalogController extends Controller
     }
 
     /**
+     * GET /share/{id} — página de un producto para COMPARTIR su enlace.
+     *
+     * WhatsApp, Facebook, etc. arman la vista previa leyendo las etiquetas
+     * Open Graph del HTML, sin ejecutar JavaScript y sin recibir lo que va
+     * después de "#". El enlace normal de la tienda (/#/p/<id>) les llega
+     * siempre igual, así que no pueden mostrar el producto. Esta página sí
+     * lleva título, precio e imagen del producto, y a una persona la manda
+     * de inmediato a la tienda con ese producto abierto.
+     */
+    public function share($id)
+    {
+        $id = (string) $id;
+        $product = null;
+        try {
+            $products = $this->canonicalize($this->localProducts());
+            if (!$products) $products = $this->canonicalize($this->fallbackCatalog());
+            foreach ($products as $p) {
+                if ((string) $p['id'] === $id) { $product = $p; break; }
+            }
+        } catch (\Throwable $e) {
+            $product = null;
+        }
+
+        $home   = $this->publicUrl('');
+        $target = $home . ($product ? '#/p/' . rawurlencode($id) : '#/');
+        $title  = $product ? $product['title'] . ' · GeekPoint' : 'GeekPoint — Portal Coleccionable';
+        $desc   = 'Manga, figuras, cartas TCG y coleccionables. Aparta en línea y recoge en sucursal.';
+        if ($product) {
+            $price = '$' . number_format((float) ($product['effective_price'] ?? $product['price']), 2) . ' MXN';
+            $syn = trim((string) ($product['synopsis'] ?? ''));
+            $desc = $price . ($syn !== '' ? ' · ' . mb_substr($syn, 0, 160) : ' · Disponible en GeekPoint');
+        }
+        $image = $this->shareImage($product);
+
+        $e = function ($s) { return htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8'); };
+        header('Content-Type: text/html; charset=utf-8');
+        header('Cache-Control: public, max-age=600');
+        http_response_code($product ? 200 : 404);
+        echo '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">'
+           . '<meta name="viewport" content="width=device-width, initial-scale=1">'
+           . '<title>' . $e($title) . '</title>'
+           . '<meta name="description" content="' . $e($desc) . '">'
+           . '<meta property="og:type" content="' . ($product ? 'product' : 'website') . '">'
+           . '<meta property="og:site_name" content="GeekPoint">'
+           . '<meta property="og:title" content="' . $e($title) . '">'
+           . '<meta property="og:description" content="' . $e($desc) . '">'
+           . '<meta property="og:url" content="' . $e($this->publicUrl('api/share/' . rawurlencode($id))) . '">'
+           . '<meta property="og:image" content="' . $e($image) . '">'
+           . '<meta name="twitter:card" content="summary_large_image">'
+           . '<meta name="twitter:title" content="' . $e($title) . '">'
+           . '<meta name="twitter:description" content="' . $e($desc) . '">'
+           . '<meta name="twitter:image" content="' . $e($image) . '">'
+           . '<link rel="canonical" href="' . $e($target) . '">'
+           . '<meta http-equiv="refresh" content="0;url=' . $e($target) . '">'
+           . '</head><body style="font-family:sans-serif;padding:2rem">'
+           . '<p><a href="' . $e($target) . '">' . $e($title) . '</a></p>'
+           . '<script>location.replace(' . json_encode($target, JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) . ');</script>'
+           . '</body></html>';
+        exit;
+    }
+
+    /**
+     * Imagen ABSOLUTA para la vista previa del enlace. Las apps de mensajería
+     * no aceptan SVG ni data-URI: si la portada del producto es una de esas
+     * (portada generada), se usa el icono de la tienda.
+     */
+    private function shareImage($product)
+    {
+        $fallback = $this->publicUrl('icons/icon-512.png');
+        if (!$product) return $fallback;
+        $candidates = array_merge((array) ($product['images'] ?? []), [$product['cover_raw'] ?? '', $product['cover'] ?? '']);
+        foreach ($candidates as $u) {
+            $u = trim((string) $u);
+            if ($u === '' || stripos($u, 'data:') === 0) continue;
+            if (stripos($u, 'catalog/cover') !== false || preg_match('/\.svg(\?|$)/i', $u)) continue;   // SVG generado
+            if (preg_match('#^https?://#i', $u)) return $u;
+            if (strpos($u, '//') === 0) return 'https:' . $u;
+            // Relativa: las rutas del API ("catalog/image?src=…") cuelgan de /api/.
+            return $u[0] === '/'
+                ? $this->publicUrl(ltrim($u, '/'))
+                : $this->publicUrl((stripos($u, 'catalog/') === 0 ? 'api/' : '') . $u);
+        }
+        return $fallback;
+    }
+
+    /**
      * GET /catalog/branches — sucursales ACTIVAS para la tienda pública (sin auth).
      *
      * Lee directamente la tabla `branches`. Es la fuente que consumen las 3

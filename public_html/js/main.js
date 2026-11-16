@@ -277,8 +277,15 @@
         return changed;
       }
       branchSelect.addEventListener("change", function () {
+        try { localStorage.setItem("gp_shopbranch", branchSelect.value); } catch (e) { /* sin storage */ }
         if (refreshQuotePrices()) UI.toast(I18N.t("discount.cartUpdated", { n: 1 }), "warn");
       });
+      // Sucursal que la persona eligió la última vez (filtro o apartado
+      // anterior), si ahí hay existencias de lo que lleva.
+      var prefBranch = "";
+      try { prefBranch = localStorage.getItem("gp_shopbranch") || ""; } catch (e) { /* sin storage */ }
+      var prefOpt = prefBranch && Array.prototype.filter.call(branchSelect.options, function (o) { return o.value === prefBranch && !o.disabled; })[0];
+      if (prefOpt) { branchSelect.value = prefBranch; refreshQuotePrices(); }
 
       form.addEventListener("submit", function (e) {
         e.preventDefault();

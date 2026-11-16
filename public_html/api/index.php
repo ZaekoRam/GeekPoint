@@ -191,6 +191,8 @@ $router->get('categories', function () use ($request) { (new CategoryController(
 // --- Catálogo público de la tienda (e-commerce, sin auth) ---
 $router->get('catalog', function () use ($request) { (new CatalogController($request))->index(); });
 $router->get('catalog/branches', function () use ($request) { (new CatalogController($request))->branches(); });
+// Página para compartir un producto (vista previa con imagen en WhatsApp, etc.)
+$router->get('share/{id}', function ($p) use ($request) { (new CatalogController($request))->share($p['id']); });
 $router->get('catalog/image', function () use ($request) { (new CatalogController($request))->image(); });
 $router->get('catalog/cover', function () use ($request) { (new CatalogController($request))->cover(); });
 $router->get('catalog/covers', function () use ($request) { (new CatalogController($request))->covers(); });

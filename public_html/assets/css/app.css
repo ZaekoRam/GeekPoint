@@ -667,6 +667,13 @@ a.kpi--link:hover .kpi__go { opacity: 1; transform: translateX(0); }
 .pay-methods .chip { justify-content: center; cursor: pointer; }
 @media (max-width: 380px) { .pay-methods { grid-template-columns: repeat(2, 1fr); } }
 
+/* Atajos de teclado de la caja (solo con teclado físico) */
+.pos__keys { display: none; flex-wrap: wrap; gap: .25rem .9rem; margin: -.35rem 0 .7rem; font-size: .72rem; color: var(--muted); }
+.pos__keys kbd { font: 600 .68rem/1 var(--font-mono, ui-monospace, monospace); padding: .18rem .38rem; border: 1px solid var(--line, currentColor);
+  border-radius: 5px; color: var(--text); background: var(--surface-2, transparent); }
+@media (hover: hover) and (pointer: fine) { .pos__keys { display: flex; } }
+.sales-export { white-space: nowrap; }
+
 /* Cobro: billetes rápidos, pago mixto y estado (pagado / falta / cambio) */
 .pay-quick { display: flex; flex-wrap: wrap; gap: .35rem; margin: -.2rem 0 .3rem; }
 .pay-quick .chip, .pay-split__fill { cursor: pointer; min-height: 36px; }
@@ -759,6 +766,13 @@ a.kpi--link:hover .kpi__go { opacity: 1; transform: translateX(0); }
   .topbar, .api-banner, .foot,
   .cart-drawer, .cart-drawer__backdrop, .toasts, .splash { display: none !important; }
 }
+
+/* Aviso en el carrito del POS: la venta actual liquida un apartado. */
+.cart__resv { display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin: .2rem 0 .6rem;
+  padding: .45rem .7rem; border-radius: 10px; background: var(--surface-2); border-left: 3px solid var(--neon-cyan);
+  font-family: var(--mono); font-size: .76rem; }
+.cart__resv-x { width: 24px; height: 24px; border-radius: 6px; display: grid; place-items: center; color: var(--muted); }
+.cart__resv-x:hover { color: var(--danger); }
 
 /* ---------- Toolbar / filtros ---------- */
 .toolbar { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; margin-bottom: 1rem; }
@@ -1161,3 +1175,48 @@ a.kpi--link:hover .kpi__go { opacity: 1; transform: translateX(0); }
   .table-wrap--stack td .btn { min-height: 40px; }
   .table-wrap--stack td:empty { display: none; }
 }
+
+/* ===== Pulido visual 14/11 ===== */
+/* Portadas del POS: el emoji de la categoría queda detrás de la imagen. */
+.prod__media { background: linear-gradient(145deg, var(--surface-3), var(--surface-2)); overflow: hidden; }
+.prod__media img { position: absolute; inset: 0; z-index: 1; }
+.prod__badge { z-index: 2; }
+.prod__art { opacity: .55; }
+
+/* Venta actual: resalte del renglón que entró o cambió, y del total. */
+@keyframes citemFlash { 0% { box-shadow: inset 0 0 0 2px var(--neon-cyan); background: color-mix(in srgb, var(--neon-cyan) 22%, var(--surface-2)); } 100% { box-shadow: inset 0 0 0 0 transparent; background: var(--surface-2); } }
+.citem.is-new { animation: cartRowIn .3s var(--ease-out) backwards, citemFlash .9s ease-out; }
+.citem.is-changed { animation: citemFlash .7s ease-out; }
+.cart__totals [data-total].is-bump { display: inline-block; animation: countPop .38s var(--ease-bounce, ease-out); transform-origin: right center; }
+@media (prefers-reduced-motion: reduce) { .citem.is-new, .citem.is-changed, .cart__totals [data-total].is-bump { animation: none; } }
+
+/* Apartados en la venta: varios caben en una fila de píldoras. */
+.cart__resvs { display: flex; flex-wrap: wrap; gap: .35rem; margin: .2rem 0 .6rem; }
+.cart__resvs .cart__resv { margin: 0; flex: 1 1 100%; }
+.cart__resvs .cart__resv--pill { flex: 0 1 auto; padding: .25rem .3rem .25rem .6rem; border-left-width: 0; border: 1px solid var(--neon-cyan); border-radius: 999px; gap: .2rem; }
+.cart__resv--pill .cart__resv-x { width: 20px; height: 20px; font-size: .7rem; }
+
+/* Filtros de ventas: rejilla pareja, etiqueta arriba de cada campo. */
+.toolbar--sales[data-sales-filters] { display: grid; grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); gap: .7rem .8rem; align-items: end; }
+.toolbar--sales[data-sales-filters] .toolbar__item { display: flex; flex-direction: column; align-items: stretch; gap: .25rem; min-width: 0; flex: none; }
+.toolbar--sales[data-sales-filters] .toolbar__item > span { font-size: .66rem; letter-spacing: .1em; text-transform: uppercase; }
+.toolbar--sales[data-sales-filters] .toolbar__item .input,
+.toolbar--sales[data-sales-filters] .toolbar__item .select,
+.toolbar--sales[data-sales-filters] > .input[type="search"] { width: 100%; min-width: 0; max-width: none; flex: none; }
+.state-action { text-align: center; margin: -1.6rem 0 2rem; }
+
+/* Insignias de estado: mismos colores que "Mi cuenta" (pendiente cian,
+   lista ámbar, cobrada verde, cancelada rojo). Con body.in-app delante para
+   ganarle a la regla gris compartida, que aplastaba los modificadores. */
+body.in-app .badge--ok, body.in-app .badge--st-cobrada, .badge--st-cobrada { background: var(--success); color: #fff; }
+body.in-app .badge--warn, body.in-app .badge--st-lista, .badge--st-lista { background: var(--warning); color: #fff; }
+body.in-app .badge--danger, body.in-app .badge--st-cancelada, .badge--st-cancelada { background: var(--danger); color: #fff; }
+body.in-app .badge--cyan, body.in-app .badge--st-pendiente, .badge--st-pendiente { background: var(--neon-cyan); color: var(--ink-fixed, #14151d); }
+body.in-app .badge--violet { background: var(--neon-violet); color: #fff; }
+body.in-app .badge--panini { background: var(--panini); color: var(--ink-fixed, #14151d); }
+
+/* Ticket: logo arriba y pie. */
+.ticket__logo { display: block; margin: 0 auto .35rem; width: 46px; height: 46px; border-radius: 10px; }
+.ticket__thanks { text-align: center; font-weight: 700; margin: 0; }
+.ticket__foot { text-align: center; color: #666; font-size: .7rem; margin: .2rem 0 0; }
+@media print { .ticket__logo { width: 12mm !important; filter: grayscale(1) contrast(1.2); } }
