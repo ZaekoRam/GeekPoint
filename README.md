@@ -153,7 +153,7 @@ Desarrollar una plataforma web que unifique **catálogo en línea, inventario po
     <tr><td><b>🏬 Inventario por sucursal</b></td><td>Cada sede tiene su propio stock; cada venta lo actualiza automáticamente.</td></tr>
     <tr><td><b>🧾 Punto de venta</b></td><td>Venta actual con subtotal, IVA y total; selección de caja; pago en efectivo, tarjeta o transferencia.</td></tr>
     <tr><td><b>🎫 Ticket</b></td><td>Folio, fecha, sucursal, cajero, productos, totales, método de pago y cambio, con opción de imprimir.</td></tr>
-    <tr><td><b>📊 Paneles</b></td><td>Administrador y Gerente con ventas del día y del mes, alertas de stock, gráfica de 14 días y más vendidos. El Administrador consulta las ventas de todas las sucursales, con filtros por sucursal, fecha, cajero y forma de pago, y el detalle de cada una.</td></tr>
+    <tr><td><b>📊 Paneles</b></td><td>Administrador y Gerente con ventas del día y del mes, alertas de stock, gráfica de 14 días y más vendidos.</td></tr>
     <tr><td><b>👥 Usuarios y sucursales</b></td><td>Alta, edición, pausa y baja de sucursales; cuentas con rol y sucursal asignada.</td></tr>
     <tr><td><b>🌎 Idioma y tema</b></td><td>Español / inglés y modo oscuro / claro desde la barra superior.</td></tr>
   </tbody>
@@ -244,11 +244,11 @@ Cuatro sedes reales, cada una con su clave, ciudad, horario e inventario propio.
 <table align="center">
   <tr>
     <td align="center" width="50%">
-      <a href="https://www.youtube.com/watch?v=VIDEO_ES" target="_blank"><img src="assets/video-es.svg" alt="Ver el video comercial de GeekPoint en español" width="100%"></a>
+      <a href="https://youtu.be/wo5t7y2B4OU" target="_blank"><img src="assets/video-es.svg" alt="Ver el video comercial de GeekPoint en español" width="100%"></a>
       <br><b>🇲🇽 Español</b>
     </td>
     <td align="center" width="50%">
-      <a href="https://www.youtube.com/watch?v=VIDEO_EN" target="_blank"><img src="assets/video-en.svg" alt="Watch the GeekPoint commercial video in English" width="100%"></a>
+      <a href="https://youtu.be/BNawzWzjDHs" target="_blank"><img src="assets/video-en.svg" alt="Watch the GeekPoint commercial video in English" width="100%"></a>
       <br><b>🇺🇸 English</b>
     </td>
   </tr>

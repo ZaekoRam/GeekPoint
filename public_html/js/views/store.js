@@ -125,16 +125,24 @@
     var v = p.effective_price != null ? p.effective_price : p.price;
     return Number(v) || 0;
   }
-  function applySort(list) {
-    if (sortKey === "relevance") {
-      // Con sucursal elegida: primero lo que SÍ hay ahí; lo agotado en esa
-      // sede se queda al final (con su aviso), no se esconde.
-      if (!filterBranch) return list;
-      var has = function (p) { var b = branchStock(p); return b && b.n > 0 ? 0 : 1; };
-      return list.map(function (p, i) { return { p: p, i: i, k: has(p) }; })
-        .sort(function (a, b) { return (a.k - b.k) || (a.i - b.i); })
-        .map(function (x) { return x.p; });
-    }
+  /* ¿Sale con la etiqueta "Agotado"? Mismo criterio que la tarjeta: sin piezas
+     en la sucursal elegida, o en ninguna si no hay sucursal. Las preventas
+     no cuentan: se apartan aunque su stock esté en cero. */
+  function isSoldOut(p) {
+    if (p.category === "preventa") return false;
+    var bs = branchStock(stockView(p));
+    return (bs ? bs.n : stockOf(p)) === 0;
+  }
+  /* Lo agotado va SIEMPRE al final (con su aviso, no se esconde), en el orden
+     que sea: primero los disponibles ordenados, luego los agotados ordenados. */
+  function soldOutLast(list) {
+    var ok = [], out = [];
+    list.forEach(function (p) { (isSoldOut(p) ? out : ok).push(p); });
+    return out.length && ok.length ? ok.concat(out) : list;
+  }
+  function applySort(list) { return soldOutLast(sortOnly(list)); }
+  function sortOnly(list) {
+    if (sortKey === "relevance") return list;
     var out = list.slice();
     var cmp = {
       priceAsc:  function (a, b) { return priceOf(a) - priceOf(b); },
@@ -249,7 +257,14 @@
         '<p>' + msg + '</p></div>';
       return;
     }
-    host.innerHTML = list.map(cardHTML).join("");
+    // Lo agotado va al final (applySort): una línea con título marca dónde
+    // empieza ese bloque, si antes de él hay productos disponibles.
+    var firstOut = -1, nOut = 0;
+    list.forEach(function (p, i) { if (isSoldOut(p)) { nOut++; if (firstOut < 0) firstOut = i; } });
+    host.innerHTML = list.map(function (p, i) {
+      return (i === firstOut && i > 0
+        ? '<div class="pgrid__sep" role="separator"><span>' + esc(I18N.t("shop.soldoutGroup", { n: nOut })) + '</span></div>' : '') + cardHTML(p);
+    }).join("");
     $$(".pcard", host).forEach(bindCard);
   }
 
@@ -534,7 +549,7 @@
         '</div>';
     }
     return (
-      '<article class="pcard tilt' + (isFigure ? ' pcard--figure' : '') + '" data-id="' + esc(p.id) + '">' +
+      '<article class="pcard tilt' + (isFigure ? ' pcard--figure' : '') + (isSoldOut(p) ? ' is-soldout' : '') + '" data-id="' + esc(p.id) + '">' +
         media +
         '<div class="pcard__body">' +
           '<span class="pcard__cat">' + esc(I18N.t("cat." + p.category) || p.category) + '</span>' +

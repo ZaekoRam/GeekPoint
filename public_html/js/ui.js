@@ -133,7 +133,12 @@
     document.body.appendChild(wrap);
     openModalEl = wrap;
     wrap.__onClose = typeof opts.onClose === "function" ? opts.onClose : null;
-    document.documentElement.classList.add("modal-open");   // bloquea el scroll de fondo
+    // Bloquea el scroll de fondo. Al quitarse la barra de scroll la página se
+    // ensancharía y todo el fondo "brinca": se reserva ese mismo ancho.
+    var docEl = document.documentElement;
+    var sbw = window.innerWidth - docEl.clientWidth;
+    if (!docEl.classList.contains("modal-open")) docEl.style.paddingRight = sbw > 0 ? sbw + "px" : "";
+    docEl.classList.add("modal-open");
 
     // Animación de ENTRADA por clase (keyframes en components.css), no siempre-activa.
     if (!reduced) {
@@ -161,6 +166,7 @@
     // onClose una sola vez; `instant` = lo reemplaza otro modal (no un cierre del usuario).
     if (el.__onClose) { var cb = el.__onClose; el.__onClose = null; safe(function () { cb(instant === true); }); }
     document.documentElement.classList.remove("modal-open");
+    document.documentElement.style.paddingRight = "";
     if (instant === true || reduced) { el.remove(); return; }
     el.classList.remove("is-entering");
     el.classList.add("is-leaving");

@@ -841,3 +841,20 @@ body:not(.in-app)::before {
 .related__ph { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--display); font-size: 2.2rem; color: var(--yellow, #ffd400); opacity: .85; }
 /* Ficha de producto: los botones de la fila miden lo mismo. */
 .preview3d__buy .btn { align-self: stretch; display: inline-flex; align-items: center; justify-content: center; min-height: 48px; }
+
+/* ===== Agotados apagados (16/11) ===== */
+/* Portada sin color y tenue; la etiqueta "Agotado" y el aviso se quedan a
+   color. Al pasar el mouse (o enfocar) la portada recupera el color. */
+.pcard.is-soldout .pcard__media > *:not(.pcard__tags):not(.pcard__view) {
+  filter: grayscale(1); opacity: .45; transition: filter .25s var(--ease-out, ease-out), opacity .25s var(--ease-out, ease-out);
+}
+.pcard.is-soldout .pcard__name, .pcard.is-soldout .pcard__author, .pcard.is-soldout .pcard__cat,
+.pcard.is-soldout .pcard__price, .pcard.is-soldout .pcard__stock { opacity: .62; transition: opacity .25s var(--ease-out, ease-out); }
+.pcard.is-soldout:hover .pcard__media > *, .pcard.is-soldout:focus-within .pcard__media > * { filter: none; opacity: 1; }
+.pcard.is-soldout:hover .pcard__name, .pcard.is-soldout:hover .pcard__author, .pcard.is-soldout:hover .pcard__cat,
+.pcard.is-soldout:hover .pcard__price, .pcard.is-soldout:hover .pcard__stock,
+.pcard.is-soldout:focus-within .pcard__name, .pcard.is-soldout:focus-within .pcard__price { opacity: 1; }
+/* Separador donde empieza el bloque de agotados. */
+.pgrid__sep { grid-column: 1 / -1; display: flex; align-items: center; gap: .9rem; margin: .6rem 0 -.2rem;
+  font-family: var(--mono); font-size: .72rem; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--muted, #666); }
+.pgrid__sep::before, .pgrid__sep::after { content: ""; flex: 1; border-top: 2px dashed currentColor; opacity: .45; }
