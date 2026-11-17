@@ -244,11 +244,11 @@ Cuatro sedes reales, cada una con su clave, ciudad, horario e inventario propio.
 <table align="center">
   <tr>
     <td align="center" width="50%">
-      <a href="https://youtu.be/wo5t7y2B4OU" target="_blank"><img src="assets/video-es.svg" alt="Ver el video comercial de GeekPoint en español" width="100%"></a>
+      <a href="https://youtu.be/BNawzWzjDHs" target="_blank"><img src="assets/video-es.svg" alt="Ver el video comercial de GeekPoint en español" width="100%"></a>
       <br><b>🇲🇽 Español</b>
     </td>
     <td align="center" width="50%">
-      <a href="https://youtu.be/BNawzWzjDHs" target="_blank"><img src="assets/video-en.svg" alt="Watch the GeekPoint commercial video in English" width="100%"></a>
+      <a href="https://youtu.be/wo5t7y2B4OU" target="_blank"><img src="assets/video-en.svg" alt="Watch the GeekPoint commercial video in English" width="100%"></a>
       <br><b>🇺🇸 English</b>
     </td>
   </tr>
